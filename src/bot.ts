@@ -24,6 +24,17 @@ function logEditError(context: string) {
   };
 }
 
+/**
+ * Answers a callback query best-effort. answerCallbackQuery THROWS when the
+ * query is older than ~15s ("query is too old") — a routine event for any
+ * lingering inline button. An unguarded throw here propagates out of the
+ * handler and (without a bot.catch) crashes the whole process, so acking must
+ * never reject. Always swallow + log.
+ */
+async function ackSilently(ctx: Context, opts?: { text: string }): Promise<void> {
+  await ctx.answerCallbackQuery(opts).catch(logEditError('answerCallbackQuery'));
+}
+
 const APPROVE_PREFIX = 'approve_';
 const SKIP_PREFIX = 'skip_';
 
@@ -75,6 +86,15 @@ function renderApproval(candidate: Candidate, rewrite: RewriteResult): string {
 export function createBot(store: CandidateStore, onFetch: () => Promise<void> | void) {
   const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
 
+  // Global error boundary: grammy rethrows an uncaught handler error out of the
+  // polling loop, which exits the process (systemd then restart-loops). Logging
+  // here keeps the bot alive through any handler failure — a stale callback, a
+  // Telegram 400, a transient network blip — instead of crashing on it.
+  bot.catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error(`[bot] unhandled error in update ${err.ctx.update.update_id}: ${String(err.error)}`);
+  });
+
   // Tracks in-flight publish handlers so shutdown can drain them before the DB
   // is closed (a publish does a network call, then writes to the store).
   let inFlight = 0;
@@ -124,25 +144,25 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
     const isApprove = data.startsWith(APPROVE_PREFIX);
     const isSkip = data.startsWith(SKIP_PREFIX);
     if (!isApprove && !isSkip) {
-      await ctx.answerCallbackQuery();
+      await ackSilently(ctx);
       return;
     }
 
     const id = Number(data.slice(data.indexOf('_') + 1));
     const candidate = store.get(id);
     if (!candidate) {
-      await ctx.answerCallbackQuery({ text: 'Кандидат не найден.' });
+      await ackSilently(ctx, { text: 'Кандидат не найден.' });
       return;
     }
 
     if (isSkip) {
       // Only skip a candidate still awaiting review; a stale tap is a no-op.
       if (candidate.state !== 'pending_review') {
-        await ctx.answerCallbackQuery({ text: `Уже обработано (${candidate.state}).` });
+        await ackSilently(ctx, { text: `Уже обработано (${candidate.state}).` });
         return;
       }
       store.setState(id, 'skipped');
-      await ctx.answerCallbackQuery({ text: 'Пропущено.' });
+      await ackSilently(ctx, { text: 'Пропущено.' });
       await ctx.editMessageReplyMarkup().catch(logEditError('skip clear markup'));
       await ctx
         .editMessageText(`❌ Пропущено: ${candidate.sourceTitle ?? candidate.sourceUrl}`)
@@ -155,13 +175,13 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
     // A concurrent double-tap loses the race here and cannot double-post.
     const won = store.claimForPublishing(id);
     if (!won) {
-      await ctx.answerCallbackQuery({ text: 'Уже обрабатывается.' });
+      await ackSilently(ctx, { text: 'Уже обрабатывается.' });
       return;
     }
 
     inFlight += 1;
     try {
-      await ctx.answerCallbackQuery({ text: 'Публикую…' });
+      await ackSilently(ctx, { text: 'Публикую…' });
       await ctx.editMessageReplyMarkup().catch(logEditError('publish clear markup'));
 
       const rewrite = store.getRewrite(candidate);
@@ -207,20 +227,20 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
     if (cb.kind === 'reset') {
       store.clearModelOverride();
       const { text, keyboard } = modelMenu(store);
-      await ctx.answerCallbackQuery({ text: 'Сброшено на env.' });
+      await ackSilently(ctx, { text: 'Сброшено на env.' });
       await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError('model reset'));
       return;
     }
 
     if (cb.kind === 'back') {
       const { text, keyboard } = modelMenu(store);
-      await ctx.answerCallbackQuery();
+      await ackSilently(ctx);
       await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError('model back'));
       return;
     }
 
     if (cb.kind === 'provider') {
-      await ctx.answerCallbackQuery();
+      await ackSilently(ctx);
       const models = await listModels(cb.provider);
       const label = PROVIDERS[cb.provider].label;
       await ctx
@@ -232,7 +252,7 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
     }
 
     // cb.kind === 'model' — ping, then save on success only.
-    await ctx.answerCallbackQuery({ text: 'Проверяю модель…' });
+    await ackSilently(ctx, { text: 'Проверяю модель…' });
     const result = await pingModel(cb.provider, cb.model);
     const label = PROVIDERS[cb.provider].label;
     if (result.ok) {
