@@ -9,14 +9,20 @@ import { dedupKeyFor, stripHtml, truncate } from './utils.js';
  * var (comma-separated). Kept here (not in config) so the list is editable
  * without touching env, and importable by tests.
  */
-// Feeds chosen for delivering real article BODY text (not headline-only),
-// measured live with rss-parser. Russian-first; most carry a cover image.
-// Meduza & N+1 put their body only in <content:encoded> — mapFeed reads it.
+// Russian-first TECH feeds — dev/IT, hardware, AI/ML. Chosen for delivering
+// real article BODY text (not headline-only), measured live with rss-parser;
+// bodyLen noted below is from the first item on a sample fetch. Habr exposes
+// its body in <content:encoded>, which mapFeed reads.
 export const DEFAULT_FEEDS: string[] = [
-  'https://meduza.io/rss/all', // ru, content:encoded ~1130+, image
-  'https://3dnews.ru/news/rss', // ru, content ~520, image
-  'https://nplus1.ru/rss', // ru science, content:encoded ~639, image
-  'https://www.opennet.ru/opennews/opennews_all_utf.rss', // ru tech, content ~855
+  // dev / IT
+  'https://habr.com/ru/rss/best/daily/?fl=ru', // лучшее на Habr за день, body ~1860
+  'https://www.opennet.ru/opennews/opennews_all_utf.rss', // open-source / безопасность, body ~470
+  // hardware / гаджеты
+  'https://3dnews.ru/news/rss', // железо, body ~210, image
+  'https://www.ixbt.com/export/news.rss', // железо/гаджеты, body ~1360
+  // AI / ML
+  'https://habr.com/ru/rss/hubs/machine_learning/articles/?fl=ru', // ML, body ~1650
+  'https://habr.com/ru/rss/hubs/artificial_intelligence/articles/?fl=ru', // ИИ, body ~210
   // 'https://dev.to/feed',     // en tech, content ~3000 — раскомментируй для англо-IT
 ];
 
