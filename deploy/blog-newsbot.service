@@ -1,0 +1,45 @@
+[Unit]
+Description=Blog news bot (ai-bot-tg) — RSS → Claude → Telegram approve → publish
+Documentation=https://github.com/InfinityScripter/ai-bot-tg
+# Start after network and (if co-located) the blog backend, so the publish
+# target is reachable. Wants= (not Requires=) so the bot still starts and just
+# logs publish failures if the backend is briefly down.
+After=network-online.target blog-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/blog-app/ai-bot-tg
+
+# Secrets and config live in an env file outside the repo, root-owned, 0600.
+# See deploy/DEPLOY.md for the required keys.
+EnvironmentFile=/opt/blog-app/ai-bot-tg/.env.production
+
+# Run the TypeScript entrypoint directly with tsx (no build step needed).
+# Pin the node path if nvm is used; adjust to the box's node 18+ install.
+ExecStart=/usr/bin/node --import tsx /opt/blog-app/ai-bot-tg/src/index.ts
+
+# index.ts handles SIGTERM/SIGINT: stops cron, stops polling, drains in-flight
+# publishes, closes SQLite. Give it room to drain before SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+Restart=always
+RestartSec=5
+
+# Hardening — the bot only needs its own dir (SQLite) and outbound network.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/blog-app/ai-bot-tg/data
+
+# Logs to the journal: journalctl -u blog-newsbot -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=blog-newsbot
+
+[Install]
+WantedBy=multi-user.target
