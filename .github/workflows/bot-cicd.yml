@@ -1,0 +1,42 @@
+name: Deploy Bot To VDS
+
+# Mirrors the backend's CI (.github/workflows/backend-cicd.yml in the blog
+# backend repo) so a push to main auto-deploys the bot — no manual SSH.
+#
+# Unlike the backend, this is a GIT-PULL deploy, not an scp+rm deploy. The bot's
+# env file (.env.production) and its SQLite dedup ledger (data/candidates.db)
+# live INSIDE the deploy dir, so wiping the dir on every push (scp rm: true)
+# would destroy them. Pulling in place leaves both untouched.
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate deploy secrets
+        run: |
+          if [ -z "${{ secrets.VDS_HOST }}" ]; then echo "Missing secret: VDS_HOST"; exit 1; fi
+          if [ -z "${{ secrets.VDS_PORT }}" ]; then echo "Missing secret: VDS_PORT"; exit 1; fi
+          if [ -z "${{ secrets.VDS_USER }}" ]; then echo "Missing secret: VDS_USER"; exit 1; fi
+          if [ -z "${{ secrets.VDS_SSH_PRIVATE_KEY || secrets.VDS }}" ]; then echo "Missing secret: VDS_SSH_PRIVATE_KEY (or VDS fallback)"; exit 1; fi
+
+      - name: Pull latest and restart bot service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VDS_HOST }}
+          username: ${{ secrets.VDS_USER }}
+          key: ${{ secrets.VDS_SSH_PRIVATE_KEY || secrets.VDS }}
+          port: ${{ secrets.VDS_PORT }}
+          script: |
+            set -e
+            cd /opt/blog-app/ai-bot-tg
+            git fetch --all
+            git reset --hard origin/main
+            npm ci
+            systemctl restart blog-newsbot
+            systemctl status blog-newsbot --no-pager

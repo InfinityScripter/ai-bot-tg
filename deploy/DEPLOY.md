@@ -4,9 +4,13 @@ The bot runs as a long-lived systemd service on the same VDS as the blog backend
 (Ubuntu 22.04, `185.237.219.151`). It publishes to the blog over HTTP, so it can
 talk to the backend at `http://localhost:7272` when co-located.
 
-> The bot has **no CI auto-deploy** (unlike the backend). Deploy it manually the
-> first time, then update with `git pull` + `systemctl restart`. If you want CI
-> later, mirror `.github/workflows/backend-cicd.yml`.
+> **First deploy is manual** (steps 2–4 below: clone, env, systemd unit). After
+> that, a push to `main` auto-deploys via GitHub Actions
+> (`.github/workflows/bot-cicd.yml`): it SSHes in, `git reset --hard origin/main`,
+> `npm ci`, and `systemctl restart blog-newsbot`. It is a **git-pull** deploy (not
+> scp like the backend) so it never touches the env file or the SQLite ledger.
+> See [CI auto-deploy](#7-ci-auto-deploy--rollback) for the required repo secrets
+> and how to roll back.
 
 ## 1. Backend prerequisites (one-time)
 
@@ -127,18 +131,65 @@ Then in Telegram, from the owner account:
 3. Tap **✅ Опубликовать** on a card → the post appears on `https://talalaev.su`,
    authored by you, and the card edits to "✅ Опубликовано".
 
-## 6. Update / rollback
+## 6. Manual update
+
+Normally you don't do this — pushing to `main` auto-deploys (see section 7).
+For a hotfix straight on the box:
 
 ```bash
 cd /opt/blog-app/ai-bot-tg
-sudo -u www-data git pull
-sudo -u www-data npm ci          # if deps changed
-sudo -u www-data npm run build   # only if using ExecStart option B
-sudo systemctl restart blog-newsbot
+git pull
+npm ci                           # if deps changed
+systemctl restart blog-newsbot
 ```
 
 The SQLite DB (`data/candidates.db`) persists across restarts — the dedup ledger
 and candidate history survive. Back it up by copying that file.
+
+## 7. CI auto-deploy + rollback
+
+A push to `main` triggers `.github/workflows/bot-cicd.yml`, which SSHes into the
+VDS and runs: `git reset --hard origin/main` → `npm ci` → `systemctl restart
+blog-newsbot`. It is a **git-pull** deploy, so it never overwrites
+`.env.production` or `data/candidates.db`.
+
+**Required GitHub repo secrets** (Settings → Secrets and variables → Actions).
+These are the SAME ones the backend repo uses — reuse the same values:
+
+| Secret | Value |
+|---|---|
+| `VDS_HOST` | `185.237.219.151` |
+| `VDS_PORT` | SSH port |
+| `VDS_USER` | deploy user |
+| `VDS_SSH_PRIVATE_KEY` | private key whose public half is in the box's `authorized_keys` (falls back to `VDS`) |
+
+**One-time CI prerequisite:** the deploy must reach the repo over the network and
+fast-forward. The clone in step 2 already sets `origin`; confirm the box can
+`git fetch` it non-interactively (HTTPS with a token, or a deploy key in
+`~/.ssh`). `git reset --hard origin/main` then never prompts.
+
+### Rollback
+
+`git reset --hard` makes deploys deterministic — the box always matches a commit.
+To roll back, point `main` at the last good commit and let CI redeploy:
+
+```bash
+# locally
+git revert <bad-commit>            # safe: forward commit that undoes it
+git push origin main               # CI redeploys the reverted tree
+```
+
+Or, for an immediate fix straight on the box (then reconcile `main` after):
+
+```bash
+cd /opt/blog-app/ai-bot-tg
+git reset --hard <last-good-sha>
+npm ci
+systemctl restart blog-newsbot
+```
+
+Find the last-good SHA with `git log --oneline` on the box or in the repo. The
+SQLite ledger is unaffected by either path.
 
 ## Troubleshooting
 
