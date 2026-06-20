@@ -135,6 +135,22 @@ describe('hasActiveOverride', () => {
   });
 });
 
+describe('control provider whitelist', () => {
+  it('exposes only glm, deepseek, mock', async () => {
+    const { CONTROL_PROVIDERS } = await importProviders();
+    expect([...CONTROL_PROVIDERS]).toEqual(['glm', 'deepseek', 'mock']);
+  });
+
+  it('accepts whitelisted, rejects others', async () => {
+    const { isControlProvider } = await importProviders();
+    expect(isControlProvider('glm')).toBe(true);
+    expect(isControlProvider('mock')).toBe(true);
+    expect(isControlProvider('anthropic')).toBe(false);
+    expect(isControlProvider('gemini')).toBe(false);
+    expect(isControlProvider('nonsense')).toBe(false);
+  });
+});
+
 describe('mock override precedence', () => {
   it('db mock=true forces the mock provider', async () => {
     const { resolveActiveProvider } = await importProviders();

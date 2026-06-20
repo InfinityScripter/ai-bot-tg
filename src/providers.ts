@@ -125,6 +125,22 @@ export function isProviderName(value: string): value is ProviderName {
   return value in PROVIDERS;
 }
 
+/**
+ * Providers the admin panel may control in V1. anthropic/gemini are excluded
+ * (gemini is geo-limited from RU; anthropic's ping is key-presence-only). They
+ * stay in PROVIDERS so the Telegram /model path keeps working — only the admin
+ * control surface is narrowed.
+ */
+export const CONTROL_PROVIDERS = ['glm', 'deepseek', 'mock'] as const;
+
+/** A provider name the admin panel is allowed to select. */
+export type ControlProviderName = (typeof CONTROL_PROVIDERS)[number];
+
+/** True if a string is an admin-controllable provider name. */
+export function isControlProvider(value: string): value is ControlProviderName {
+  return (CONTROL_PROVIDERS as readonly string[]).includes(value);
+}
+
 /** The chat-completions URL for an openai-compat provider. */
 export function chatUrl(spec: ProviderSpec): string {
   return `${spec.baseUrl}/chat/completions`;
