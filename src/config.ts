@@ -12,6 +12,15 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   BLOG_API_URL: z.string().url('BLOG_API_URL must be a URL'),
   BOT_API_TOKEN: z.string().min(8, 'BOT_API_TOKEN must be a long shared secret'),
+  /** Port for the localhost-only admin control server. */
+  CONTROL_PORT: z.coerce.number().int().positive().default(8455),
+  /**
+   * Shared secret for the backend→bot control API. OPTIONAL: when unset, the
+   * control server is NOT started and the bot runs/publishes normally — so
+   * deploying this code without the var added cannot crash the pipeline. Min 16
+   * chars when present. Separate from BOT_API_TOKEN (which is bot→blog).
+   */
+  BOT_CONTROL_TOKEN: z.string().min(16, 'BOT_CONTROL_TOKEN must be >= 16 chars').optional(),
   SQLITE_PATH: z.string().default('./data/candidates.db'),
   CRON_SCHEDULE: z.string().default('0 9 * * *'),
   CRON_TZ: z.string().default('Europe/Moscow'),
