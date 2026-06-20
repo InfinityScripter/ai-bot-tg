@@ -1,0 +1,183 @@
+import { Bot, InlineKeyboard } from 'grammy';
+
+import { CONFIG } from './config.js';
+import type { CandidateStore } from './store.js';
+import { publishToBlog } from './publisher.js';
+import type { Candidate, RewriteResult } from './types.js';
+import { escapeMarkdown, truncate } from './utils.js';
+
+/** Logs a swallowed edit error instead of hiding it entirely. */
+function logEditError(context: string) {
+  return (err: unknown) => {
+    // eslint-disable-next-line no-console
+    console.warn(`[bot] ${context} failed: ${String(err)}`);
+  };
+}
+
+const APPROVE_PREFIX = 'approve_';
+const SKIP_PREFIX = 'skip_';
+
+/** Builds the inline keyboard for an approval message. */
+function approvalKeyboard(candidateId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('✅ Опубликовать', `${APPROVE_PREFIX}${candidateId}`)
+    .text('❌ Пропустить', `${SKIP_PREFIX}${candidateId}`);
+}
+
+/**
+ * Renders the DM body shown to the owner for review. All interpolated content
+ * is escaped — feed/Claude text must not be able to break or hijack the
+ * Markdown (e.g. a title containing '*' or '[').
+ */
+function renderApproval(candidate: Candidate, rewrite: RewriteResult): string {
+  const tags = rewrite.tags.length ? `\n🏷 ${escapeMarkdown(rewrite.tags.join(', '))}` : '';
+  return [
+    `📰 *${escapeMarkdown(rewrite.title)}*`,
+    '',
+    escapeMarkdown(truncate(rewrite.description, 600)),
+    tags,
+    '',
+    `Источник: ${escapeMarkdown(candidate.feedTitle ?? 'неизвестен')}`,
+    escapeMarkdown(candidate.sourceUrl),
+  ].join('\n');
+}
+
+/**
+ * Creates the bot, locked to the owner, with /start, /ping, the approval
+ * callback handler, and a `sendApproval` helper for the collector. `onFetch`
+ * is invoked by the /fetch command (wired by the entrypoint to trigger a run).
+ */
+export function createBot(store: CandidateStore, onFetch: () => Promise<void> | void) {
+  const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
+
+  // Tracks in-flight publish handlers so shutdown can drain them before the DB
+  // is closed (a publish does a network call, then writes to the store).
+  let inFlight = 0;
+
+  // Owner-lock: silently ignore every update from anyone but the owner —
+  // commands and callbacks alike. ctx.from is set for messages, callbacks,
+  // edited messages, channel posts, and inline queries, so this gate covers
+  // every update type that carries a sender.
+  bot.use(async (ctx, next) => {
+    if (ctx.from?.id !== CONFIG.OWNER_TELEGRAM_ID) {
+      if (ctx.callbackQuery) await ctx.answerCallbackQuery({ text: 'Не авторизовано.' }).catch(() => {});
+      return; // drop the update
+    }
+    await next();
+  });
+
+  bot.command('start', (ctx) =>
+    ctx.reply('Новостной бот на связи. /fetch — собрать новости сейчас. /ping — проверка.')
+  );
+  bot.command('ping', (ctx) => ctx.reply('pong'));
+  bot.command('fetch', async (ctx) => {
+    await ctx.reply('Запускаю сбор новостей…');
+    try {
+      await onFetch();
+    } catch (err) {
+      await ctx.reply(`Сбор завершился с ошибкой: ${String(err)}`);
+    }
+  });
+
+  bot.on('callback_query:data', async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    const isApprove = data.startsWith(APPROVE_PREFIX);
+    const isSkip = data.startsWith(SKIP_PREFIX);
+    if (!isApprove && !isSkip) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+
+    const id = Number(data.slice(data.indexOf('_') + 1));
+    const candidate = store.get(id);
+    if (!candidate) {
+      await ctx.answerCallbackQuery({ text: 'Кандидат не найден.' });
+      return;
+    }
+
+    if (isSkip) {
+      // Only skip a candidate still awaiting review; a stale tap is a no-op.
+      if (candidate.state !== 'pending_review') {
+        await ctx.answerCallbackQuery({ text: `Уже обработано (${candidate.state}).` });
+        return;
+      }
+      store.setState(id, 'skipped');
+      await ctx.answerCallbackQuery({ text: 'Пропущено.' });
+      await ctx.editMessageReplyMarkup().catch(logEditError('skip clear markup'));
+      await ctx
+        .editMessageText(`❌ Пропущено: ${candidate.sourceTitle ?? candidate.sourceUrl}`)
+        .catch(logEditError('skip edit text'));
+      return;
+    }
+
+    // Approve → publish. Atomically claim pending_review → publishing in a
+    // single UPDATE; only the caller that flips the row (changes === 1) wins.
+    // A concurrent double-tap loses the race here and cannot double-post.
+    const won = store.claimForPublishing(id);
+    if (!won) {
+      await ctx.answerCallbackQuery({ text: 'Уже обрабатывается.' });
+      return;
+    }
+
+    inFlight += 1;
+    try {
+      await ctx.answerCallbackQuery({ text: 'Публикую…' });
+      await ctx.editMessageReplyMarkup().catch(logEditError('publish clear markup'));
+
+      const rewrite = store.getRewrite(candidate);
+      if (!rewrite) {
+        store.setState(id, 'publish_failed', 'Нет сохранённого rewrite.');
+        await ctx
+          .editMessageText('⚠️ Ошибка: нет данных для публикации.')
+          .catch(logEditError('publish missing-rewrite text'));
+        return;
+      }
+
+      try {
+        const postId = await publishToBlog(rewrite);
+        store.setPublished(id, postId);
+        await ctx
+          .editMessageText(`✅ Опубликовано: *${escapeMarkdown(rewrite.title)}*`, {
+            parse_mode: 'Markdown',
+          })
+          .catch(logEditError('publish success text'));
+      } catch (err) {
+        // Reset to pending_review so the owner can retry via the restored buttons.
+        store.setState(id, 'pending_review', String(err));
+        await ctx
+          .editMessageText(`⚠️ Не удалось опубликовать: ${err instanceof Error ? err.message : String(err)}`, {
+            reply_markup: approvalKeyboard(id),
+          })
+          .catch(logEditError('publish failure text'));
+      }
+    } finally {
+      inFlight -= 1;
+    }
+  });
+
+  /** Sends an approval DM for a pending candidate and records its message id. */
+  async function sendApproval(candidate: Candidate, rewrite: RewriteResult): Promise<void> {
+    const message = await bot.api.sendMessage(
+      CONFIG.OWNER_TELEGRAM_ID,
+      renderApproval(candidate, rewrite),
+      { parse_mode: 'Markdown', reply_markup: approvalKeyboard(candidate.id) }
+    );
+    store.setTelegramMessage(candidate.id, message.message_id);
+  }
+
+  /**
+   * Resolves once no publish handler is in flight (or a timeout elapses).
+   * Shutdown awaits this before closing the store so a callback mid-publish
+   * isn't cut off with a closed database.
+   */
+  async function drain(timeoutMs = 10_000): Promise<void> {
+    const start = Date.now();
+    while (inFlight > 0 && Date.now() - start < timeoutMs) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
+  return { bot, sendApproval, drain };
+}
+
+export type BotBundle = ReturnType<typeof createBot>;

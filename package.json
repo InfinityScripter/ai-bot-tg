@@ -1,0 +1,35 @@
+{
+  "name": "ai-bot-tg",
+  "version": "1.0.0",
+  "description": "Telegram news bot: collects RSS daily, rewrites via Claude, owner approves in Telegram, publishes to the blog.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "ts": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "fetch": "tsx src/cli/run-collection.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.0",
+    "better-sqlite3": "^11.8.0",
+    "croner": "^9.0.0",
+    "dotenv": "^16.4.0",
+    "grammy": "^1.44.0",
+    "rss-parser": "^3.13.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
