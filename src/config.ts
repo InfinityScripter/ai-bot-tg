@@ -20,17 +20,28 @@ const EnvSchema = z.object({
   /**
    * Which backend rewrites a feed item into a post:
    *   'anthropic' — Claude (needs ANTHROPIC_API_KEY, paid)
-   *   'gemini'    — Google Gemini free tier (needs GEMINI_API_KEY)
+   *   'gemini'    — Google Gemini (needs GEMINI_API_KEY; free tier is geo/quota limited)
+   *   'glm'       — Zhipu Z.ai GLM (needs GLM_API_KEY; GLM-4.7-Flash is free)
+   *   'deepseek'  — DeepSeek (needs DEEPSEEK_API_KEY; V4 Flash is very cheap)
    *   'mock'      — no LLM, build the post from the feed item directly
    * REWRITE_MOCK=1 still forces 'mock' regardless of this, for back-compat.
+   * gemini/glm/deepseek all use the same OpenAI-compatible code path.
    */
-  REWRITE_PROVIDER: z.enum(['anthropic', 'gemini', 'mock']).default('anthropic'),
+  REWRITE_PROVIDER: z.enum(['anthropic', 'gemini', 'glm', 'deepseek', 'mock']).default('anthropic'),
   /** Claude model for the rewrite. Haiku is plenty for this task. */
   REWRITE_MODEL: z.string().default('claude-haiku-4-5'),
   /** Google AI Studio API key — required when REWRITE_PROVIDER=gemini. */
   GEMINI_API_KEY: z.string().optional(),
-  /** Gemini model. Flash is free-tier and plenty for a rewrite. */
-  GEMINI_MODEL: z.string().default('gemini-3-flash'),
+  /** Gemini model. */
+  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  /** Z.ai (Zhipu) API key — required when REWRITE_PROVIDER=glm. */
+  GLM_API_KEY: z.string().optional(),
+  /** GLM model. The Flash variant is free for all Z.ai accounts. */
+  GLM_MODEL: z.string().default('glm-4.7-flash'),
+  /** DeepSeek API key — required when REWRITE_PROVIDER=deepseek. */
+  DEEPSEEK_API_KEY: z.string().optional(),
+  /** DeepSeek model. V4 Flash is the cheap frontier-class option. */
+  DEEPSEEK_MODEL: z.string().default('deepseek-v4-flash'),
   /** Max candidates surfaced per run, to cap Claude spend on a noisy day. */
   MAX_PER_RUN: z.coerce.number().int().positive().default(15),
   /**
@@ -46,19 +57,20 @@ const EnvSchema = z.object({
   // Fail fast at boot if the chosen provider is missing its key, rather than
   // crashing deep in the rewrite during a run. REWRITE_MOCK overrides the
   // provider, so skip the check then.
-  if (cfg.REWRITE_MOCK) return;
-  if (cfg.REWRITE_PROVIDER === 'gemini' && !cfg.GEMINI_API_KEY) {
+  if (cfg.REWRITE_MOCK || cfg.REWRITE_PROVIDER === 'mock') return;
+  // provider → the env key it requires.
+  const REQUIRED_KEY = {
+    anthropic: 'ANTHROPIC_API_KEY',
+    gemini: 'GEMINI_API_KEY',
+    glm: 'GLM_API_KEY',
+    deepseek: 'DEEPSEEK_API_KEY',
+  } as const;
+  const keyName = REQUIRED_KEY[cfg.REWRITE_PROVIDER as keyof typeof REQUIRED_KEY];
+  if (keyName && !cfg[keyName]) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ['GEMINI_API_KEY'],
-      message: 'GEMINI_API_KEY is required when REWRITE_PROVIDER=gemini',
-    });
-  }
-  if (cfg.REWRITE_PROVIDER === 'anthropic' && !cfg.ANTHROPIC_API_KEY) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['ANTHROPIC_API_KEY'],
-      message: 'ANTHROPIC_API_KEY is required when REWRITE_PROVIDER=anthropic',
+      path: [keyName],
+      message: `${keyName} is required when REWRITE_PROVIDER=${cfg.REWRITE_PROVIDER}`,
     });
   }
 });

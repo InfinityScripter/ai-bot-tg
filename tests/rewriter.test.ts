@@ -95,49 +95,62 @@ describe('rewriteToPost', () => {
   });
 });
 
-describe('rewriteToPost (Gemini provider)', () => {
-  it('calls the Gemini OpenAI-compatible endpoint and validates output', async () => {
-    vi.stubEnv('REWRITE_PROVIDER', 'gemini');
-    vi.stubEnv('GEMINI_API_KEY', 'test-gemini-key');
-    vi.resetModules();
+// All OpenAI-compatible providers share one code path; assert each maps to the
+// right base URL + key env, and that a non-OK response surfaces its label.
+const OPENAI_COMPAT = [
+  { provider: 'gemini', keyEnv: 'GEMINI_API_KEY', host: 'generativelanguage.googleapis.com', label: 'Gemini' },
+  { provider: 'glm', keyEnv: 'GLM_API_KEY', host: 'api.z.ai', label: 'GLM' },
+  { provider: 'deepseek', keyEnv: 'DEEPSEEK_API_KEY', host: 'api.deepseek.com', label: 'DeepSeek' },
+] as const;
 
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ choices: [{ message: { content: JSON.stringify(VALID) } }] }),
+describe.each(OPENAI_COMPAT)(
+  'rewriteToPost ($provider provider)',
+  ({ provider, keyEnv, host, label }) => {
+    it('calls the right OpenAI-compatible endpoint and validates output', async () => {
+      vi.stubEnv('REWRITE_PROVIDER', provider);
+      vi.stubEnv(keyEnv, 'test-key');
+      vi.resetModules();
+
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify(VALID) } }] }),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const mod = await import('../src/rewriter.js');
+      const result = await mod.rewriteToPost(ITEM);
+
+      expect(result).toEqual(VALID);
+      const call = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
+      expect(call[0]).toContain(host);
+      expect(call[1].headers.Authorization).toBe('Bearer test-key');
+
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.resetModules();
     });
-    vi.stubGlobal('fetch', fetchMock);
 
-    const mod = await import('../src/rewriter.js');
-    const result = await mod.rewriteToPost(ITEM);
+    it('throws a readable, labeled error on a non-OK response', async () => {
+      vi.stubEnv('REWRITE_PROVIDER', provider);
+      vi.stubEnv(keyEnv, 'test-key');
+      vi.resetModules();
 
-    expect(result).toEqual(VALID);
-    const call = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
-    expect(call[0]).toContain('generativelanguage.googleapis.com');
-    expect(call[1].headers.Authorization).toBe('Bearer test-gemini-key');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: false, status: 429, text: async () => 'rate limited' })
+      );
 
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
-    vi.resetModules();
-  });
+      const mod = await import('../src/rewriter.js');
+      await expect(mod.rewriteToPost(ITEM)).rejects.toThrow(
+        new RegExp(`${label} ответил 429`)
+      );
 
-  it('throws a readable error on a non-OK Gemini response', async () => {
-    vi.stubEnv('REWRITE_PROVIDER', 'gemini');
-    vi.stubEnv('GEMINI_API_KEY', 'test-gemini-key');
-    vi.resetModules();
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 429, text: async () => 'rate limited' })
-    );
-
-    const mod = await import('../src/rewriter.js');
-    await expect(mod.rewriteToPost(ITEM)).rejects.toThrow(/Gemini ответил 429/);
-
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
-    vi.resetModules();
-  });
-});
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+  }
+);
 
 describe('rewriteToPost (REWRITE_MOCK)', () => {
   it('mock body does not start with a markdown heading and clamps the title', async () => {

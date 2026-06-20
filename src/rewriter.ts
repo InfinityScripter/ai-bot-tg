@@ -164,28 +164,72 @@ async function rewriteWithAnthropic(item: FeedItem): Promise<RewriteResult> {
   return finalizeRewrite(extractJson(extractText(response)), item);
 }
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
-
 interface OpenAIChatResponse {
   choices?: { message?: { content?: string } }[];
 }
 
+/** Config for one OpenAI-compatible provider. */
+interface OpenAICompatProvider {
+  /** Human label for error messages. */
+  label: string;
+  /** Full chat-completions URL. */
+  url: string;
+  /** Bearer API key (may be undefined — guarded at boot by config). */
+  apiKey: string | undefined;
+  /** Model id. */
+  model: string;
+}
+
 /**
- * Rewrites via Google Gemini's OpenAI-compatible endpoint. Free-tier friendly:
- * no SDK, a single fetch. response_format=json_object nudges Gemini to emit
- * pure JSON, but we still extract+validate defensively.
+ * The OpenAI-compatible providers. All speak the same /chat/completions shape,
+ * so a single fetch path serves them — only base URL, key and model differ.
+ *   gemini   — Google (free tier is geo/quota limited; saw limit:0 from RU)
+ *   glm      — Zhipu Z.ai; GLM-4.7-Flash is free, hosted in CN (RU-reachable)
+ *   deepseek — DeepSeek; V4 Flash is very cheap, hosted in CN (RU-reachable)
  */
-async function rewriteWithGemini(item: FeedItem): Promise<RewriteResult> {
+function openAICompatProviders(): Record<'gemini' | 'glm' | 'deepseek', OpenAICompatProvider> {
+  return {
+    gemini: {
+      label: 'Gemini',
+      url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      apiKey: CONFIG.GEMINI_API_KEY,
+      model: CONFIG.GEMINI_MODEL,
+    },
+    glm: {
+      label: 'GLM',
+      // Z.ai's OpenAI-compatible chat endpoint (paas/v4, not /openai/v1).
+      url: 'https://api.z.ai/api/paas/v4/chat/completions',
+      apiKey: CONFIG.GLM_API_KEY,
+      model: CONFIG.GLM_MODEL,
+    },
+    deepseek: {
+      label: 'DeepSeek',
+      url: 'https://api.deepseek.com/chat/completions',
+      apiKey: CONFIG.DEEPSEEK_API_KEY,
+      model: CONFIG.DEEPSEEK_MODEL,
+    },
+  };
+}
+
+/**
+ * Rewrites via any OpenAI-compatible chat-completions endpoint (Gemini, GLM,
+ * DeepSeek). No SDK — a single fetch. response_format=json_object nudges the
+ * model toward pure JSON, but we still extract+validate defensively.
+ */
+async function rewriteWithOpenAICompat(
+  item: FeedItem,
+  provider: OpenAICompatProvider
+): Promise<RewriteResult> {
   let response: Response;
   try {
-    response = await fetch(GEMINI_URL, {
+    response = await fetch(provider.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${CONFIG.GEMINI_API_KEY}`,
+        Authorization: `Bearer ${provider.apiKey}`,
       },
       body: JSON.stringify({
-        model: CONFIG.GEMINI_MODEL,
+        model: provider.model,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: buildUserContent(item) },
@@ -194,12 +238,12 @@ async function rewriteWithGemini(item: FeedItem): Promise<RewriteResult> {
       }),
     });
   } catch (err) {
-    throw new Error(`Не удалось связаться с Gemini: ${String(err)}`);
+    throw new Error(`Не удалось связаться с ${provider.label}: ${String(err)}`);
   }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(`Gemini ответил ${response.status}: ${text.slice(0, 200)}`);
+    throw new Error(`${provider.label} ответил ${response.status}: ${text.slice(0, 200)}`);
   }
 
   const data = (await response.json()) as OpenAIChatResponse;
@@ -209,16 +253,17 @@ async function rewriteWithGemini(item: FeedItem): Promise<RewriteResult> {
 
 /**
  * Rewrites a feed item into a unique blog post. Dispatches to the configured
- * provider (Claude / Gemini / mock). Throws on refusal or invalid output — the
- * caller marks the candidate rewrite_failed and surfaces the error in the
- * Telegram DM, so one failure never aborts the batch.
+ * provider (Claude / Gemini / GLM / DeepSeek / mock). Throws on refusal or
+ * invalid output — the caller marks the candidate rewrite_failed and surfaces
+ * the error in the Telegram DM, so one failure never aborts the batch.
  */
 export async function rewriteToPost(item: FeedItem): Promise<RewriteResult> {
   if (CONFIG.REWRITE_MOCK || CONFIG.REWRITE_PROVIDER === 'mock') {
     return mockRewrite(item);
   }
-  if (CONFIG.REWRITE_PROVIDER === 'gemini') {
-    return rewriteWithGemini(item);
+  if (CONFIG.REWRITE_PROVIDER === 'anthropic') {
+    return rewriteWithAnthropic(item);
   }
-  return rewriteWithAnthropic(item);
+  const provider = openAICompatProviders()[CONFIG.REWRITE_PROVIDER];
+  return rewriteWithOpenAICompat(item, provider);
 }
