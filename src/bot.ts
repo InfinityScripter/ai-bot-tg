@@ -1,5 +1,6 @@
-import { autoRetry } from '@grammyjs/auto-retry';
 import { Bot, GrammyError, HttpError, InlineKeyboard } from 'grammy';
+
+import { autoRetry } from './auto-retry.js';
 import type { Context } from 'grammy';
 
 import { CONFIG } from './config.js';
