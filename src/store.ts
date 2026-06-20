@@ -22,7 +22,21 @@ const SCHEMA = `
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;
+
+/** The single settings row holding the active provider/model override. */
+const MODEL_OVERRIDE_KEY = 'model_override';
+
+/** Runtime override of the rewrite provider/model, stored in `settings`. */
+export interface ModelOverride {
+  provider: string;
+  model: string;
+}
 // Lightweight migration: add image_url to pre-existing DBs (ignore if present).
 const MIGRATIONS = [`ALTER TABLE candidates ADD COLUMN image_url TEXT`];
 // The UNIQUE constraint on dedup_key already creates an index — no separate
@@ -181,6 +195,55 @@ export class CandidateStore {
     } catch {
       return null;
     }
+  }
+
+  // --- settings: runtime model override ------------------------------------
+
+  /** Low-level setter for a settings key. Exposed mainly for tests. */
+  setRawSetting(key: string, value: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      )
+      .run(key, value);
+  }
+
+  /** Low-level getter for a settings key, or null if absent. */
+  private getRawSetting(key: string): string | null {
+    const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined;
+    return row?.value ?? null;
+  }
+
+  /**
+   * The active provider/model override, or null if none is set. A corrupt row
+   * (e.g. hand-edited, or a shape change) returns null rather than throwing, so
+   * the rewriter cleanly falls back to the env default.
+   */
+  getModelOverride(): ModelOverride | null {
+    const raw = this.getRawSetting(MODEL_OVERRIDE_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as Partial<ModelOverride>;
+      if (typeof parsed.provider === 'string' && typeof parsed.model === 'string') {
+        return { provider: parsed.provider, model: parsed.model };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Sets (upserts) the active provider/model override. */
+  setModelOverride(provider: string, model: string): void {
+    this.setRawSetting(MODEL_OVERRIDE_KEY, JSON.stringify({ provider, model }));
+  }
+
+  /** Clears the override; the rewriter then uses the env default. */
+  clearModelOverride(): void {
+    this.db.prepare('DELETE FROM settings WHERE key = ?').run(MODEL_OVERRIDE_KEY);
   }
 
   close(): void {

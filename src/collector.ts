@@ -1,8 +1,20 @@
 import { CONFIG } from './config.js';
 import { fetchAllFeeds } from './feeds.js';
+import { hasActiveOverride } from './providers.js';
 import { rewriteToPost } from './rewriter.js';
 import type { CandidateStore } from './store.js';
 import type { Candidate, RewriteResult } from './types.js';
+
+/**
+ * Heuristic: does this rewrite error look like the provider rejecting the model
+ * id (not a transient rate-limit/network issue)? Matches a 4xx whose text
+ * mentions the model — used to auto-clear a stale /model override.
+ */
+function isModelNotFound(message: string): boolean {
+  const is4xx = /\b(400|404)\b/.test(message);
+  const mentionsModel = /model/i.test(message) || /модел/i.test(message);
+  return is4xx && mentionsModel;
+}
 
 /** Summary of one collection run, returned for logging/visibility. */
 export interface RunSummary {
@@ -44,12 +56,21 @@ export async function runCollection(
     store.setState(id, 'rewriting');
     let rewrite: RewriteResult;
     try {
-      rewrite = await rewriteToPost(item);
+      rewrite = await rewriteToPost(item, store);
     } catch (err) {
-      store.setState(id, 'rewrite_failed', String(err));
+      const message = String(err);
+      store.setState(id, 'rewrite_failed', message);
       summary.failed += 1;
       // eslint-disable-next-line no-console
-      console.warn(`[collector] rewrite failed for #${id}: ${String(err)}`);
+      console.warn(`[collector] rewrite failed for #${id}: ${message}`);
+      // If a stored /model override points at a model the provider no longer
+      // serves (a 400/404 about the model), clear it so the next run falls back
+      // to the env default instead of failing the whole batch every day.
+      if (isModelNotFound(message) && hasActiveOverride(store)) {
+        store.clearModelOverride();
+        // eslint-disable-next-line no-console
+        console.warn('[collector] cleared invalid model override; falling back to env default');
+      }
       continue;
     }
 

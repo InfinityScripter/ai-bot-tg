@@ -1,8 +1,18 @@
 import { Bot, InlineKeyboard } from 'grammy';
+import type { Context } from 'grammy';
 
 import { CONFIG } from './config.js';
-import type { CandidateStore } from './store.js';
+import {
+  modelButtons,
+  parseCallback,
+  providerButtons,
+  statusText,
+} from './bot-model.js';
+import { listModels, pingModel } from './models.js';
+import { PROVIDERS, hasActiveOverride, resolveActiveProvider } from './providers.js';
 import { publishToBlog } from './publisher.js';
+import type { ButtonSpec } from './bot-model.js';
+import type { CandidateStore } from './store.js';
 import type { Candidate, RewriteResult } from './types.js';
 import { escapeMarkdown, truncate } from './utils.js';
 
@@ -22,6 +32,21 @@ function approvalKeyboard(candidateId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text('✅ Опубликовать', `${APPROVE_PREFIX}${candidateId}`)
     .text('❌ Пропустить', `${SKIP_PREFIX}${candidateId}`);
+}
+
+/** Turns pure ButtonSpecs into a one-button-per-row inline keyboard. */
+function keyboardFrom(buttons: ButtonSpec[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const b of buttons) kb.text(b.text, b.data).row();
+  return kb;
+}
+
+/** The /model status text + provider keyboard for the given store state. */
+function modelMenu(store: CandidateStore): { text: string; keyboard: InlineKeyboard } {
+  const active = resolveActiveProvider(store);
+  const buttons = providerButtons();
+  buttons.push({ text: '↩️ Сбросить на env', data: 'mreset' });
+  return { text: statusText(active, hasActiveOverride(store)), keyboard: keyboardFrom(buttons) };
 }
 
 /**
@@ -67,7 +92,10 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
   });
 
   bot.command('start', (ctx) =>
-    ctx.reply('Новостной бот на связи. /fetch — собрать новости сейчас. /ping — проверка.')
+    ctx.reply(
+      'Новостной бот на связи. /fetch — собрать новости сейчас. ' +
+        '/model — провайдер/модель. /ping — проверка.'
+    )
   );
   bot.command('ping', (ctx) => ctx.reply('pong'));
   bot.command('fetch', async (ctx) => {
@@ -78,9 +106,21 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
       await ctx.reply(`Сбор завершился с ошибкой: ${String(err)}`);
     }
   });
+  bot.command('model', async (ctx) => {
+    const { text, keyboard } = modelMenu(store);
+    await ctx.reply(text, { reply_markup: keyboard });
+  });
 
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data;
+
+    // /model callbacks are handled first; they don't touch a candidate.
+    const modelCb = parseCallback(data);
+    if (modelCb) {
+      await handleModelCallback(ctx, modelCb);
+      return;
+    }
+
     const isApprove = data.startsWith(APPROVE_PREFIX);
     const isSkip = data.startsWith(SKIP_PREFIX);
     if (!isApprove && !isSkip) {
@@ -154,6 +194,66 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
       inFlight -= 1;
     }
   });
+
+  /**
+   * Handles a /model inline-button tap: navigate provider → model, ping the
+   * chosen model, and only persist the override if the ping succeeds. A failed
+   * ping shows the error and keeps the model list so the owner can pick another.
+   */
+  async function handleModelCallback(
+    ctx: Context,
+    cb: NonNullable<ReturnType<typeof parseCallback>>
+  ): Promise<void> {
+    if (cb.kind === 'reset') {
+      store.clearModelOverride();
+      const { text, keyboard } = modelMenu(store);
+      await ctx.answerCallbackQuery({ text: 'Сброшено на env.' });
+      await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError('model reset'));
+      return;
+    }
+
+    if (cb.kind === 'back') {
+      const { text, keyboard } = modelMenu(store);
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError('model back'));
+      return;
+    }
+
+    if (cb.kind === 'provider') {
+      await ctx.answerCallbackQuery();
+      const models = await listModels(cb.provider);
+      const label = PROVIDERS[cb.provider].label;
+      await ctx
+        .editMessageText(`Провайдер: ${label}. Выберите модель:`, {
+          reply_markup: keyboardFrom(modelButtons(cb.provider, models)),
+        })
+        .catch(logEditError('model provider list'));
+      return;
+    }
+
+    // cb.kind === 'model' — ping, then save on success only.
+    await ctx.answerCallbackQuery({ text: 'Проверяю модель…' });
+    const result = await pingModel(cb.provider, cb.model);
+    const label = PROVIDERS[cb.provider].label;
+    if (result.ok) {
+      store.setModelOverride(cb.provider, cb.model);
+      const confirm = `✅ Переключено: ${label} / ${cb.model}`;
+      // The override IS saved; if the message can't be edited (too old/deleted),
+      // send a fresh reply so the owner always gets the confirmation.
+      await ctx.editMessageText(confirm).catch(async (err) => {
+        logEditError('model switch ok')(err);
+        await ctx.reply(confirm).catch(logEditError('model switch ok reply'));
+      });
+    } else {
+      // keep the model list so the owner can try another model
+      const models = await listModels(cb.provider);
+      await ctx
+        .editMessageText(`⚠️ ${result.error}\n\nВыберите другую модель:`, {
+          reply_markup: keyboardFrom(modelButtons(cb.provider, models)),
+        })
+        .catch(logEditError('model switch fail'));
+    }
+  }
 
   /** Sends an approval DM for a pending candidate and records its message id. */
   async function sendApproval(candidate: Candidate, rewrite: RewriteResult): Promise<void> {

@@ -9,7 +9,12 @@ vi.mock('@anthropic-ai/sdk', () => ({
 }));
 
 const { rewriteToPost } = await import('../src/rewriter.js');
+import { CandidateStore } from '../src/store.js';
 import type { FeedItem } from '../src/types.js';
+
+// An in-memory store with no override → resolveActiveProvider uses the env
+// default (anthropic in setup.ts unless a case stubs REWRITE_PROVIDER).
+const STORE = new CandidateStore(':memory:');
 
 const ITEM: FeedItem = {
   dedupKey: 'k',
@@ -42,33 +47,33 @@ afterEach(() => {
 describe('rewriteToPost', () => {
   it('returns the validated object from clean JSON output', async () => {
     create.mockResolvedValueOnce(textResponse(JSON.stringify(VALID)));
-    expect(await rewriteToPost(ITEM)).toEqual(VALID);
+    expect(await rewriteToPost(ITEM, STORE)).toEqual(VALID);
   });
 
   it('extracts JSON even with surrounding prose', async () => {
     create.mockResolvedValueOnce(textResponse(`Вот пост:\n${JSON.stringify(VALID)}\nГотово.`));
-    expect(await rewriteToPost(ITEM)).toEqual(VALID);
+    expect(await rewriteToPost(ITEM, STORE)).toEqual(VALID);
   });
 
   it('throws on a refusal stop_reason', async () => {
     create.mockResolvedValueOnce(textResponse('', 'refusal'));
-    await expect(rewriteToPost(ITEM)).rejects.toThrow(/refusal/i);
+    await expect(rewriteToPost(ITEM, STORE)).rejects.toThrow(/refusal/i);
   });
 
   it('throws when there is no JSON in the output', async () => {
     create.mockResolvedValueOnce(textResponse('no json here'));
-    await expect(rewriteToPost(ITEM)).rejects.toThrow(/не вернул JSON/);
+    await expect(rewriteToPost(ITEM, STORE)).rejects.toThrow(/не вернул JSON/);
   });
 
   it('throws when JSON is present but fails schema validation', async () => {
     create.mockResolvedValueOnce(textResponse(JSON.stringify({ title: 'only title' })));
-    await expect(rewriteToPost(ITEM)).rejects.toThrow(/валидаци/i);
+    await expect(rewriteToPost(ITEM, STORE)).rejects.toThrow(/валидаци/i);
   });
 
   it('clamps an over-long Claude title to keep the heading readable', async () => {
     const longTitle = 'А'.repeat(250);
     create.mockResolvedValueOnce(textResponse(JSON.stringify({ ...VALID, title: longTitle })));
-    const result = await rewriteToPost(ITEM);
+    const result = await rewriteToPost(ITEM, STORE);
     expect(result.title.length).toBeLessThanOrEqual(101); // 100 + ellipsis
   });
 
@@ -88,7 +93,7 @@ describe('rewriteToPost', () => {
     ].join('\n\n');
     create.mockResolvedValueOnce(textResponse(JSON.stringify({ ...VALID, content: body })));
 
-    const result = await rewriteToPost(richItem);
+    const result = await rewriteToPost(richItem, STORE);
     expect(result.content).toContain('![](https://cdn/in1.png)');
     expect(result.content).not.toContain('cover.jpg');
     expect(result.content).not.toContain('evil/fake.png');
@@ -118,7 +123,7 @@ describe.each(OPENAI_COMPAT)(
       vi.stubGlobal('fetch', fetchMock);
 
       const mod = await import('../src/rewriter.js');
-      const result = await mod.rewriteToPost(ITEM);
+      const result = await mod.rewriteToPost(ITEM, STORE);
 
       expect(result).toEqual(VALID);
       const call = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
@@ -141,7 +146,7 @@ describe.each(OPENAI_COMPAT)(
       );
 
       const mod = await import('../src/rewriter.js');
-      await expect(mod.rewriteToPost(ITEM)).rejects.toThrow(
+      await expect(mod.rewriteToPost(ITEM, STORE)).rejects.toThrow(
         new RegExp(`${label} ответил 429`)
       );
 
@@ -152,6 +157,37 @@ describe.each(OPENAI_COMPAT)(
   }
 );
 
+describe('rewriteToPost (store override)', () => {
+  it('a stored override switches the provider at call time', async () => {
+    // env default is anthropic (setup.ts), but the override points at glm.
+    vi.stubEnv('GLM_API_KEY', 'glm-key');
+    vi.resetModules();
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify(VALID) } }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const storeMod = await import('../src/store.js');
+    const store = new storeMod.CandidateStore(':memory:');
+    store.setModelOverride('glm', 'glm-4.7-flash');
+
+    const mod = await import('../src/rewriter.js');
+    const result = await mod.rewriteToPost(ITEM, store);
+
+    expect(result).toEqual(VALID);
+    const call = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(call[0]).toContain('api.z.ai');
+    expect(JSON.parse(call[1].body).model).toBe('glm-4.7-flash');
+
+    store.close();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+});
+
 describe('rewriteToPost (REWRITE_MOCK)', () => {
   it('mock body does not start with a markdown heading and clamps the title', async () => {
     vi.stubEnv('REWRITE_MOCK', '1');
@@ -159,7 +195,7 @@ describe('rewriteToPost (REWRITE_MOCK)', () => {
     const mod = await import('../src/rewriter.js');
     const longTitleItem = { ...ITEM, title: 'Б'.repeat(250), snippet: 'Тело новости.' };
 
-    const result = await mod.rewriteToPost(longTitleItem);
+    const result = await mod.rewriteToPost(longTitleItem, STORE);
 
     expect(result.content.startsWith('#')).toBe(false); // no "## title" duplicate
     expect(result.content).toContain('Тело новости.');

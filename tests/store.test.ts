@@ -91,6 +91,38 @@ describe('CandidateStore', () => {
     expect(c.error).toBe('boom');
   });
 
+  describe('model override settings', () => {
+    it('returns null when no override is set', () => {
+      expect(store.getModelOverride()).toBeNull();
+    });
+
+    it('persists and reads back a provider+model override', () => {
+      store.setModelOverride('glm', 'glm-4.7-flash');
+      expect(store.getModelOverride()).toEqual({ provider: 'glm', model: 'glm-4.7-flash' });
+    });
+
+    it('upserts: a second set replaces the first', () => {
+      store.setModelOverride('glm', 'glm-4.7-flash');
+      store.setModelOverride('deepseek', 'deepseek-v4-flash');
+      expect(store.getModelOverride()).toEqual({
+        provider: 'deepseek',
+        model: 'deepseek-v4-flash',
+      });
+    });
+
+    it('clears the override back to null', () => {
+      store.setModelOverride('glm', 'glm-4.7-flash');
+      store.clearModelOverride();
+      expect(store.getModelOverride()).toBeNull();
+    });
+
+    it('returns null on a corrupt override row rather than throwing', () => {
+      // simulate a hand-corrupted value
+      store.setRawSetting('model_override', 'not json{');
+      expect(store.getModelOverride()).toBeNull();
+    });
+  });
+
   describe('claimForPublishing (atomic guard against double-publish)', () => {
     it('lets exactly one caller win from pending_review', () => {
       const id = store.insertCollected(item())!;

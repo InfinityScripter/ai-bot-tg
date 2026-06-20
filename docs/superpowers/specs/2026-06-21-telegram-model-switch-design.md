@@ -98,7 +98,8 @@ Owner-locked (existing middleware). New command and callback prefixes.
   `🔑` marker if its key is missing.
 - callback `mp_<provider>` → `listModels(provider)` → inline keyboard of models
   (+ a "← Провайдеры" back button).
-- callback `mm_<provider>_<model>` → `pingModel` →
+- callback `mm_<provider>__<model>` (double underscore — model ids contain a
+  single `-`/`.` but never `__`, so the split is unambiguous) → `pingModel` →
   - ok: `setModelOverride(provider, model)`, edit message to
     `✅ Переключено: <label> / <model>`.
   - error: edit message to `⚠️ <error>` and keep the model list (do **not**

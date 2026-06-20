@@ -146,6 +146,12 @@ systemctl restart blog-newsbot
 The SQLite DB (`data/candidates.db`) persists across restarts — the dedup ledger
 and candidate history survive. Back it up by copying that file.
 
+A `/model` override (provider/model chosen at runtime in the bot) is also stored
+in this DB, so it **survives deploys** — a git-pull deploy never touches
+`data/candidates.db`. The `.env` provider (`REWRITE_PROVIDER` + the matching
+`*_API_KEY`) is only the default used when no override is set; to force it again,
+use `/model` → "↩️ Сбросить на env".
+
 ## 7. CI auto-deploy + rollback
 
 A push to `main` triggers `.github/workflows/bot-cicd.yml`, which SSHes into the

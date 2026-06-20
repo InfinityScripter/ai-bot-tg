@@ -63,6 +63,9 @@ Telegram commands (owner-only):
 - `/start` — health check + help
 - `/ping` — `pong`
 - `/fetch` — run a collection cycle now (same as the daily cron)
+- `/model` — switch the rewrite provider/model at runtime; pings the chosen
+  model before saving and persists the choice across restarts (in the SQLite
+  ledger). "↩️ Сбросить на env" reverts to the `.env` default.
 
 ## How a run works
 

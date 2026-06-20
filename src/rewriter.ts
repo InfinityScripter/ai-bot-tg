@@ -1,8 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import { CONFIG } from './config.js';
+import { PROVIDERS, chatUrl, resolveActiveProvider } from './providers.js';
 import { RewriteSchema } from './types.js';
 import { stripHtml, truncate } from './utils.js';
+import type { ProviderName, ProviderSpec } from './providers.js';
+import type { CandidateStore } from './store.js';
 import type { FeedItem, RewriteResult } from './types.js';
 
 const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
@@ -147,10 +150,10 @@ function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
   };
 }
 
-/** Rewrites via Claude (Anthropic). */
-async function rewriteWithAnthropic(item: FeedItem): Promise<RewriteResult> {
+/** Rewrites via Claude (Anthropic) with the given model. */
+async function rewriteWithAnthropic(item: FeedItem, model: string): Promise<RewriteResult> {
   const response = await client.messages.create({
-    model: CONFIG.REWRITE_MODEL,
+    model,
     max_tokens: 2048,
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: buildUserContent(item) }],
@@ -168,68 +171,27 @@ interface OpenAIChatResponse {
   choices?: { message?: { content?: string } }[];
 }
 
-/** Config for one OpenAI-compatible provider. */
-interface OpenAICompatProvider {
-  /** Human label for error messages. */
-  label: string;
-  /** Full chat-completions URL. */
-  url: string;
-  /** Bearer API key (may be undefined — guarded at boot by config). */
-  apiKey: string | undefined;
-  /** Model id. */
-  model: string;
-}
-
-/**
- * The OpenAI-compatible providers. All speak the same /chat/completions shape,
- * so a single fetch path serves them — only base URL, key and model differ.
- *   gemini   — Google (free tier is geo/quota limited; saw limit:0 from RU)
- *   glm      — Zhipu Z.ai; GLM-4.7-Flash is free, hosted in CN (RU-reachable)
- *   deepseek — DeepSeek; V4 Flash is very cheap, hosted in CN (RU-reachable)
- */
-function openAICompatProviders(): Record<'gemini' | 'glm' | 'deepseek', OpenAICompatProvider> {
-  return {
-    gemini: {
-      label: 'Gemini',
-      url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-      apiKey: CONFIG.GEMINI_API_KEY,
-      model: CONFIG.GEMINI_MODEL,
-    },
-    glm: {
-      label: 'GLM',
-      // Z.ai's OpenAI-compatible chat endpoint (paas/v4, not /openai/v1).
-      url: 'https://api.z.ai/api/paas/v4/chat/completions',
-      apiKey: CONFIG.GLM_API_KEY,
-      model: CONFIG.GLM_MODEL,
-    },
-    deepseek: {
-      label: 'DeepSeek',
-      url: 'https://api.deepseek.com/chat/completions',
-      apiKey: CONFIG.DEEPSEEK_API_KEY,
-      model: CONFIG.DEEPSEEK_MODEL,
-    },
-  };
-}
-
 /**
  * Rewrites via any OpenAI-compatible chat-completions endpoint (Gemini, GLM,
  * DeepSeek). No SDK — a single fetch. response_format=json_object nudges the
- * model toward pure JSON, but we still extract+validate defensively.
+ * model toward pure JSON, but we still extract+validate defensively. URL/key
+ * come from the provider registry; the model is resolved at call time.
  */
 async function rewriteWithOpenAICompat(
   item: FeedItem,
-  provider: OpenAICompatProvider
+  spec: ProviderSpec,
+  model: string
 ): Promise<RewriteResult> {
   let response: Response;
   try {
-    response = await fetch(provider.url, {
+    response = await fetch(chatUrl(spec), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${provider.apiKey}`,
+        Authorization: `Bearer ${spec.apiKey()}`,
       },
       body: JSON.stringify({
-        model: provider.model,
+        model,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: buildUserContent(item) },
@@ -238,12 +200,12 @@ async function rewriteWithOpenAICompat(
       }),
     });
   } catch (err) {
-    throw new Error(`Не удалось связаться с ${provider.label}: ${String(err)}`);
+    throw new Error(`Не удалось связаться с ${spec.label}: ${String(err)}`);
   }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(`${provider.label} ответил ${response.status}: ${text.slice(0, 200)}`);
+    throw new Error(`${spec.label} ответил ${response.status}: ${text.slice(0, 200)}`);
   }
 
   const data = (await response.json()) as OpenAIChatResponse;
@@ -252,18 +214,29 @@ async function rewriteWithOpenAICompat(
 }
 
 /**
- * Rewrites a feed item into a unique blog post. Dispatches to the configured
- * provider (Claude / Gemini / GLM / DeepSeek / mock). Throws on refusal or
- * invalid output — the caller marks the candidate rewrite_failed and surfaces
+ * Rewrites a feed item into a unique blog post. Resolves the active provider +
+ * model at call time (a stored /model override wins over the env default), then
+ * dispatches to Claude / an OpenAI-compatible endpoint / mock. Throws on refusal
+ * or invalid output — the caller marks the candidate rewrite_failed and surfaces
  * the error in the Telegram DM, so one failure never aborts the batch.
  */
-export async function rewriteToPost(item: FeedItem): Promise<RewriteResult> {
-  if (CONFIG.REWRITE_MOCK || CONFIG.REWRITE_PROVIDER === 'mock') {
+export async function rewriteToPost(item: FeedItem, store: CandidateStore): Promise<RewriteResult> {
+  const { provider, model } = resolveActiveProvider(store);
+  return rewriteWith(item, provider, model);
+}
+
+/** Dispatches a rewrite to a specific provider+model. Shared by the rewriter. */
+async function rewriteWith(
+  item: FeedItem,
+  provider: ProviderName,
+  model: string
+): Promise<RewriteResult> {
+  if (provider === 'mock') {
     return mockRewrite(item);
   }
-  if (CONFIG.REWRITE_PROVIDER === 'anthropic') {
-    return rewriteWithAnthropic(item);
+  const spec = PROVIDERS[provider];
+  if (spec.kind === 'anthropic') {
+    return rewriteWithAnthropic(item, model);
   }
-  const provider = openAICompatProviders()[CONFIG.REWRITE_PROVIDER];
-  return rewriteWithOpenAICompat(item, provider);
+  return rewriteWithOpenAICompat(item, spec, model);
 }
