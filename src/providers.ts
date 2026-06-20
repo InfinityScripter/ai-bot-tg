@@ -195,3 +195,13 @@ export function hasActiveOverride(store: CandidateStore): boolean {
   const override = store.getModelOverride();
   return override !== null && isProviderName(override.provider);
 }
+
+/**
+ * True when the runtime mock (без LLM) mode is active: a db mock override is
+ * strictly authoritative over env REWRITE_MOCK. Used by the bot's /model menu
+ * to show the mock toggle in the right state.
+ */
+export function isMockActive(store: CandidateStore): boolean {
+  const mockDb = store.getMockOverride();
+  return mockDb ? mockDb.enabled : CONFIG.REWRITE_MOCK;
+}
