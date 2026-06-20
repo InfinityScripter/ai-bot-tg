@@ -14,6 +14,8 @@ const SCHEMA = `
     source_title  TEXT,
     feed_title    TEXT,
     image_url     TEXT,
+    snippet       TEXT,
+    image_urls    TEXT,
     state         TEXT NOT NULL,
     rewrite_json  TEXT,
     tg_message_id INTEGER,
@@ -37,8 +39,14 @@ export interface ModelOverride {
   provider: string;
   model: string;
 }
-// Lightweight migration: add image_url to pre-existing DBs (ignore if present).
-const MIGRATIONS = [`ALTER TABLE candidates ADD COLUMN image_url TEXT`];
+// Lightweight additive migrations for pre-existing DBs (ignore if present).
+// snippet + image_urls hold the RAW feed item so a rewrite can run later
+// (on a /publish-time button tap), not only inline at collection.
+const MIGRATIONS = [
+  `ALTER TABLE candidates ADD COLUMN image_url TEXT`,
+  `ALTER TABLE candidates ADD COLUMN snippet TEXT`,
+  `ALTER TABLE candidates ADD COLUMN image_urls TEXT`,
+];
 // The UNIQUE constraint on dedup_key already creates an index — no separate
 // CREATE INDEX needed.
 
@@ -49,6 +57,8 @@ interface CandidateRow {
   source_title: string | null;
   feed_title: string | null;
   image_url: string | null;
+  snippet: string | null;
+  image_urls: string | null;
   state: string;
   rewrite_json: string | null;
   tg_message_id: number | null;
@@ -66,6 +76,8 @@ function mapRow(row: CandidateRow): Candidate {
     sourceTitle: row.source_title,
     feedTitle: row.feed_title,
     imageUrl: row.image_url,
+    snippet: row.snippet,
+    imageUrls: row.image_urls,
     state: row.state as CandidateState,
     rewriteJson: row.rewrite_json,
     tgMessageId: row.tg_message_id,
@@ -100,6 +112,24 @@ export class CandidateStore {
         /* column already present */
       }
     }
+    this.recoverInFlight();
+  }
+
+  /**
+   * Resets rows stuck in a transient in-flight state back to a retryable one.
+   * A crash or deploy (systemd SIGTERM on CI auto-deploy) mid-rewrite/publish
+   * leaves a row in 'rewriting'/'publishing' — a state none of the bot's button
+   * guards accept, so the card would be permanently dead. On startup we move
+   * those back: 'rewriting' → 'collected' (re-offer the 🔄 card), 'publishing'
+   * → 'pending_review' (re-offer publish). Idempotent; runs once per process.
+   */
+  private recoverInFlight(): void {
+    this.db
+      .prepare(`UPDATE candidates SET state = 'collected', updated_at = datetime('now') WHERE state = 'rewriting'`)
+      .run();
+    this.db
+      .prepare(`UPDATE candidates SET state = 'pending_review', updated_at = datetime('now') WHERE state = 'publishing'`)
+      .run();
   }
 
   /**
@@ -109,8 +139,9 @@ export class CandidateStore {
   insertCollected(item: FeedItem): number | null {
     const info = this.db
       .prepare(
-        `INSERT OR IGNORE INTO candidates (dedup_key, source_url, source_title, feed_title, image_url, state)
-         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, 'collected')`
+        `INSERT OR IGNORE INTO candidates
+           (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, state)
+         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, 'collected')`
       )
       .run({
         dedupKey: item.dedupKey,
@@ -118,8 +149,38 @@ export class CandidateStore {
         title: item.title,
         feedTitle: item.feedTitle,
         imageUrl: item.imageUrl,
+        snippet: item.snippet,
+        imageUrls: JSON.stringify(item.imageUrls ?? []),
       });
     return info.changes === 1 ? Number(info.lastInsertRowid) : null;
+  }
+
+  /**
+   * Reconstructs the raw FeedItem from a stored candidate so a rewrite can run
+   * later (on a publish-time button tap), not only inline at collection. Best
+   * effort: a missing/corrupt image_urls yields [], a null snippet yields ''.
+   */
+  getFeedItem(candidate: Candidate): FeedItem {
+    let imageUrls: string[] = [];
+    if (candidate.imageUrls) {
+      try {
+        const parsed = JSON.parse(candidate.imageUrls) as unknown;
+        if (Array.isArray(parsed)) {
+          imageUrls = parsed.filter((u): u is string => typeof u === 'string');
+        }
+      } catch {
+        /* corrupt JSON — fall back to [] */
+      }
+    }
+    return {
+      dedupKey: candidate.dedupKey,
+      url: candidate.sourceUrl,
+      title: candidate.sourceTitle ?? '',
+      snippet: candidate.snippet ?? '',
+      feedTitle: candidate.feedTitle ?? '',
+      imageUrl: candidate.imageUrl,
+      imageUrls,
+    };
   }
 
   /** True if a candidate with this dedup key already exists. */
@@ -146,6 +207,22 @@ export class CandidateStore {
       .prepare(
         `UPDATE candidates SET state = 'publishing', updated_at = datetime('now')
          WHERE id = ? AND state = 'pending_review'`
+      )
+      .run(id);
+    return info.changes === 1;
+  }
+
+  /**
+   * Atomically claims a candidate for rewriting: transitions a
+   * collected/pending_review/rewrite_failed row → 'rewriting' in one UPDATE and
+   * reports whether THIS caller won. Mirrors claimForPublishing — a double-tap
+   * of 🔄 can't start two concurrent (token-spending) rewrites on one candidate.
+   */
+  claimForRewriting(id: number): boolean {
+    const info = this.db
+      .prepare(
+        `UPDATE candidates SET state = 'rewriting', error = NULL, updated_at = datetime('now')
+         WHERE id = ? AND state IN ('collected', 'pending_review', 'rewrite_failed')`
       )
       .run(id);
     return info.changes === 1;

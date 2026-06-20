@@ -127,9 +127,12 @@ Expected on a healthy start:
 Then in Telegram, from the owner account:
 
 1. `/ping` → `pong`
-2. `/fetch` → "Запускаю сбор новостей…", then approval cards arrive
-3. Tap **✅ Опубликовать** on a card → the post appears on `https://talalaev.su`,
-   authored by you, and the card edits to "✅ Опубликовано".
+2. `/fetch` → "Запускаю сбор новостей…", then **raw** cards arrive
+   (un-rewritten: source title + snippet + [🔄 Переработать][❌ Пропустить])
+3. Tap **🔄 Переработать** → the active model (see `/model`) rewrites the item
+   and the card becomes a preview with [🔄 Заново][✅ Опубликовать][❌ Пропустить]
+4. Tap **✅ Опубликовать** → the post appears on `https://talalaev.su`, authored
+   by you, and the card edits to "✅ Опубликовано".
 
 ## 6. Manual update
 

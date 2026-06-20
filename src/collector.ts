@@ -1,100 +1,73 @@
 import { CONFIG } from './config.js';
 import { fetchAllFeeds } from './feeds.js';
-import { hasActiveOverride } from './providers.js';
-import { rewriteToPost } from './rewriter.js';
 import type { CandidateStore } from './store.js';
-import type { Candidate, RewriteResult } from './types.js';
-
-/**
- * Heuristic: does this rewrite error look like the provider rejecting the model
- * id (not a transient rate-limit/network issue)? Matches a 4xx whose text
- * mentions the model — used to auto-clear a stale /model override.
- */
-function isModelNotFound(message: string): boolean {
-  const is4xx = /\b(400|404)\b/.test(message);
-  const mentionsModel = /model/i.test(message) || /модел/i.test(message);
-  return is4xx && mentionsModel;
-}
+import type { Candidate } from './types.js';
 
 /** Summary of one collection run, returned for logging/visibility. */
 export interface RunSummary {
   fetched: number;
   fresh: number;
-  rewritten: number;
-  failed: number;
+  /** Raw cards successfully DM'd to the owner. */
   sent: number;
+  /** Cards that failed to DM. */
+  failed: number;
 }
 
-type SendApproval = (candidate: Candidate, rewrite: RewriteResult) => Promise<void>;
+/** Sends the owner a "raw" review card for a freshly-collected candidate. */
+type SendRawCard = (candidate: Candidate) => Promise<void>;
+
+/** Delay between raw-card sends, to stay under Telegram's ~1 msg/sec per chat. */
+const SEND_SPACING_MS = 1200;
 
 /**
- * Runs one full collection cycle: fetch feeds → dedup-insert → rewrite each
- * fresh item via Claude → DM the owner for approval. Caps the number of new
- * candidates per run (MAX_PER_RUN) to bound Claude spend. Resilient: a single
- * rewrite failure marks that candidate rewrite_failed and continues.
+ * Runs one collection cycle: fetch feeds → dedup-insert the RAW item → DM the
+ * owner a raw card. The LLM rewrite no longer happens here — it runs later, on
+ * the owner's "🔄 Переработать" tap, with the model active at that moment (see
+ * the bot's rewrite handler). Caps new candidates per run (MAX_PER_RUN).
  *
  * Both the daily cron and the /fetch command call this.
  */
 export async function runCollection(
   store: CandidateStore,
-  sendApproval: SendApproval
+  sendRawCard: SendRawCard,
+  spacingMs: number = SEND_SPACING_MS
 ): Promise<RunSummary> {
   const items = await fetchAllFeeds();
-  const summary: RunSummary = { fetched: items.length, fresh: 0, rewritten: 0, failed: 0, sent: 0 };
+  const summary: RunSummary = { fetched: items.length, fresh: 0, sent: 0, failed: 0 };
 
-  // Insert fresh (deduped) items, capped per run. Keep each FeedItem paired
-  // with its new id so the rewrite has the full snippet (not persisted on the row).
-  const fresh: { id: number; item: (typeof items)[number] }[] = [];
+  // Insert fresh (deduped) items, capped per run. The full raw item (snippet,
+  // imageUrls) is persisted so the deferred rewrite can run from the row alone.
+  const fresh: number[] = [];
   for (const item of items) {
     if (fresh.length >= CONFIG.MAX_PER_RUN) break;
     const id = store.insertCollected(item);
-    if (id !== null) fresh.push({ id, item });
+    if (id !== null) fresh.push(id);
   }
   summary.fresh = fresh.length;
 
-  for (const { id, item } of fresh) {
-    store.setState(id, 'rewriting');
-    let rewrite: RewriteResult;
+  for (let i = 0; i < fresh.length; i += 1) {
+    const id = fresh[i]!;
+    const candidate = store.get(id);
+    if (!candidate) continue;
     try {
-      rewrite = await rewriteToPost(item, store);
-    } catch (err) {
-      const message = String(err);
-      store.setState(id, 'rewrite_failed', message);
-      summary.failed += 1;
-      // eslint-disable-next-line no-console
-      console.warn(`[collector] rewrite failed for #${id}: ${message}`);
-      // If a stored /model override points at a model the provider no longer
-      // serves (a 400/404 about the model), clear it so the next run falls back
-      // to the env default instead of failing the whole batch every day.
-      if (isModelNotFound(message) && hasActiveOverride(store)) {
-        store.clearModelOverride();
-        // eslint-disable-next-line no-console
-        console.warn('[collector] cleared invalid model override; falling back to env default');
-      }
-      continue;
-    }
-
-    store.attachRewrite(id, rewrite);
-    summary.rewritten += 1;
-
-    const updated = store.get(id);
-    if (!updated) continue;
-    try {
-      await sendApproval(updated, rewrite);
+      await sendRawCard(candidate);
       summary.sent += 1;
     } catch (err) {
-      // Keep the candidate in pending_review (the rewrite is saved) but record
-      // the delivery error so it's visible rather than silently lost.
-      store.setState(id, 'pending_review', `Не удалось отправить в Telegram: ${String(err)}`);
+      summary.failed += 1;
       // eslint-disable-next-line no-console
-      console.warn(`[collector] failed to DM approval for #${id}: ${String(err)}`);
+      console.warn(`[collector] failed to DM raw card for #${id}: ${String(err)}`);
+    }
+    // Telegram allows ~1 msg/sec to one chat; space the burst so a full
+    // MAX_PER_RUN batch doesn't trip 429. No delay after the last one.
+    if (spacingMs > 0 && i < fresh.length - 1) {
+      await new Promise((r) => setTimeout(r, spacingMs));
     }
   }
 
   // eslint-disable-next-line no-console
   console.log(
     `[collector] run done: fetched=${summary.fetched} fresh=${summary.fresh} ` +
-      `rewritten=${summary.rewritten} failed=${summary.failed} sent=${summary.sent}`
+      `sent=${summary.sent} failed=${summary.failed}`
   );
   return summary;
 }

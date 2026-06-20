@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { FeedItem } from '../src/types.js';
 
-// Control the feeds and the rewrite outcome per test.
+// Control the feeds; the rewriter must NOT be called at collection time.
 const fetchAllFeeds = vi.fn<() => Promise<FeedItem[]>>();
 vi.mock('../src/feeds.js', () => ({ fetchAllFeeds: () => fetchAllFeeds() }));
 
@@ -12,7 +12,7 @@ vi.mock('../src/rewriter.js', () => ({ rewriteToPost: (...a: unknown[]) => rewri
 const { runCollection } = await import('../src/collector.js');
 const { CandidateStore } = await import('../src/store.js');
 
-function feedItem(): FeedItem {
+function feedItem(overrides: Partial<FeedItem> = {}): FeedItem {
   return {
     dedupKey: 'https://ex.com/a',
     url: 'https://ex.com/a',
@@ -21,40 +21,61 @@ function feedItem(): FeedItem {
     feedTitle: 'Feed',
     imageUrl: null,
     imageUrls: [],
+    ...overrides,
   };
 }
-
-const noopSend = vi.fn().mockResolvedValue(undefined);
 
 afterEach(() => {
   fetchAllFeeds.mockReset();
   rewriteToPost.mockReset();
-  noopSend.mockReset();
 });
 
-describe('runCollection — invalid override auto-clear', () => {
-  it('clears the override when a rewrite fails with a model-not-found error', async () => {
+describe('runCollection — raw cards, no rewrite at collection', () => {
+  it('does NOT rewrite; inserts collected and sends one raw card per fresh item', async () => {
     const store = new CandidateStore(':memory:');
-    store.setModelOverride('glm', 'glm-retired-model');
-    fetchAllFeeds.mockResolvedValue([feedItem()]);
-    rewriteToPost.mockRejectedValue(new Error('GLM ответил 404: model not found'));
+    fetchAllFeeds.mockResolvedValue([
+      feedItem({ dedupKey: 'k1', url: 'https://ex.com/1' }),
+      feedItem({ dedupKey: 'k2', url: 'https://ex.com/2' }),
+    ]);
+    const sent: number[] = [];
+    const sendRawCard = vi.fn(async (c: { id: number; state: string }) => {
+      sent.push(c.id);
+      expect(c.state).toBe('collected'); // card shows the RAW item
+    });
 
-    const summary = await runCollection(store, noopSend);
+    const summary = await runCollection(store, sendRawCard, 0);
 
-    expect(summary.failed).toBe(1);
-    expect(store.getModelOverride()).toBeNull(); // override cleared → env next run
+    expect(rewriteToPost).not.toHaveBeenCalled();
+    expect(summary.fresh).toBe(2);
+    expect(summary.sent).toBe(2);
+    expect(sent).toHaveLength(2);
     store.close();
   });
 
-  it('keeps the override on a transient error (e.g. 429 rate limit)', async () => {
+  it('persists the raw snippet + images so a later rewrite can run', async () => {
     const store = new CandidateStore(':memory:');
-    store.setModelOverride('glm', 'glm-4.7-flash');
+    fetchAllFeeds.mockResolvedValue([
+      feedItem({ snippet: 'raw body', imageUrls: ['https://cdn/c.jpg'] }),
+    ]);
+    let capturedId = -1;
+    await runCollection(store, async (c: { id: number }) => {
+      capturedId = c.id;
+    }, 0);
+
+    const rebuilt = store.getFeedItem(store.get(capturedId)!);
+    expect(rebuilt.snippet).toBe('raw body');
+    expect(rebuilt.imageUrls).toEqual(['https://cdn/c.jpg']);
+    store.close();
+  });
+
+  it('counts a DM failure without aborting the run', async () => {
+    const store = new CandidateStore(':memory:');
     fetchAllFeeds.mockResolvedValue([feedItem()]);
-    rewriteToPost.mockRejectedValue(new Error('GLM ответил 429: rate limited'));
-
-    await runCollection(store, noopSend);
-
-    expect(store.getModelOverride()).toEqual({ provider: 'glm', model: 'glm-4.7-flash' });
+    const summary = await runCollection(store, async () => {
+      throw new Error('telegram down');
+    });
+    expect(summary.failed).toBe(1);
+    expect(summary.sent).toBe(0);
     store.close();
   });
 });

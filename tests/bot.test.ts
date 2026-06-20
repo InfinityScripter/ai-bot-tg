@@ -1,10 +1,38 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createBot } from '../src/bot.js';
-import { CandidateStore } from '../src/store.js';
+// Mock the rewriter so the bot's 🔄 handler is driven without a real LLM call.
+const rewriteToPost = vi.fn();
+vi.mock('../src/rewriter.js', () => ({
+  rewriteToPost: (...a: unknown[]) => rewriteToPost(...a),
+}));
+
+const { createBot } = await import('../src/bot.js');
+const { CandidateStore } = await import('../src/store.js');
+import type { FeedItem } from '../src/types.js';
 import type { Update } from 'grammy/types';
 
 const OWNER_ID = 123456789; // matches setup.ts OWNER_TELEGRAM_ID
+
+const VALID_REWRITE = {
+  title: 'Rewritten',
+  description: 'Summary',
+  content: 'Body',
+  tags: ['t'],
+  metaTitle: 'M',
+  metaDescription: 'MD',
+};
+
+function rawItem(): FeedItem {
+  return {
+    dedupKey: 'k1',
+    url: 'https://ex.com/1',
+    title: 'Source title',
+    snippet: 'raw body text',
+    feedTitle: 'Feed',
+    imageUrl: null,
+    imageUrls: [],
+  };
+}
 
 /**
  * Builds a bot whose API calls are intercepted by `apiHandler`, so no network
@@ -42,6 +70,7 @@ function callbackUpdate(data: string): Update {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  rewriteToPost.mockReset();
 });
 
 describe('bot resilience: a stale callback must not crash the process', () => {
@@ -83,6 +112,103 @@ describe('bot resilience: a stale callback must not crash the process', () => {
     await bot.init();
 
     await expect(bot.handleUpdate(callbackUpdate('approve_999'))).resolves.toBeUndefined();
+    store.close();
+  });
+});
+
+describe('rewrite-on-publish flow', () => {
+  it('🔄 on a collected card rewrites with the active model and saves a preview', async () => {
+    rewriteToPost.mockResolvedValue(VALID_REWRITE);
+    const edits: string[] = [];
+    const { bot, store } = makeBot((method, payload) => {
+      if (method === 'editMessageText') edits.push((payload as { text: string }).text);
+      return {};
+    });
+    await bot.init();
+    const id = store.insertCollected(rawItem())!; // state 'collected'
+
+    await bot.handleUpdate(callbackUpdate(`rewrite_${id}`));
+
+    // rewriter was called with the rebuilt feed item + the store
+    expect(rewriteToPost).toHaveBeenCalledTimes(1);
+    const passedItem = rewriteToPost.mock.calls[0]![0] as FeedItem;
+    expect(passedItem.snippet).toBe('raw body text');
+    // candidate now holds the saved rewrite, awaiting publish
+    const c = store.get(id)!;
+    expect(c.state).toBe('pending_review');
+    expect(store.getRewrite(c)).toEqual(VALID_REWRITE);
+    // the preview card was rendered (shows the rewritten title)
+    expect(edits.some((t) => t.includes('Rewritten'))).toBe(true);
+    store.close();
+  });
+
+  it('a rewrite failure marks rewrite_failed and offers a retry, without crashing', async () => {
+    rewriteToPost.mockRejectedValue(new Error('GLM ответил 429: rate limited'));
+    const { bot, store } = makeBot(() => ({}));
+    await bot.init();
+    const id = store.insertCollected(rawItem())!;
+
+    await expect(bot.handleUpdate(callbackUpdate(`rewrite_${id}`))).resolves.toBeUndefined();
+
+    expect(store.get(id)!.state).toBe('rewrite_failed');
+    store.close();
+  });
+
+  it('a model-not-found failure clears an active override', async () => {
+    rewriteToPost.mockRejectedValue(new Error('GLM ответил 404: model not found'));
+    const { bot, store } = makeBot(() => ({}));
+    await bot.init();
+    store.setModelOverride('glm', 'glm-retired');
+    const id = store.insertCollected(rawItem())!;
+
+    await bot.handleUpdate(callbackUpdate(`rewrite_${id}`));
+
+    expect(store.getModelOverride()).toBeNull(); // cleared → env default next
+    store.close();
+  });
+
+  it('🔄 Заново on a pending_review card re-runs the rewrite (overwrites preview)', async () => {
+    rewriteToPost.mockResolvedValue(VALID_REWRITE);
+    const { bot, store } = makeBot(() => ({}));
+    await bot.init();
+    const id = store.insertCollected(rawItem())!;
+    store.attachRewrite(id, { ...VALID_REWRITE, title: 'Old' }); // → pending_review
+
+    await bot.handleUpdate(callbackUpdate(`rewrite_${id}`));
+
+    expect(rewriteToPost).toHaveBeenCalledTimes(1);
+    expect(store.getRewrite(store.get(id)!)!.title).toBe('Rewritten'); // overwritten
+    store.close();
+  });
+
+  it('a concurrent 🔄 double-tap runs the rewrite only once (atomic claim)', async () => {
+    // rewriteToPost resolves after a tick so both taps overlap.
+    rewriteToPost.mockImplementation(
+      () => new Promise((res) => setTimeout(() => res(VALID_REWRITE), 5))
+    );
+    const { bot, store } = makeBot(() => ({}));
+    await bot.init();
+    const id = store.insertCollected(rawItem())!;
+
+    await Promise.all([
+      bot.handleUpdate(callbackUpdate(`rewrite_${id}`)),
+      bot.handleUpdate(callbackUpdate(`rewrite_${id}`)),
+    ]);
+
+    expect(rewriteToPost).toHaveBeenCalledTimes(1); // the loser bailed on the claim
+    store.close();
+  });
+
+  it('publishing a skipped card is a no-op (already handled)', async () => {
+    const { bot, store } = makeBot(() => ({}));
+    await bot.init();
+    const id = store.insertCollected(rawItem())!;
+    store.setState(id, 'skipped');
+
+    await bot.handleUpdate(callbackUpdate(`rewrite_${id}`));
+
+    expect(rewriteToPost).not.toHaveBeenCalled(); // not rewritable
+    expect(store.get(id)!.state).toBe('skipped');
     store.close();
   });
 });

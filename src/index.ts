@@ -12,13 +12,13 @@ import { CandidateStore } from './store.js';
 async function main() {
   const store = new CandidateStore();
 
-  // The bot owns sendApproval; the collector run closes over it. createBot's
+  // The bot owns sendRawCard; the collector run closes over it. createBot's
   // onFetch is invoked by /fetch and runs the same cycle as the cron. The
   // RunSummary is consumed for logging inside runCollection, so callers get void.
   const run = async (): Promise<void> => {
-    await runCollection(store, (candidate, rewrite) => sendApproval(candidate, rewrite));
+    await runCollection(store, (candidate) => sendRawCard(candidate));
   };
-  const { bot, sendApproval, drain } = createBot(store, run);
+  const { bot, sendRawCard, drain } = createBot(store, run);
 
   // Best-effort DM to the owner (used to alert on a failed scheduled run).
   const notifyOwner = async (text: string): Promise<void> => {

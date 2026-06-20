@@ -230,11 +230,15 @@ SQLite ledger survives both. See [DEPLOY.md](DEPLOY.md) §7.
 |---|---|
 | `/start` | health check + help |
 | `/ping`  | replies `pong` |
-| `/fetch` | run a collection cycle now (same as the 09:00 MSK cron): RSS → dedup → Claude rewrite → DM approval cards |
+| `/fetch` | run a collection cycle now (same as the 09:00 MSK cron): RSS → dedup → DM **raw** cards (no rewrite yet) |
+| `/model` | switch the rewrite provider/model at runtime (persists in the SQLite ledger across restarts) |
 
-Card buttons: **✅ Опубликовать** → posts to the blog (cover from the feed,
-authored by owner); **❌ Пропустить** → marks skipped. Only the owner
-(`OWNER_TELEGRAM_ID`) can drive the bot.
+Flow: a **raw** card arrives with **🔄 Переработать / ❌ Пропустить**. On 🔄 the
+active model (`/model`) rewrites the item and the card becomes a **preview** with
+**🔄 Заново / ✅ Опубликовать / ❌ Пропустить**. Publish posts to the blog (cover
+from the feed, authored by owner). Only the owner (`OWNER_TELEGRAM_ID`) can drive
+the bot. The rewrite runs on the 🔄 tap, not at collection.
 
-`REWRITE_MOCK=1` in the bot env = skip Claude, publish a copy of the source
-(saves credits). Set to `0` + restart for real rewrites.
+`REWRITE_MOCK=1` (or `REWRITE_PROVIDER=mock`) in the bot env = skip the LLM,
+publish a copy of the source (saves credits). Set provider to a real one for
+real rewrites.

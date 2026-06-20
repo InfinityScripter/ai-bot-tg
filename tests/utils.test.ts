@@ -81,4 +81,13 @@ describe('escapeMarkdown', () => {
       'Обычный заголовок без спецсимволов'
     );
   });
+
+  it('escapes a lone backslash first so it cannot re-open an entity', () => {
+    // '\*' in LLM output (regex/paths) must not survive as backslash+bold-open.
+    expect(escapeMarkdown('regex \\d')).toBe('regex \\\\d');
+    expect(escapeMarkdown('\\*')).toBe('\\\\\\*'); // \\ then \*
+    // a backslash-escaped special is fully neutralized (no unbalanced entity)
+    const out = escapeMarkdown('bold \\* here');
+    expect(out).toBe('bold \\\\\\* here');
+  });
 });

@@ -21,10 +21,13 @@ export interface FeedItem {
 }
 
 /**
- * Lifecycle of a candidate:
- *   collected → rewriting → pending_review → publishing → published
- *                  │              │                 └→ publish_failed
- *                  └→ rewrite_failed   └→ skipped
+ * Lifecycle of a candidate (rewrite happens on a publish-time button tap, not
+ * at collection):
+ *   collected ──🔄──→ rewriting → pending_review (preview saved)
+ *      │                  │              │  └──✅──→ publishing → published
+ *      │                  │              │                          └→ publish_failed
+ *      │                  └→ rewrite_failed (🔄 retry)              └→ (back to pending_review on fail)
+ *      └──❌──→ skipped                  └──🔄 заново──→ rewriting (overwrites preview)
  */
 export type CandidateState =
   | 'collected'
@@ -44,6 +47,10 @@ export interface Candidate {
   sourceTitle: string | null;
   feedTitle: string | null;
   imageUrl: string | null;
+  /** Raw article snippet (for a deferred rewrite); null on pre-migration rows. */
+  snippet: string | null;
+  /** JSON string[] of image URLs (cover first); null on pre-migration rows. */
+  imageUrls: string | null;
   state: CandidateState;
   rewriteJson: string | null;
   tgMessageId: number | null;

@@ -1,3 +1,5 @@
+import { rmSync } from 'node:fs';
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { CandidateStore } from '../src/store.js';
@@ -91,6 +93,32 @@ describe('CandidateStore', () => {
     expect(c.error).toBe('boom');
   });
 
+  describe('raw feed item persistence (for deferred rewrite)', () => {
+    it('persists snippet + imageUrls and round-trips them via getFeedItem', () => {
+      const it0 = item({
+        snippet: 'Сырой текст статьи.',
+        imageUrl: 'https://cdn/cover.jpg',
+        imageUrls: ['https://cdn/cover.jpg', 'https://cdn/in1.png'],
+      });
+      const id = store.insertCollected(it0)!;
+      const candidate = store.get(id)!;
+      const rebuilt = store.getFeedItem(candidate);
+      expect(rebuilt.snippet).toBe('Сырой текст статьи.');
+      expect(rebuilt.imageUrls).toEqual(['https://cdn/cover.jpg', 'https://cdn/in1.png']);
+      expect(rebuilt.imageUrl).toBe('https://cdn/cover.jpg');
+      expect(rebuilt.title).toBe('Title A');
+      expect(rebuilt.url).toBe('https://example.com/a');
+      expect(rebuilt.feedTitle).toBe('Feed');
+      expect(rebuilt.dedupKey).toBe('https://example.com/a');
+    });
+
+    it('getFeedItem yields empty imageUrls when none were stored', () => {
+      const id = store.insertCollected(item({ imageUrls: [] }))!;
+      const rebuilt = store.getFeedItem(store.get(id)!);
+      expect(rebuilt.imageUrls).toEqual([]);
+    });
+  });
+
   describe('model override settings', () => {
     it('returns null when no override is set', () => {
       expect(store.getModelOverride()).toBeNull();
@@ -120,6 +148,45 @@ describe('CandidateStore', () => {
       // simulate a hand-corrupted value
       store.setRawSetting('model_override', 'not json{');
       expect(store.getModelOverride()).toBeNull();
+    });
+  });
+
+  describe('claimForRewriting (atomic guard against double-rewrite)', () => {
+    it('lets exactly one caller win from a rewritable state', () => {
+      const id = store.insertCollected(item())!; // 'collected'
+      expect(store.claimForRewriting(id)).toBe(true);
+      expect(store.claimForRewriting(id)).toBe(false); // now 'rewriting'
+      expect(store.get(id)?.state).toBe('rewriting');
+    });
+
+    it('claims from pending_review and rewrite_failed too (regenerate / retry)', () => {
+      const a = store.insertCollected(item({ dedupKey: 'a' }))!;
+      store.attachRewrite(a, REWRITE); // → pending_review
+      expect(store.claimForRewriting(a)).toBe(true);
+
+      const b = store.insertCollected(item({ dedupKey: 'b' }))!;
+      store.setState(b, 'rewrite_failed', 'boom');
+      expect(store.claimForRewriting(b)).toBe(true);
+    });
+  });
+
+  describe('recoverInFlight (startup reconciliation)', () => {
+    it('a reopened store resets stuck rewriting/publishing rows', () => {
+      const tmp = `${process.cwd()}/.tmp-recover-${process.pid}.db`;
+      rmSync(tmp, { force: true });
+      const s1 = new CandidateStore(tmp);
+      const id = s1.insertCollected(item())!;
+      s1.setState(id, 'rewriting'); // simulate a crash mid-rewrite
+      const pid = s1.insertCollected(item({ dedupKey: 'pub' }))!;
+      s1.setState(pid, 'publishing');
+      s1.close();
+
+      const s2 = new CandidateStore(tmp); // constructor runs recoverInFlight
+      expect(s2.get(id)?.state).toBe('collected'); // rewriting → collected
+      expect(s2.get(pid)?.state).toBe('pending_review'); // publishing → pending_review
+      s2.close();
+
+      for (const suffix of ['', '-wal', '-shm']) rmSync(`${tmp}${suffix}`, { force: true });
     });
   });
 

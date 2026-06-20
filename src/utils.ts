@@ -70,10 +70,13 @@ export function truncate(input: string, max: number): string {
 }
 
 /**
- * Escapes Telegram legacy-Markdown special characters so feed/Claude content
+ * Escapes Telegram legacy-Markdown special characters so feed/LLM content
  * embedded in a `parse_mode: 'Markdown'` message can't break or hijack the
- * formatting. Covers the legacy-Markdown set: * _ ` [.
+ * formatting. Covers the legacy-Markdown set: \ * _ ` [. The backslash is
+ * escaped FIRST so it can't combine with a following escape (a lone `\` before
+ * a special char in LLM output — regex, paths — would otherwise re-open an
+ * entity and trigger a "can't parse entities" 400).
  */
 export function escapeMarkdown(input: string): string {
-  return (input ?? '').replace(/([_*[\]`])/g, '\\$1');
+  return (input ?? '').replace(/\\/g, '\\\\').replace(/([_*[\]`])/g, '\\$1');
 }

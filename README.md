@@ -1,16 +1,22 @@
 # ai-bot-tg — News bot for the blog
 
 A standalone Telegram bot that collects news from trusted RSS feeds once a day,
-rewrites each item into a unique blog post with Claude, DMs the owner with
-**Publish / Skip** buttons, and on approval publishes the post to the blog
-(`talalaev.su`) authored by the owner.
+DMs the owner a **raw** card per item, and — on the owner's 🔄 tap — rewrites
+that item into a unique blog post with the model active at that moment (see
+`/model`), shows a preview, and on approval publishes the post to the blog
+(`talalaev.su`) authored by the owner. The rewrite runs **on demand at
+publish-time**, not at collection — tokens are spent only on items the owner
+chooses to process.
 
 ```
-croner (daily) ─► feeds (RSS) ─► dedup (SQLite) ─► Claude rewrite
-       └─────────────────────────────────────────────────┘
+croner (daily) ─► feeds (RSS) ─► dedup (SQLite) ─► store RAW item
                                   │
                                   ▼
-        Telegram DM: title + summary + [✅ Опубликовать] [❌ Пропустить]
+   Telegram DM (RAW): source title + snippet + [🔄 Переработать] [❌ Пропустить]
+                                  │  (owner taps 🔄 — rewrite with the active /model)
+                                  ▼
+   Telegram DM (PREVIEW): rewritten title + summary + model
+                          [🔄 Заново] [✅ Опубликовать] [❌ Пропустить]
                                   │  (owner taps Publish)
                                   ▼
         POST {BLOG_API_URL}/api/post/new  (Bearer BOT_API_TOKEN)
@@ -73,12 +79,18 @@ Telegram commands (owner-only):
    never aborts the run).
 2. Dedup by canonical URL (`guid` preferred, tracking params stripped); already
    seen → skipped via a SQLite unique index.
-3. Rewrite each fresh item into `{title, description, content, tags, meta…}` via
-   Claude with structured output. A failure marks that one `rewrite_failed` and
-   continues.
-4. DM the owner an approval card with **Publish / Skip**.
-5. On **Publish**: POST to the blog (idempotent — guarded by candidate state so a
-   double-tap can't double-post), store the blog post id, edit the DM to confirm.
+3. Store each fresh item RAW (title + snippet + image URLs) and DM the owner a
+   **raw card** with **🔄 Переработать / ❌ Пропустить**. No rewrite happens at
+   this stage — cards arrive un-rewritten.
+4. On **🔄 Переработать**: rewrite the item into
+   `{title, description, content, tags, meta…}` with the provider/model active
+   right now (`/model`), structured output. The DM becomes a **preview card**
+   with **🔄 Заново / ✅ Опубликовать / ❌ Пропустить**. A failure marks that one
+   `rewrite_failed` and offers a retry. 🔄 Заново regenerates (e.g. after a
+   `/model` switch).
+5. On **✅ Опубликовать**: POST to the blog (idempotent — guarded by candidate
+   state so a double-tap can't double-post), store the blog post id, edit the DM
+   to confirm.
 
 ## Verify end-to-end (manual)
 
@@ -87,7 +99,8 @@ Telegram commands (owner-only):
 2. `cp .env.example .env`, fill it in (`BLOG_API_URL=http://localhost:7272`,
    matching `BOT_API_TOKEN`).
 3. `npm run dev`, then send `/fetch` to the bot in Telegram.
-4. Tap **Опубликовать** on a card → the post appears on the blog, authored by you.
+4. Tap **🔄 Переработать** on a raw card → wait for the preview → tap
+   **✅ Опубликовать** → the post appears on the blog, authored by you.
 
 ## Tests
 

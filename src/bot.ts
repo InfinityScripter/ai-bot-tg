@@ -11,9 +11,10 @@ import {
 import { listModels, pingModel } from './models.js';
 import { PROVIDERS, hasActiveOverride, resolveActiveProvider } from './providers.js';
 import { publishToBlog } from './publisher.js';
+import { rewriteToPost } from './rewriter.js';
 import type { ButtonSpec } from './bot-model.js';
 import type { CandidateStore } from './store.js';
-import type { Candidate, RewriteResult } from './types.js';
+import type { Candidate, CandidateState, RewriteResult } from './types.js';
 import { escapeMarkdown, truncate } from './utils.js';
 
 /** Logs a swallowed edit error instead of hiding it entirely. */
@@ -37,11 +38,21 @@ async function ackSilently(ctx: Context, opts?: { text: string }): Promise<void>
 
 const APPROVE_PREFIX = 'approve_';
 const SKIP_PREFIX = 'skip_';
+const REWRITE_PREFIX = 'rewrite_';
 
-/** Builds the inline keyboard for an approval message. */
-function approvalKeyboard(candidateId: number): InlineKeyboard {
+/** Keyboard for a RAW card: rewrite (with the active model) or skip. */
+function rawKeyboard(candidateId: number): InlineKeyboard {
   return new InlineKeyboard()
+    .text('🔄 Переработать', `${REWRITE_PREFIX}${candidateId}`)
+    .text('❌ Пропустить', `${SKIP_PREFIX}${candidateId}`);
+}
+
+/** Keyboard for a PREVIEW card: regenerate, publish, or skip. */
+function previewKeyboard(candidateId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('🔄 Заново', `${REWRITE_PREFIX}${candidateId}`)
     .text('✅ Опубликовать', `${APPROVE_PREFIX}${candidateId}`)
+    .row()
     .text('❌ Пропустить', `${SKIP_PREFIX}${candidateId}`);
 }
 
@@ -61,27 +72,57 @@ function modelMenu(store: CandidateStore): { text: string; keyboard: InlineKeybo
 }
 
 /**
- * Renders the DM body shown to the owner for review. All interpolated content
- * is escaped — feed/Claude text must not be able to break or hijack the
+ * Renders the RAW card (the source as collected, before any rewrite). All
+ * interpolated content is escaped — feed text must not break or hijack the
  * Markdown (e.g. a title containing '*' or '[').
  */
-function renderApproval(candidate: Candidate, rewrite: RewriteResult): string {
+function renderRaw(candidate: Candidate): string {
+  return [
+    `📥 *${escapeMarkdown(candidate.sourceTitle ?? candidate.sourceUrl)}*`,
+    '',
+    escapeMarkdown(truncate(candidate.snippet ?? '', 600)) || '_(нет текста — будет переработан заголовок)_',
+    '',
+    `Источник: ${escapeMarkdown(candidate.feedTitle ?? 'неизвестен')}`,
+    escapeMarkdown(candidate.sourceUrl),
+    '',
+    '_Нажмите «Переработать» — текст перепишет активная модель (см. /model)._',
+  ].join('\n');
+}
+
+/**
+ * Renders the PREVIEW card (the rewritten post awaiting publish), noting which
+ * provider/model produced it. All interpolated content is escaped.
+ */
+function renderPreview(candidate: Candidate, rewrite: RewriteResult, modelLabel: string): string {
   const tags = rewrite.tags.length ? `\n🏷 ${escapeMarkdown(rewrite.tags.join(', '))}` : '';
   return [
-    `📰 *${escapeMarkdown(rewrite.title)}*`,
+    `📝 *${escapeMarkdown(rewrite.title)}*`,
     '',
     escapeMarkdown(truncate(rewrite.description, 600)),
     tags,
     '',
+    `🤖 Модель: ${escapeMarkdown(modelLabel)}`,
     `Источник: ${escapeMarkdown(candidate.feedTitle ?? 'неизвестен')}`,
     escapeMarkdown(candidate.sourceUrl),
   ].join('\n');
 }
 
 /**
- * Creates the bot, locked to the owner, with /start, /ping, the approval
- * callback handler, and a `sendApproval` helper for the collector. `onFetch`
- * is invoked by the /fetch command (wired by the entrypoint to trigger a run).
+ * Heuristic: does this rewrite error look like the provider rejecting the model
+ * id (not a transient rate-limit/network issue)? Matches a 4xx whose text
+ * mentions the model — used to auto-clear a stale /model override.
+ */
+function isModelNotFound(message: string): boolean {
+  const is4xx = /\b(400|404)\b/.test(message);
+  const mentionsModel = /model/i.test(message) || /модел/i.test(message);
+  return is4xx && mentionsModel;
+}
+
+/**
+ * Creates the bot, locked to the owner, with /start, /ping, /model, the
+ * rewrite/publish/skip callback handlers, and a `sendRawCard` helper for the
+ * collector. `onFetch` is invoked by /fetch (wired by the entrypoint to run a
+ * collection cycle).
  */
 export function createBot(store: CandidateStore, onFetch: () => Promise<void> | void) {
   const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
@@ -143,7 +184,8 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
 
     const isApprove = data.startsWith(APPROVE_PREFIX);
     const isSkip = data.startsWith(SKIP_PREFIX);
-    if (!isApprove && !isSkip) {
+    const isRewrite = data.startsWith(REWRITE_PREFIX);
+    if (!isApprove && !isSkip && !isRewrite) {
       await ackSilently(ctx);
       return;
     }
@@ -155,9 +197,15 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
       return;
     }
 
+    if (isRewrite) {
+      await handleRewrite(ctx, id, candidate);
+      return;
+    }
+
     if (isSkip) {
-      // Only skip a candidate still awaiting review; a stale tap is a no-op.
-      if (candidate.state !== 'pending_review') {
+      // Skippable while the owner is still deciding (raw / preview / failed).
+      const skippable: CandidateState[] = ['collected', 'pending_review', 'rewrite_failed'];
+      if (!skippable.includes(candidate.state)) {
         await ackSilently(ctx, { text: `Уже обработано (${candidate.state}).` });
         return;
       }
@@ -202,11 +250,12 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
           })
           .catch(logEditError('publish success text'));
       } catch (err) {
-        // Reset to pending_review so the owner can retry via the restored buttons.
+        // Reset to pending_review so the owner can retry/regenerate via the
+        // restored preview buttons.
         store.setState(id, 'pending_review', String(err));
         await ctx
           .editMessageText(`⚠️ Не удалось опубликовать: ${err instanceof Error ? err.message : String(err)}`, {
-            reply_markup: approvalKeyboard(id),
+            reply_markup: previewKeyboard(id),
           })
           .catch(logEditError('publish failure text'));
       }
@@ -275,13 +324,101 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
     }
   }
 
-  /** Sends an approval DM for a pending candidate and records its message id. */
-  async function sendApproval(candidate: Candidate, rewrite: RewriteResult): Promise<void> {
-    const message = await bot.api.sendMessage(
-      CONFIG.OWNER_TELEGRAM_ID,
-      renderApproval(candidate, rewrite),
-      { parse_mode: 'Markdown', reply_markup: approvalKeyboard(candidate.id) }
-    );
+  /**
+   * Rewrites a candidate on the owner's 🔄 tap, with the model active right now,
+   * then edits the message into the preview card. On failure marks rewrite_failed
+   * and offers a retry. Reachable from both the raw card and the preview card
+   * ("Заново"). answerCallbackQuery is sent immediately because the rewrite can
+   * take longer than Telegram's ~15s callback window.
+   */
+  async function handleRewrite(ctx: Context, id: number, candidate: Candidate): Promise<void> {
+    // Atomically claim collected/pending_review/rewrite_failed → 'rewriting'.
+    // A losing concurrent 🔄 double-tap gets `false` and bails — no duplicate
+    // (token-spending) rewrite, mirroring claimForPublishing for ✅.
+    if (!store.claimForRewriting(id)) {
+      await ackSilently(ctx, { text: `Уже обрабатывается (${candidate.state}).` });
+      return;
+    }
+
+    inFlight += 1;
+    try {
+      await ackSilently(ctx, { text: 'Перерабатываю…' });
+      const active = resolveActiveProvider(store);
+      const modelLabel = `${PROVIDERS[active.provider].label} / ${active.model}`;
+
+      try {
+        const item = store.getFeedItem(candidate);
+        const rewrite = await rewriteToPost(item, store);
+        store.attachRewrite(id, rewrite); // → pending_review
+        const updated = store.get(id) ?? candidate;
+        await editOrResend(
+          ctx,
+          id,
+          renderPreview(updated, rewrite, modelLabel),
+          previewKeyboard(id),
+          'rewrite preview'
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        store.setState(id, 'rewrite_failed', message);
+        // A model-not-found on the active override means that model is dead;
+        // clear the override so the env default is used next.
+        if (isModelNotFound(message) && hasActiveOverride(store)) {
+          store.clearModelOverride();
+        }
+        await editOrResend(
+          ctx,
+          id,
+          `⚠️ Не удалось переработать: ${message}\n\nМодель: ${modelLabel}`,
+          rawKeyboard(id),
+          'rewrite failed text'
+        );
+      }
+    } finally {
+      inFlight -= 1;
+    }
+  }
+
+  /**
+   * Edits the callback's message; if the edit fails (too old, deleted, parse
+   * error), sends a FRESH message with the same keyboard so an action button is
+   * always reachable, and records its id. Prevents a stranded card with a saved
+   * rewrite but no publish button.
+   */
+  async function editOrResend(
+    ctx: Context,
+    id: number,
+    text: string,
+    keyboard: InlineKeyboard,
+    label: string
+  ): Promise<void> {
+    try {
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: keyboard });
+    } catch (editErr) {
+      logEditError(label)(editErr);
+      try {
+        const msg = await bot.api.sendMessage(CONFIG.OWNER_TELEGRAM_ID, text, {
+          parse_mode: 'Markdown',
+          reply_markup: keyboard,
+        });
+        store.setTelegramMessage(id, msg.message_id);
+      } catch (sendErr) {
+        // Last resort: plain text, no Markdown (covers an entity-parse failure).
+        await bot.api
+          .sendMessage(CONFIG.OWNER_TELEGRAM_ID, text, { reply_markup: keyboard })
+          .then((m) => store.setTelegramMessage(id, m.message_id))
+          .catch(logEditError(`${label} resend`));
+        logEditError(`${label} resend-markdown`)(sendErr);
+      }
+    }
+  }
+
+  /** Sends the owner a RAW card for a freshly-collected candidate. */
+  async function sendRawCard(candidate: Candidate): Promise<void> {
+    const message = await bot.api.sendMessage(CONFIG.OWNER_TELEGRAM_ID, renderRaw(candidate), {
+      parse_mode: 'Markdown',
+      reply_markup: rawKeyboard(candidate.id),
+    });
     store.setTelegramMessage(candidate.id, message.message_id);
   }
 
@@ -297,7 +434,7 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
     }
   }
 
-  return { bot, sendApproval, drain };
+  return { bot, sendRawCard, drain };
 }
 
 export type BotBundle = ReturnType<typeof createBot>;
