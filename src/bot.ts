@@ -4,13 +4,14 @@ import type { Context } from 'grammy';
 
 import { CONFIG } from './config.js';
 import {
+  mockToggleButton,
   modelButtons,
   parseCallback,
   providerButtons,
   statusText,
 } from './bot-model.js';
 import { listModels, pingModel } from './models.js';
-import { PROVIDERS, hasActiveOverride, resolveActiveProvider } from './providers.js';
+import { PROVIDERS, hasActiveOverride, isMockActive, resolveActiveProvider } from './providers.js';
 import { PublishError, publishToBlog } from './publisher.js';
 import { rewriteToPost } from './rewriter.js';
 import type { ButtonSpec } from './bot-model.js';
@@ -67,9 +68,14 @@ function keyboardFrom(buttons: ButtonSpec[]): InlineKeyboard {
 /** The /model status text + provider keyboard for the given store state. */
 function modelMenu(store: CandidateStore): { text: string; keyboard: InlineKeyboard } {
   const active = resolveActiveProvider(store);
+  const mockActive = isMockActive(store);
   const buttons = providerButtons();
+  buttons.push(mockToggleButton(mockActive));
   buttons.push({ text: '↩️ Сбросить на env', data: 'mreset' });
-  return { text: statusText(active, hasActiveOverride(store)), keyboard: keyboardFrom(buttons) };
+  return {
+    text: statusText(active, hasActiveOverride(store), mockActive),
+    keyboard: keyboardFrom(buttons),
+  };
 }
 
 /**
@@ -344,7 +350,11 @@ export function createBot(
     cb: NonNullable<ReturnType<typeof parseCallback>>
   ): Promise<void> {
     if (cb.kind === 'reset') {
+      // Full reset to env: drop BOTH the model and the mock overrides, so the
+      // "Сброшено на env" toast is truthful (a lingering mock override would
+      // otherwise keep shadowing the env default).
       store.clearModelOverride();
+      store.clearMockOverride();
       const { text, keyboard } = modelMenu(store);
       await ackSilently(ctx, { text: 'Сброшено на env.' });
       await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError('model reset'));
@@ -355,6 +365,16 @@ export function createBot(
       const { text, keyboard } = modelMenu(store);
       await ackSilently(ctx);
       await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError('model back'));
+      return;
+    }
+
+    if (cb.kind === 'mockOn' || cb.kind === 'mockOff') {
+      // Toggle the runtime mock (без LLM) override; the db value is strictly
+      // authoritative over env REWRITE_MOCK (see resolveActiveProvider).
+      store.setMockOverride(cb.kind === 'mockOn');
+      const { text, keyboard } = modelMenu(store);
+      await ackSilently(ctx, { text: cb.kind === 'mockOn' ? 'Mock включён.' : 'Mock выключен.' });
+      await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError('mock toggle'));
       return;
     }
 
@@ -376,7 +396,13 @@ export function createBot(
     const label = PROVIDERS[cb.provider].label;
     if (result.ok) {
       store.setModelOverride(cb.provider, cb.model);
-      const confirm = `✅ Переключено: ${label} / ${cb.model}`;
+      // Picking a model is an explicit "use this provider" intent; clear any mock
+      // override so the choice takes effect (mock otherwise wins in
+      // resolveActiveProvider and the switch would be a silent no-op).
+      const wasMock = isMockActive(store);
+      store.clearMockOverride();
+      const note = wasMock ? ' (Mock выключен)' : '';
+      const confirm = `✅ Переключено: ${label} / ${cb.model}${note}`;
       // The override IS saved; if the message can't be edited (too old/deleted),
       // send a fresh reply so the owner always gets the confirmation.
       await ctx.editMessageText(confirm).catch(async (err) => {

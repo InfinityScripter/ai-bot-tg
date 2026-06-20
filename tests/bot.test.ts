@@ -246,3 +246,44 @@ describe('rewrite-on-publish flow', () => {
     store.close();
   });
 });
+
+describe('/model mock toggle', () => {
+  it('mmock_on sets the mock override; mmock_off clears it', async () => {
+    const { bot, store } = makeBot(() => ({}));
+    await bot.init();
+
+    await bot.handleUpdate(callbackUpdate('mmock_on'));
+    expect(store.getMockOverride()).toEqual({ enabled: true });
+
+    await bot.handleUpdate(callbackUpdate('mmock_off'));
+    expect(store.getMockOverride()).toEqual({ enabled: false });
+    store.close();
+  });
+
+  it('"Сбросить на env" (mreset) clears BOTH the model and mock overrides', async () => {
+    const { bot, store } = makeBot(() => ({}));
+    await bot.init();
+    store.setModelOverride('glm', 'glm-4.7-flash');
+    store.setMockOverride(true);
+
+    await bot.handleUpdate(callbackUpdate('mreset'));
+
+    expect(store.getModelOverride()).toBeNull();
+    expect(store.getMockOverride()).toBeNull();
+    store.close();
+  });
+
+  it('picking the mock model clears a stale mock override so it applies cleanly', async () => {
+    // 'mock' pings ok with no key, so this exercises the clearMockOverride path
+    // in the model-pick branch without a network/key dependency.
+    const { bot, store } = makeBot(() => ({}));
+    await bot.init();
+    store.setMockOverride(true);
+
+    await bot.handleUpdate(callbackUpdate('mm_mock__mock'));
+
+    expect(store.getModelOverride()).toEqual({ provider: 'mock', model: 'mock' });
+    expect(store.getMockOverride()).toBeNull(); // mock override cleared on pick
+    store.close();
+  });
+});

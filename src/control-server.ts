@@ -7,6 +7,7 @@ import {
   CONTROL_PROVIDERS,
   resolveActiveProvider,
   isControlProvider,
+  isMockActive,
 } from './providers.js';
 import { listModels, pingModel } from './models.js';
 import type { CandidateStore } from './store.js';
@@ -102,9 +103,9 @@ export function startControlServer(opts: ControlServerOptions): ControlServerHan
 
     if (method === 'GET' && path === '/control/status') {
       const { provider, model } = resolveActiveProvider(store);
-      const mockDb = store.getMockOverride();
-      const isMockEnabled = provider === 'mock' || (mockDb?.enabled ?? false);
-      return send(res, 200, { provider, model, isMockEnabled });
+      // Single source of truth for the mock toggle state, shared with the bot's
+      // /model menu so the panel and Telegram never disagree.
+      return send(res, 200, { provider, model, isMockEnabled: isMockActive(store) });
     }
 
     if (method === 'GET' && path === '/control/providers') {
@@ -137,6 +138,10 @@ export function startControlServer(opts: ControlServerOptions): ControlServerHan
         return send(res, 400, { error: ping.error });
       }
       store.setModelOverride(provider, model);
+      // Selecting a model is an explicit "use this provider" intent; clear any
+      // mock override so the choice actually takes effect (mock otherwise wins
+      // in resolveActiveProvider and the switch would be a silent no-op).
+      store.clearMockOverride();
       return send(res, 200, { ok: true, validation: 'pinged' });
     }
 
@@ -161,6 +166,17 @@ export function startControlServer(opts: ControlServerOptions): ControlServerHan
       );
       if (!res.headersSent) send(res, 500, { error: 'Internal error' });
     });
+  });
+
+  // A bind failure (EADDRINUSE if the port is taken, EACCES, …) is emitted
+  // asynchronously as an 'error' event; with no listener Node rethrows it as an
+  // uncaught exception that kills the WHOLE bot. The control server is optional,
+  // so swallow + log instead — the news pipeline must keep running regardless.
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[control] failed to bind 127.0.0.1:${port}: ${err.message}; control server disabled`
+    );
   });
 
   server.listen(port, '127.0.0.1');

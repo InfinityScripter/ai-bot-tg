@@ -4,6 +4,7 @@ import {
   CB,
   encodeModel,
   encodeProvider,
+  mockToggleButton,
   modelButtons,
   parseCallback,
   providerButtons,
@@ -102,5 +103,33 @@ describe('statusText', () => {
   it('reports override source when overridden', () => {
     const text = statusText({ provider: 'deepseek', model: 'deepseek-v4-flash' }, true);
     expect(text).toContain('override');
+  });
+
+  it('shows the mock notice when mock is active', () => {
+    const text = statusText({ provider: 'glm', model: 'glm-4.7-flash' }, false, true);
+    expect(text).toMatch(/Mock ВКЛ/i);
+    expect(text).not.toContain('glm-4.7-flash'); // model line hidden under mock
+  });
+});
+
+describe('mock toggle', () => {
+  it('parses mmock_on / mmock_off', () => {
+    expect(parseCallback(CB.MOCK_ON)).toEqual({ kind: 'mockOn' });
+    expect(parseCallback(CB.MOCK_OFF)).toEqual({ kind: 'mockOff' });
+  });
+
+  it('mockToggleButton reflects current state and offers the opposite action', () => {
+    const on = mockToggleButton(true);
+    expect(on.data).toBe(CB.MOCK_OFF); // mock ON → button turns it OFF
+    expect(on.text).toMatch(/выключить/i);
+
+    const off = mockToggleButton(false);
+    expect(off.data).toBe(CB.MOCK_ON);
+    expect(off.text).toMatch(/включить/i);
+  });
+
+  it('mock-toggle callback data stays within Telegram 64-byte limit', () => {
+    expect(Buffer.byteLength(CB.MOCK_ON, 'utf8')).toBeLessThanOrEqual(64);
+    expect(Buffer.byteLength(CB.MOCK_OFF, 'utf8')).toBeLessThanOrEqual(64);
   });
 });

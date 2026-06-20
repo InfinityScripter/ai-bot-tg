@@ -118,4 +118,26 @@ describe('control server endpoints', () => {
     expect(r.status).toBe(200);
     expect(ctx.store.getMockOverride()).toEqual({ enabled: true });
   });
+
+  it('POST /control/model clears a stale mock override so the choice takes effect', async () => {
+    ctx.store.setMockOverride(true); // mock currently ON
+    const r = await fetch(`${ctx.base}/control/model`, {
+      method: 'POST',
+      headers: { ...auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'mock', model: 'mock' }),
+    });
+    expect(r.status).toBe(200);
+    expect(ctx.store.getModelOverride()).toEqual({ provider: 'mock', model: 'mock' });
+    expect(ctx.store.getMockOverride()).toBeNull(); // mock override cleared
+  });
+
+  it('GET /control/status isMockEnabled tracks the mock override (not env)', async () => {
+    ctx.store.setMockOverride(true);
+    const on = await (await fetch(`${ctx.base}/control/status`, { headers: auth })).json();
+    expect((on as { isMockEnabled: boolean }).isMockEnabled).toBe(true);
+
+    ctx.store.setMockOverride(false);
+    const off = await (await fetch(`${ctx.base}/control/status`, { headers: auth })).json();
+    expect((off as { isMockEnabled: boolean }).isMockEnabled).toBe(false);
+  });
 });

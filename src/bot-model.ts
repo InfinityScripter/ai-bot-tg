@@ -11,12 +11,15 @@ import type { ProviderName } from './providers.js';
  *   mm_<provider>__<model>   choose a model (provider + '__' + model)
  *   mreset                   clear the override, back to env default
  *   mback                    back to the provider list
+ *   mmock_on / mmock_off     turn the runtime mock (без LLM) override on/off
  */
 export const CB = {
   PROVIDER: 'mp_',
   MODEL: 'mm_',
   RESET: 'mreset',
   BACK: 'mback',
+  MOCK_ON: 'mmock_on',
+  MOCK_OFF: 'mmock_off',
 } as const;
 
 /** A button: a label and the callback data it carries. */
@@ -43,12 +46,16 @@ export type ParsedCallback =
   | { kind: 'model'; provider: ProviderName; model: string }
   | { kind: 'reset' }
   | { kind: 'back' }
+  | { kind: 'mockOn' }
+  | { kind: 'mockOff' }
   | null;
 
 /** Decodes /model callback data, or null if it isn't a /model callback. */
 export function parseCallback(data: string): ParsedCallback {
   if (data === CB.RESET) return { kind: 'reset' };
   if (data === CB.BACK) return { kind: 'back' };
+  if (data === CB.MOCK_ON) return { kind: 'mockOn' };
+  if (data === CB.MOCK_OFF) return { kind: 'mockOff' };
 
   if (data.startsWith(CB.MODEL)) {
     const rest = data.slice(CB.MODEL.length);
@@ -102,8 +109,30 @@ export function modelButtons(provider: ProviderName, models: string[]): ButtonSp
   return rows;
 }
 
-/** The status line shown by /model: active provider+model and its source. */
-export function statusText(active: { provider: ProviderName; model: string }, hasOverride: boolean): string {
+/**
+ * A toggle button for the runtime mock (без LLM) mode. The label reflects the
+ * current state and the callback flips it: mock ON → offer "выключить"; mock OFF
+ * → offer "включить".
+ */
+export function mockToggleButton(mockActive: boolean): ButtonSpec {
+  return mockActive
+    ? { text: '🧪 Mock ВКЛ → выключить', data: CB.MOCK_OFF }
+    : { text: '🧪 Mock ВЫКЛ → включить', data: CB.MOCK_ON };
+}
+
+/**
+ * The status line shown by /model: active provider+model and its source, plus a
+ * mock-mode notice when the runtime mock override is on (the post is a copy of
+ * the source, no LLM rewrite).
+ */
+export function statusText(
+  active: { provider: ProviderName; model: string },
+  hasOverride: boolean,
+  mockActive = false
+): string {
+  if (mockActive) {
+    return 'Режим Mock ВКЛ — пост публикуется как копия источника, без LLM.\n\nВыберите провайдера или выключите Mock:';
+  }
   const label = PROVIDERS[active.provider].label;
   const source = hasOverride ? 'override' : 'env';
   return `Текущая модель: ${label} / ${active.model} (источник: ${source})\n\nВыберите провайдера:`;
