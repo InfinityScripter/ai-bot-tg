@@ -59,6 +59,69 @@ describe('publishToBlog', () => {
     expect(headers.Authorization).toBe('Bearer test-bot-api-token-value');
   });
 
+  it('sends an Idempotency-Key header when a dedup key is given', async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ post: { id: 'p' } }), { status: 201 })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await publishToBlog(REWRITE, null, 'https://example.com/a');
+    const call = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const headers = call[1].headers as Record<string, string>;
+    expect(headers['Idempotency-Key']).toBe('https://example.com/a');
+  });
+
+  it('omits the Idempotency-Key header when no dedup key is given', async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ post: { id: 'p' } }), { status: 201 })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await publishToBlog(REWRITE);
+    const call = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const headers = call[1].headers as Record<string, string>;
+    expect(headers['Idempotency-Key']).toBeUndefined();
+  });
+
+  it('throws PublishError(maybePosted=false) on a 4xx (clear client rejection)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('bad', { status: 400 }))
+    );
+    const { PublishError } = await import('../src/publisher.js');
+    await expect(publishToBlog(REWRITE)).rejects.toMatchObject({
+      name: 'PublishError',
+      maybePosted: false,
+    });
+    expect(PublishError).toBeDefined();
+  });
+
+  it('throws PublishError(maybePosted=true) on a 5xx (may have committed)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('oops', { status: 502 }))
+    );
+    await expect(publishToBlog(REWRITE)).rejects.toMatchObject({ maybePosted: true });
+  });
+
+  it('throws PublishError(maybePosted=true) on a 201 with an unreadable body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not json', { status: 201 }))
+    );
+    await expect(publishToBlog(REWRITE)).rejects.toMatchObject({ maybePosted: true });
+  });
+
+  it('throws PublishError(maybePosted=false) when it cannot connect', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('ECONNREFUSED');
+      })
+    );
+    await expect(publishToBlog(REWRITE)).rejects.toMatchObject({ maybePosted: false });
+  });
+
   it('accepts a post returned with _id instead of id', async () => {
     vi.stubGlobal(
       'fetch',

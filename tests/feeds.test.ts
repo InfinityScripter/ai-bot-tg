@@ -40,6 +40,24 @@ describe('fetchAllFeeds', () => {
     });
   });
 
+  it('parses publishedAt from isoDate (epoch ms), null when absent', async () => {
+    parseURL.mockResolvedValueOnce({
+      title: 'Feed',
+      items: [
+        {
+          title: 'Dated',
+          link: 'https://example.com/d',
+          guid: 'https://example.com/d',
+          isoDate: '2026-06-20T10:00:00.000Z',
+        },
+        { title: 'Undated', link: 'https://example.com/u', guid: 'https://example.com/u' },
+      ],
+    });
+    const items = await fetchAllFeeds(['https://feed.one/rss']);
+    expect(items[0]?.publishedAt).toBe(Date.parse('2026-06-20T10:00:00.000Z'));
+    expect(items[1]?.publishedAt).toBeNull();
+  });
+
   it('extracts a cover image from an RSS enclosure', async () => {
     parseURL.mockResolvedValueOnce({
       title: 'Feed',

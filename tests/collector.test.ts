@@ -21,6 +21,7 @@ function feedItem(overrides: Partial<FeedItem> = {}): FeedItem {
     feedTitle: 'Feed',
     imageUrl: null,
     imageUrls: [],
+    publishedAt: null,
     ...overrides,
   };
 }
@@ -68,12 +69,52 @@ describe('runCollection — raw cards, no rewrite at collection', () => {
     store.close();
   });
 
+  it('orders the queue newest-first before the cap', async () => {
+    const store = new CandidateStore(':memory:');
+    fetchAllFeeds.mockResolvedValue([
+      feedItem({ dedupKey: 'old', url: 'https://ex/old', publishedAt: 1000 }),
+      feedItem({ dedupKey: 'new', url: 'https://ex/new', publishedAt: 9000 }),
+    ]);
+    const order: string[] = [];
+    await runCollection(
+      store,
+      async (c: { id: number }) => {
+        order.push(store.get(c.id)!.dedupKey);
+      },
+      0
+    );
+    expect(order[0]).toBe('new'); // newest sent first
+    store.close();
+  });
+
+  it('reports afterFilter=0 + filterActive when an include filter hides everything', async () => {
+    vi.stubEnv('FILTER_INCLUDE', 'zzz-no-match');
+    vi.resetModules();
+    const feeds = await import('../src/feeds.js');
+    // re-mock the freshly imported feeds module
+    vi.spyOn(feeds, 'fetchAllFeeds').mockResolvedValue([feedItem({ title: 'Unrelated news' })]);
+    const { runCollection: run } = await import('../src/collector.js');
+    const { CandidateStore: Store } = await import('../src/store.js');
+    const store = new Store(':memory:');
+
+    const sent: number[] = [];
+    const summary = await run(store, async (c: { id: number }) => void sent.push(c.id), 0);
+
+    expect(summary.fetched).toBe(1);
+    expect(summary.afterFilter).toBe(0);
+    expect(summary.filterActive).toBe(true);
+    expect(sent).toHaveLength(0);
+    store.close();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
   it('counts a DM failure without aborting the run', async () => {
     const store = new CandidateStore(':memory:');
     fetchAllFeeds.mockResolvedValue([feedItem()]);
     const summary = await runCollection(store, async () => {
       throw new Error('telegram down');
-    });
+    }, 0);
     expect(summary.failed).toBe(1);
     expect(summary.sent).toBe(0);
     store.close();

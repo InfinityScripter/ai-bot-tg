@@ -13,12 +13,19 @@ async function main() {
   const store = new CandidateStore();
 
   // The bot owns sendRawCard; the collector run closes over it. createBot's
-  // onFetch is invoked by /fetch and runs the same cycle as the cron. The
-  // RunSummary is consumed for logging inside runCollection, so callers get void.
-  const run = async (): Promise<void> => {
-    await runCollection(store, (candidate) => sendRawCard(candidate));
+  // onFetch is invoked by /fetch and runs the same cycle as the cron. It returns
+  // a short status note so /fetch can reply with it — in particular when a
+  // keyword filter hid everything (otherwise the owner can't tell a misconfigured
+  // filter from a genuine "no news today").
+  const run = async (): Promise<string> => {
+    const s = await runCollection(store, (candidate) => sendRawCard(candidate));
+    if (s.filterActive && s.fetched > 0 && s.afterFilter === 0) {
+      return `⚠️ Фильтр отсёк все ${s.fetched} новостей — проверьте FILTER_INCLUDE/FILTER_EXCLUDE.`;
+    }
+    if (s.fresh === 0) return `Новых новостей нет (получено ${s.fetched}).`;
+    return `Готово: новых ${s.fresh}, отправлено ${s.sent}${s.failed ? `, ошибок ${s.failed}` : ''}.`;
   };
-  const { bot, sendRawCard, drain } = createBot(store, run);
+  const { bot, sendRawCard, notifyNeedsVerification, drain } = createBot(store, run);
 
   // Best-effort DM to the owner (used to alert on a failed scheduled run).
   const notifyOwner = async (text: string): Promise<void> => {
@@ -34,7 +41,15 @@ async function main() {
   // otherwise invisible. (The scheduler's `catch` is a second backstop.)
   const scheduledRun = async (): Promise<void> => {
     try {
-      await run();
+      const pruned = store.pruneOld(90);
+      if (pruned > 0) {
+        // eslint-disable-next-line no-console
+        console.log(`[index] pruned ${pruned} old candidates (dedup keys preserved)`);
+      }
+      const note = await run();
+      // Only ping the owner on the cron when something needs attention (a filter
+      // hid everything) — a normal run stays quiet to avoid daily noise.
+      if (note.startsWith('⚠️')) await notifyOwner(note);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(`[index] scheduled run failed: ${String(err)}`);
@@ -77,6 +92,8 @@ async function main() {
     onStart: (info) => {
       // eslint-disable-next-line no-console
       console.log(`[index] bot @${info.username} polling.`);
+      // Warn the owner about any post-crash rows whose publish status is unknown.
+      void notifyNeedsVerification();
     },
   });
 }

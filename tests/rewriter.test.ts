@@ -24,6 +24,7 @@ const ITEM: FeedItem = {
   feedTitle: 'Feed',
   imageUrl: null,
   imageUrls: [],
+    publishedAt: null,
 };
 
 const VALID = {

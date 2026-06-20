@@ -18,6 +18,11 @@ export interface FeedItem {
    * body, de-duplicated. Handed to the rewriter so it can illustrate the post.
    */
   imageUrls: string[];
+  /**
+   * Publish time as epoch ms, parsed from the feed (isoDate/pubDate), or null if
+   * the feed omits it. Used to order the review queue newest-first.
+   */
+  publishedAt: number | null;
 }
 
 /**
@@ -37,7 +42,14 @@ export type CandidateState =
   | 'skipped'
   | 'publishing'
   | 'published'
-  | 'publish_failed';
+  | 'publish_failed'
+  /**
+   * A crash/deploy landed mid-publish: the POST may or may not have reached the
+   * blog. Recovery puts the row here (NOT back to pending_review) so the owner
+   * is warned the post might already be live before re-publishing — avoiding a
+   * silent duplicate article.
+   */
+  | 'needs_verification';
 
 /** A row in the candidates table. */
 export interface Candidate {

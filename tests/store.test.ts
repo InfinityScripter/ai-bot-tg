@@ -14,6 +14,7 @@ function item(overrides: Partial<FeedItem> = {}): FeedItem {
     feedTitle: 'Feed',
     imageUrl: null,
     imageUrls: [],
+    publishedAt: null,
     ...overrides,
   };
 }
@@ -183,7 +184,9 @@ describe('CandidateStore', () => {
 
       const s2 = new CandidateStore(tmp); // constructor runs recoverInFlight
       expect(s2.get(id)?.state).toBe('collected'); // rewriting → collected
-      expect(s2.get(pid)?.state).toBe('pending_review'); // publishing → pending_review
+      // publishing → needs_verification (NOT pending_review — avoids a silent
+      // duplicate post if the POST had already reached the blog).
+      expect(s2.get(pid)?.state).toBe('needs_verification');
       s2.close();
 
       for (const suffix of ['', '-wal', '-shm']) rmSync(`${tmp}${suffix}`, { force: true });
@@ -204,6 +207,57 @@ describe('CandidateStore', () => {
       const id = store.insertCollected(item())!; // state 'collected'
       expect(store.claimForPublishing(id)).toBe(false);
       expect(store.get(id)?.state).toBe('collected');
+    });
+
+    it('claims a needs_verification row too (owner chose to finish publishing)', () => {
+      const id = store.insertCollected(item())!;
+      store.setState(id, 'needs_verification');
+      expect(store.claimForPublishing(id)).toBe(true);
+      expect(store.get(id)?.state).toBe('publishing');
+    });
+  });
+
+  describe('pruneOld (retention + dedup preservation)', () => {
+    it('deletes old published/skipped rows but keeps them deduped via seen_keys', () => {
+      // Insert + publish, then backdate updated_at past the cutoff.
+      const id = store.insertCollected(item({ dedupKey: 'old-pub' }))!;
+      store.attachRewrite(id, REWRITE);
+      store.setPublished(id, 'p1');
+      store.setRawSetting('noop', 'noop'); // touch nothing relevant
+      // Force updated_at into the past via a direct UPDATE (test-only).
+      // @ts-expect-error reach into the private db for the test
+      store.db.prepare("UPDATE candidates SET updated_at = datetime('now','-200 days') WHERE id = ?").run(id);
+
+      const pruned = store.pruneOld(90);
+      expect(pruned).toBe(1);
+      expect(store.get(id)).toBeNull(); // row gone
+      expect(store.isSeen('old-pub')).toBe(true); // but still deduped
+      expect(store.insertCollected(item({ dedupKey: 'old-pub' }))).toBeNull(); // not re-collected
+    });
+
+    it('keeps recent and non-terminal rows', () => {
+      const recent = store.insertCollected(item({ dedupKey: 'recent' }))!;
+      store.attachRewrite(recent, REWRITE);
+      store.setPublished(recent, 'p2'); // published but fresh
+      const pending = store.insertCollected(item({ dedupKey: 'pending' }))!;
+      store.attachRewrite(pending, REWRITE); // pending_review (non-terminal)
+
+      expect(store.pruneOld(90)).toBe(0);
+      expect(store.get(recent)).not.toBeNull();
+      expect(store.get(pending)).not.toBeNull();
+    });
+  });
+
+  describe('listByState', () => {
+    it('returns only candidates in the given state', () => {
+      const a = store.insertCollected(item({ dedupKey: 'a' }))!;
+      store.setState(a, 'needs_verification');
+      const b = store.insertCollected(item({ dedupKey: 'b' }))!;
+      store.setState(b, 'needs_verification');
+      store.insertCollected(item({ dedupKey: 'c' })); // stays 'collected'
+
+      const rows = store.listByState('needs_verification');
+      expect(rows.map((r) => r.id).sort()).toEqual([a, b].sort());
     });
   });
 });

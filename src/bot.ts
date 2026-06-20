@@ -1,4 +1,5 @@
-import { Bot, InlineKeyboard } from 'grammy';
+import { autoRetry } from '@grammyjs/auto-retry';
+import { Bot, GrammyError, HttpError, InlineKeyboard } from 'grammy';
 import type { Context } from 'grammy';
 
 import { CONFIG } from './config.js';
@@ -10,7 +11,7 @@ import {
 } from './bot-model.js';
 import { listModels, pingModel } from './models.js';
 import { PROVIDERS, hasActiveOverride, resolveActiveProvider } from './providers.js';
-import { publishToBlog } from './publisher.js';
+import { PublishError, publishToBlog } from './publisher.js';
 import { rewriteToPost } from './rewriter.js';
 import type { ButtonSpec } from './bot-model.js';
 import type { CandidateStore } from './store.js';
@@ -146,16 +147,38 @@ function isModelNotFound(message: string): boolean {
  * collector. `onFetch` is invoked by /fetch (wired by the entrypoint to run a
  * collection cycle).
  */
-export function createBot(store: CandidateStore, onFetch: () => Promise<void> | void) {
+export function createBot(
+  store: CandidateStore,
+  onFetch: () => Promise<string | void> | string | void
+) {
   const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
 
+  // grammY's canonical rate-limit handling: transparently wait out a 429's
+  // retry_after and resubmit (also retries 5xx / network blips with backoff).
+  // Preferred over proactive throttling — the bot only messages one chat.
+  bot.api.config.use(autoRetry());
+
   // Global error boundary: grammy rethrows an uncaught handler error out of the
-  // polling loop, which exits the process (systemd then restart-loops). Logging
-  // here keeps the bot alive through any handler failure — a stale callback, a
-  // Telegram 400, a transient network blip — instead of crashing on it.
+  // polling loop, which exits the process (systemd then restart-loops). This
+  // keeps the bot alive through any handler failure. Benign Telegram 400s
+  // ("message is not modified", "query is too old") log at debug; real Bot API
+  // errors and network errors are distinguished for clearer logs.
   bot.catch((err) => {
-    // eslint-disable-next-line no-console
-    console.error(`[bot] unhandled error in update ${err.ctx.update.update_id}: ${String(err.error)}`);
+    const e = err.error;
+    const updateId = err.ctx.update.update_id;
+    if (e instanceof GrammyError) {
+      const benign = /message is not modified|query is too old|message to edit not found/i.test(
+        e.description
+      );
+      // eslint-disable-next-line no-console
+      console[benign ? 'warn' : 'error'](`[bot] Telegram error on update ${updateId}: ${e.description}`);
+    } else if (e instanceof HttpError) {
+      // eslint-disable-next-line no-console
+      console.warn(`[bot] network error on update ${updateId}: ${String(e)}`);
+    } else {
+      // eslint-disable-next-line no-console
+      console.error(`[bot] unhandled error on update ${updateId}: ${String(e)}`);
+    }
   });
 
   // Tracks in-flight publish handlers so shutdown can drain them before the DB
@@ -184,7 +207,8 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
   bot.command('fetch', async (ctx) => {
     await ctx.reply('Запускаю сбор новостей…');
     try {
-      await onFetch();
+      const note = await onFetch();
+      if (note) await ctx.reply(note);
     } catch (err) {
       await ctx.reply(`Сбор завершился с ошибкой: ${String(err)}`);
     }
@@ -225,8 +249,14 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
     }
 
     if (isSkip) {
-      // Skippable while the owner is still deciding (raw / preview / failed).
-      const skippable: CandidateState[] = ['collected', 'pending_review', 'rewrite_failed'];
+      // Skippable while the owner is still deciding (raw / preview / failed /
+      // a post-crash row whose publish status is unknown).
+      const skippable: CandidateState[] = [
+        'collected',
+        'pending_review',
+        'rewrite_failed',
+        'needs_verification',
+      ];
       if (!skippable.includes(candidate.state)) {
         await ackSilently(ctx, { text: `Уже обработано (${candidate.state}).` });
         return;
@@ -256,15 +286,19 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
 
       const rewrite = store.getRewrite(candidate);
       if (!rewrite) {
-        store.setState(id, 'publish_failed', 'Нет сохранённого rewrite.');
+        // No saved rewrite (corrupt/missing JSON) — send back to rewrite_failed
+        // with a usable retry keyboard rather than a dead, button-less card.
+        store.setState(id, 'rewrite_failed', 'Нет сохранённого rewrite.');
         await ctx
-          .editMessageText('⚠️ Ошибка: нет данных для публикации.')
+          .editMessageText('⚠️ Нет данных для публикации — переработайте заново.', {
+            reply_markup: rawKeyboard(id),
+          })
           .catch(logEditError('publish missing-rewrite text'));
         return;
       }
 
       try {
-        const postId = await publishToBlog(rewrite, candidate.imageUrl);
+        const postId = await publishToBlog(rewrite, candidate.imageUrl, candidate.dedupKey);
         store.setPublished(id, postId);
         await ctx
           .editMessageText(`✅ Опубликовано: *${escapeMarkdown(rewrite.title)}*`, {
@@ -272,14 +306,28 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
           })
           .catch(logEditError('publish success text'));
       } catch (err) {
-        // Reset to pending_review so the owner can retry/regenerate via the
-        // restored preview buttons.
-        store.setState(id, 'pending_review', String(err));
-        await ctx
-          .editMessageText(`⚠️ Не удалось опубликовать: ${err instanceof Error ? err.message : String(err)}`, {
-            reply_markup: previewKeyboard(id),
-          })
-          .catch(logEditError('publish failure text'));
+        const message = err instanceof Error ? err.message : String(err);
+        // If the POST may have reached the blog (5xx / unreadable 201 / timeout),
+        // the post could already be live — route to needs_verification so the
+        // owner is warned before re-publishing, instead of a silent duplicate.
+        const maybePosted = err instanceof PublishError && err.maybePosted;
+        if (maybePosted) {
+          store.setState(id, 'needs_verification', message);
+          await ctx
+            .editMessageText(
+              `❓ Публикация не подтверждена: ${message}\n\n_Пост МОГ опубликоваться — проверьте блог перед повтором._`,
+              { parse_mode: 'Markdown', reply_markup: previewKeyboard(id) }
+            )
+            .catch(logEditError('publish maybe-posted text'));
+        } else {
+          // Definitely did not post — safe to re-offer publish/regenerate.
+          store.setState(id, 'pending_review', message);
+          await ctx
+            .editMessageText(`⚠️ Не удалось опубликовать: ${message}`, {
+              reply_markup: previewKeyboard(id),
+            })
+            .catch(logEditError('publish failure text'));
+        }
       }
     } finally {
       inFlight -= 1;
@@ -451,6 +499,34 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
   }
 
   /**
+   * On startup, warn the owner about any candidate left in needs_verification by
+   * a crash/deploy mid-publish — the post MIGHT already be live. The owner should
+   * check the blog before re-publishing. Each gets a card with a publish button
+   * (to finish if it never posted) and a skip button (to dismiss if it did).
+   */
+  async function notifyNeedsVerification(): Promise<void> {
+    for (const c of store.listByState('needs_verification')) {
+      const text = [
+        `❓ *Статус публикации неизвестен* (был сбой во время публикации).`,
+        '',
+        escapeMarkdown(c.sourceTitle ?? c.sourceUrl),
+        '',
+        '_Проверьте блог: пост мог уже опубликоваться._',
+        '_«Опубликовать» — если поста нет; «Пропустить» — если он уже на сайте._',
+      ].join('\n');
+      try {
+        const msg = await bot.api.sendMessage(CONFIG.OWNER_TELEGRAM_ID, text, {
+          parse_mode: 'Markdown',
+          reply_markup: previewKeyboard(c.id),
+        });
+        store.setTelegramMessage(c.id, msg.message_id);
+      } catch (err) {
+        logEditError('needs-verification notify')(err);
+      }
+    }
+  }
+
+  /**
    * Resolves once no publish handler is in flight (or a timeout elapses).
    * Shutdown awaits this before closing the store so a callback mid-publish
    * isn't cut off with a closed database.
@@ -462,7 +538,7 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
     }
   }
 
-  return { bot, sendRawCard, drain };
+  return { bot, sendRawCard, notifyNeedsVerification, drain };
 }
 
 export type BotBundle = ReturnType<typeof createBot>;

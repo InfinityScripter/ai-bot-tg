@@ -31,6 +31,7 @@ function rawItem(): FeedItem {
     feedTitle: 'Feed',
     imageUrl: null,
     imageUrls: [],
+    publishedAt: null,
   };
 }
 
@@ -213,6 +214,35 @@ describe('rewrite-on-publish flow', () => {
 
     expect(rewriteToPost).not.toHaveBeenCalled(); // not rewritable
     expect(store.get(id)!.state).toBe('skipped');
+    store.close();
+  });
+
+  it('a maybe-posted publish failure (5xx) routes to needs_verification, not pending_review', async () => {
+    const { bot, store } = makeBot(() => ({}));
+    await bot.init();
+    const id = store.insertCollected(rawItem())!;
+    store.attachRewrite(id, VALID_REWRITE); // → pending_review
+    // publishToBlog uses real fetch — make it a 5xx (server may have committed).
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('boom', { status: 503 })));
+
+    await bot.handleUpdate(callbackUpdate(`approve_${id}`));
+
+    expect(store.get(id)!.state).toBe('needs_verification');
+    vi.unstubAllGlobals();
+    store.close();
+  });
+
+  it('a definitely-failed publish (4xx) routes back to pending_review', async () => {
+    const { bot, store } = makeBot(() => ({}));
+    await bot.init();
+    const id = store.insertCollected(rawItem())!;
+    store.attachRewrite(id, VALID_REWRITE);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('bad', { status: 400 })));
+
+    await bot.handleUpdate(callbackUpdate(`approve_${id}`));
+
+    expect(store.get(id)!.state).toBe('pending_review');
+    vi.unstubAllGlobals();
     store.close();
   });
 });

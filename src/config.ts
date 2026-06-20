@@ -45,6 +45,14 @@ const EnvSchema = z.object({
   /** Max candidates surfaced per run, to cap Claude spend on a noisy day. */
   MAX_PER_RUN: z.coerce.number().int().positive().default(15),
   /**
+   * Optional CSV keyword filters applied to title+snippet (case-insensitive)
+   * before items enter the review queue. INCLUDE: if set, keep only items
+   * matching at least one keyword. EXCLUDE: drop items matching any keyword.
+   * Both cut noise with zero LLM cost.
+   */
+  FILTER_INCLUDE: z.string().optional(),
+  FILTER_EXCLUDE: z.string().optional(),
+  /**
    * When '1'/'true', skip the Claude call and build the post from the feed item
    * directly. Lets the full pipeline (collect → approve → publish) be tested
    * without API credits. NOT for production — output isn't a real rewrite.

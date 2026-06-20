@@ -29,6 +29,10 @@ const SCHEMA = `
     value      TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS seen_keys (
+    dedup_key TEXT PRIMARY KEY,
+    seen_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;
 
 /** The single settings row holding the active provider/model override. */
@@ -102,6 +106,11 @@ export class CandidateStore {
     }
     this.db = new Database(path);
     this.db.pragma('journal_mode = WAL');
+    // busy_timeout: wait (not error) if another connection holds the lock —
+    // cheap insurance if a second writer is ever added. synchronous=NORMAL is
+    // the WAL-recommended durability/speed trade-off (survives process crash).
+    this.db.pragma('busy_timeout = 5000');
+    this.db.pragma('synchronous = NORMAL');
     this.db.exec(SCHEMA);
     // Apply additive migrations; ALTER ADD COLUMN throws if it already exists,
     // which is the "already migrated" case — safe to ignore.
@@ -124,11 +133,17 @@ export class CandidateStore {
    * → 'pending_review' (re-offer publish). Idempotent; runs once per process.
    */
   private recoverInFlight(): void {
+    // 'rewriting' is safe to retry — no external side effect happened.
     this.db
       .prepare(`UPDATE candidates SET state = 'collected', updated_at = datetime('now') WHERE state = 'rewriting'`)
       .run();
+    // 'publishing' MAY have already POSTed to the blog. Do NOT reset to
+    // pending_review (that re-offers Publish and can create a duplicate post);
+    // move to needs_verification so the owner is warned before re-publishing.
     this.db
-      .prepare(`UPDATE candidates SET state = 'pending_review', updated_at = datetime('now') WHERE state = 'publishing'`)
+      .prepare(
+        `UPDATE candidates SET state = 'needs_verification', updated_at = datetime('now') WHERE state = 'publishing'`
+      )
       .run();
   }
 
@@ -137,6 +152,13 @@ export class CandidateStore {
    * candidate id, or null if the dedup_key already exists (already seen — skip).
    */
   insertCollected(item: FeedItem): number | null {
+    // A pruned-but-seen key lives only in seen_keys; honor it so an old
+    // published/skipped article isn't re-collected after its row was deleted.
+    const prunedSeen = this.db
+      .prepare('SELECT 1 FROM seen_keys WHERE dedup_key = ?')
+      .get(item.dedupKey);
+    if (prunedSeen) return null;
+
     const info = this.db
       .prepare(
         `INSERT OR IGNORE INTO candidates
@@ -180,13 +202,59 @@ export class CandidateStore {
       feedTitle: candidate.feedTitle ?? '',
       imageUrl: candidate.imageUrl,
       imageUrls,
+      publishedAt: null, // not persisted — only used pre-insert for ordering
     };
   }
 
-  /** True if a candidate with this dedup key already exists. */
+  /** Returns all candidates in a given state (e.g. needs_verification on boot). */
+  listByState(state: CandidateState): Candidate[] {
+    const rows = this.db
+      .prepare('SELECT * FROM candidates WHERE state = ? ORDER BY id')
+      .all(state) as CandidateRow[];
+    return rows.map(mapRow);
+  }
+
+  /** True if this dedup key is known — a live candidate or a pruned seen key. */
   isSeen(dedupKey: string): boolean {
-    const row = this.db.prepare('SELECT 1 FROM candidates WHERE dedup_key = ?').get(dedupKey);
+    const row = this.db
+      .prepare(
+        `SELECT 1 FROM candidates WHERE dedup_key = ?
+         UNION ALL SELECT 1 FROM seen_keys WHERE dedup_key = ? LIMIT 1`
+      )
+      .get(dedupKey, dedupKey);
     return row !== undefined;
+  }
+
+  /**
+   * Prunes terminal candidates (published/skipped) older than `days`, preserving
+   * their dedup_key in seen_keys so they're never re-collected. Bounds the
+   * candidates table over a multi-year process. Returns the number pruned.
+   */
+  pruneOld(days = 90): number {
+    const offset = `-${Math.max(1, Math.floor(days))} days`;
+    // Resolve the cutoff to a single fixed timestamp string, so the INSERT and
+    // DELETE compare against the IDENTICAL boundary — datetime('now') re-evaluated
+    // per-statement could otherwise let a row be deleted without its key copied.
+    const { cutoff } = this.db.prepare("SELECT datetime('now', ?) AS cutoff").get(offset) as {
+      cutoff: string;
+    };
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO seen_keys (dedup_key)
+             SELECT dedup_key FROM candidates
+             WHERE state IN ('published', 'skipped') AND updated_at < ?`
+        )
+        .run(cutoff);
+      const info = this.db
+        .prepare(
+          `DELETE FROM candidates
+             WHERE state IN ('published', 'skipped') AND updated_at < ?`
+        )
+        .run(cutoff);
+      return info.changes;
+    });
+    return tx() as number;
   }
 
   get(id: number): Candidate | null {
@@ -206,7 +274,7 @@ export class CandidateStore {
     const info = this.db
       .prepare(
         `UPDATE candidates SET state = 'publishing', updated_at = datetime('now')
-         WHERE id = ? AND state = 'pending_review'`
+         WHERE id = ? AND state IN ('pending_review', 'needs_verification')`
       )
       .run(id);
     return info.changes === 1;

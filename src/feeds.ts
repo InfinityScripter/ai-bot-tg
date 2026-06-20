@@ -125,6 +125,10 @@ function mapFeed(feed: Parser.Output<RssItem>): FeedItem[] {
       4000
     );
     const imageUrl = extractImageUrl(item);
+    // rss-parser normalizes the date to item.isoDate; fall back to pubDate.
+    const dateStr = item.isoDate || item.pubDate;
+    const parsed = dateStr ? Date.parse(dateStr) : NaN;
+    const publishedAt = Number.isNaN(parsed) ? null : parsed;
     items.push({
       dedupKey,
       url: item.link ?? dedupKey,
@@ -132,6 +136,7 @@ function mapFeed(feed: Parser.Output<RssItem>): FeedItem[] {
       snippet,
       feedTitle,
       imageUrl,
+      publishedAt,
       imageUrls: extractImageUrls(item, imageUrl),
     });
   }
