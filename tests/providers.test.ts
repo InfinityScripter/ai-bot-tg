@@ -134,3 +134,25 @@ describe('hasActiveOverride', () => {
     s.close();
   });
 });
+
+describe('mock override precedence', () => {
+  it('db mock=true forces the mock provider', async () => {
+    const { resolveActiveProvider } = await importProviders();
+    const s = new CandidateStore(':memory:');
+    s.setModelOverride('glm', 'glm-4.7-flash');
+    s.setMockOverride(true);
+    expect(resolveActiveProvider(s)).toEqual({ provider: 'mock', model: 'mock' });
+    s.close();
+  });
+
+  it('db mock=false beats env REWRITE_MOCK and uses the model override', async () => {
+    vi.stubEnv('REWRITE_MOCK', '1');
+    vi.resetModules();
+    const { resolveActiveProvider } = await importProviders();
+    const s = new CandidateStore(':memory:');
+    s.setModelOverride('glm', 'glm-4.7-flash');
+    s.setMockOverride(false);
+    expect(resolveActiveProvider(s)).toEqual({ provider: 'glm', model: 'glm-4.7-flash' });
+    s.close();
+  });
+});

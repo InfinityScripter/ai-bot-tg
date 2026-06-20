@@ -146,7 +146,12 @@ export function resolveActiveProvider(store: CandidateStore): {
   provider: ProviderName;
   model: string;
 } {
-  if (CONFIG.REWRITE_MOCK) {
+  // A db mock override is strictly authoritative over the env REWRITE_MOCK, so
+  // toggling mock OFF in the admin panel truly disables it even if the env
+  // forces it on (and ON works the same way).
+  const mockDb = store.getMockOverride();
+  const forceMock = mockDb ? mockDb.enabled : CONFIG.REWRITE_MOCK;
+  if (forceMock) {
     return { provider: 'mock', model: PROVIDERS.mock.defaultModel };
   }
   const override = store.getModelOverride();
@@ -168,7 +173,9 @@ export function resolveActiveProvider(store: CandidateStore): {
  * label so it never claims "override" while actually running the env default.
  */
 export function hasActiveOverride(store: CandidateStore): boolean {
-  if (CONFIG.REWRITE_MOCK) return false;
+  const mockDb = store.getMockOverride();
+  const forceMock = mockDb ? mockDb.enabled : CONFIG.REWRITE_MOCK;
+  if (forceMock) return false;
   const override = store.getModelOverride();
   return override !== null && isProviderName(override.provider);
 }
