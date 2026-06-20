@@ -62,7 +62,7 @@ interface RssItem {
   mediaThumbnail?: MediaNode[];
 }
 
-/** Picks the best available image URL from an item, or null. */
+/** Picks the best available cover image URL from an item, or null. */
 function extractImageUrl(item: Parser.Item & RssItem): string | null {
   // 1) RSS <enclosure> with an image type (or no type — many feeds omit it).
   const enc = item.enclosure;
@@ -76,6 +76,36 @@ function extractImageUrl(item: Parser.Item & RssItem): string | null {
     if (url && (!node.$?.medium || node.$.medium === 'image')) return url;
   }
   return null;
+}
+
+// Matches src="..." / src='...' inside an <img …> tag. Capture group 1 is the
+// URL. Global so we can sweep every image in the article body.
+const IMG_SRC_RE = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+
+/**
+ * Collects every usable image URL for an item: the cover first, then every
+ * <img> embedded in the article body (<content:encoded>), de-duplicated and
+ * order-preserved. Only absolute http(s) URLs are kept — relative/data URIs
+ * are dropped so what we hand downstream is always a real, fetchable cover.
+ */
+function extractImageUrls(item: Parser.Item & RssItem, cover: string | null): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (url: string | null | undefined) => {
+    if (!url) return;
+    const u = url.trim();
+    if (!/^https?:\/\//i.test(u)) return; // skip relative / data: URIs
+    if (seen.has(u)) return;
+    seen.add(u);
+    out.push(u);
+  };
+
+  push(cover);
+  const body = item.contentEncoded || item.content || '';
+  for (const m of body.matchAll(IMG_SRC_RE)) {
+    push(m[1]);
+  }
+  return out;
 }
 
 /** Maps a single parsed feed into normalized FeedItems, dropping unusable ones. */
@@ -94,13 +124,15 @@ function mapFeed(feed: Parser.Output<RssItem>): FeedItem[] {
       stripHtml(item.contentEncoded || item.content || item.contentSnippet || ''),
       4000
     );
+    const imageUrl = extractImageUrl(item);
     items.push({
       dedupKey,
       url: item.link ?? dedupKey,
       title,
       snippet,
       feedTitle,
-      imageUrl: extractImageUrl(item),
+      imageUrl,
+      imageUrls: extractImageUrls(item, imageUrl),
     });
   }
   return items;

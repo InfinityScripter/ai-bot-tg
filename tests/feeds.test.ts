@@ -79,6 +79,35 @@ describe('fetchAllFeeds', () => {
     });
     const items = await fetchAllFeeds(['https://feed.one/rss']);
     expect(items[0]?.imageUrl).toBeNull();
+    expect(items[0]?.imageUrls).toEqual([]);
+  });
+
+  it('collects body <img> URLs into imageUrls, cover first, deduped', async () => {
+    parseURL.mockResolvedValueOnce({
+      title: 'Feed',
+      items: [
+        {
+          title: 'Rich body',
+          link: 'https://example.com/d',
+          guid: 'https://example.com/d',
+          enclosure: { url: 'https://cdn.example.com/cover.jpg', type: 'image/jpeg' },
+          // content:encoded → mapped to contentEncoded by the custom field
+          contentEncoded:
+            'Intro <img src="https://cdn.example.com/cover.jpg"> dup cover ' +
+            '<img src="https://cdn.example.com/in1.png" alt="x"> middle ' +
+            "<img src='https://cdn.example.com/in2.webp'> and a relative " +
+            '<img src="/local/rel.gif"> that must be dropped.',
+        },
+      ],
+    });
+    const items = await fetchAllFeeds(['https://feed.one/rss']);
+    expect(items[0]?.imageUrl).toBe('https://cdn.example.com/cover.jpg');
+    expect(items[0]?.imageUrls).toEqual([
+      'https://cdn.example.com/cover.jpg', // cover first, only once despite the dup
+      'https://cdn.example.com/in1.png',
+      'https://cdn.example.com/in2.webp',
+      // '/local/rel.gif' dropped — not absolute http(s)
+    ]);
   });
 
   it('skips items with no stable identifier and no title', async () => {

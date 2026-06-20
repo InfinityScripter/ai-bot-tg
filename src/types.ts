@@ -13,6 +13,11 @@ export interface FeedItem {
   feedTitle: string;
   /** Cover image URL from the feed (enclosure / media:*), if any. */
   imageUrl: string | null;
+  /**
+   * All usable image URLs for the article: cover first, then every <img> in the
+   * body, de-duplicated. Handed to the rewriter so it can illustrate the post.
+   */
+  imageUrls: string[];
 }
 
 /**

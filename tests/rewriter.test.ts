@@ -18,6 +18,7 @@ const ITEM: FeedItem = {
   snippet: 'Source snippet',
   feedTitle: 'Feed',
   imageUrl: null,
+  imageUrls: [],
 };
 
 const VALID = {
@@ -69,6 +70,72 @@ describe('rewriteToPost', () => {
     create.mockResolvedValueOnce(textResponse(JSON.stringify({ ...VALID, title: longTitle })));
     const result = await rewriteToPost(ITEM);
     expect(result.title.length).toBeLessThanOrEqual(101); // 100 + ellipsis
+  });
+
+  it('keeps only allow-listed body images and strips invented/cover ones', async () => {
+    const richItem: FeedItem = {
+      ...ITEM,
+      imageUrl: 'https://cdn/cover.jpg',
+      // cover at [0] is NOT allowed in the body; only in1/in2 are
+      imageUrls: ['https://cdn/cover.jpg', 'https://cdn/in1.png', 'https://cdn/in2.png'],
+    };
+    const body = [
+      'Текст.',
+      '![](https://cdn/in1.png)', // allowed → kept
+      'Ещё текст.',
+      '![](https://cdn/cover.jpg)', // cover → stripped (not in allow-list)
+      '![](https://evil/fake.png)', // invented → stripped
+    ].join('\n\n');
+    create.mockResolvedValueOnce(textResponse(JSON.stringify({ ...VALID, content: body })));
+
+    const result = await rewriteToPost(richItem);
+    expect(result.content).toContain('![](https://cdn/in1.png)');
+    expect(result.content).not.toContain('cover.jpg');
+    expect(result.content).not.toContain('evil/fake.png');
+  });
+});
+
+describe('rewriteToPost (Gemini provider)', () => {
+  it('calls the Gemini OpenAI-compatible endpoint and validates output', async () => {
+    vi.stubEnv('REWRITE_PROVIDER', 'gemini');
+    vi.stubEnv('GEMINI_API_KEY', 'test-gemini-key');
+    vi.resetModules();
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify(VALID) } }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const mod = await import('../src/rewriter.js');
+    const result = await mod.rewriteToPost(ITEM);
+
+    expect(result).toEqual(VALID);
+    const call = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
+    expect(call[0]).toContain('generativelanguage.googleapis.com');
+    expect(call[1].headers.Authorization).toBe('Bearer test-gemini-key');
+
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it('throws a readable error on a non-OK Gemini response', async () => {
+    vi.stubEnv('REWRITE_PROVIDER', 'gemini');
+    vi.stubEnv('GEMINI_API_KEY', 'test-gemini-key');
+    vi.resetModules();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 429, text: async () => 'rate limited' })
+    );
+
+    const mod = await import('../src/rewriter.js');
+    await expect(mod.rewriteToPost(ITEM)).rejects.toThrow(/Gemini ответил 429/);
+
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
 });
 

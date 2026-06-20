@@ -11,6 +11,7 @@ function item(overrides: Partial<FeedItem> = {}): FeedItem {
     snippet: 'snippet',
     feedTitle: 'Feed',
     imageUrl: null,
+    imageUrls: [],
     ...overrides,
   };
 }

@@ -8,23 +8,27 @@ import type { FeedItem, RewriteResult } from './types.js';
 const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
 
 /**
- * Builds a post from the feed item directly, with NO Claude call. Used when
- * REWRITE_MOCK is on, so the collect → approve → publish pipeline can be tested
- * without API credits. Output is a faithful copy of the source, not a rewrite —
- * never enable this in production.
+ * Builds a post from the feed item directly, with NO LLM call. Used when
+ * REWRITE_MOCK is on (or REWRITE_PROVIDER=mock), so the collect → approve →
+ * publish pipeline can be tested without API credits. Output is a faithful copy
+ * of the source, not a rewrite — never enable this in production.
  */
 function mockRewrite(item: FeedItem): RewriteResult {
   const snippet = stripHtml(item.snippet).trim();
   // RSS often gives only a title (empty snippet) — fall back to the title as the
-  // lede rather than repeating it twice. The real Claude path writes a full body.
+  // lede rather than repeating it twice. The real LLM path writes a full body.
   const lede = snippet || item.title;
   // Some feeds (Meduza) ship very long titles — clamp so the post heading stays
   // readable. The page already shows this as the heading, so the body must NOT
   // repeat it (no leading "## title", which rendered larger than the page H1).
   const title = truncate(item.title, 100);
   const description = truncate(lede, 200);
+  // Drop the cover (shown by the page already); embed the rest of the images so
+  // the mock body isn't a flat wall of text either.
+  const bodyImages = item.imageUrls.slice(1, 4).map((u) => `![](${u})`);
   const content = [
     snippet || '_Полный текст доступен по ссылке на источник._',
+    ...(bodyImages.length ? ['', ...bodyImages] : []),
     '',
     `Источник: [${item.feedTitle || 'оригинал'}](${item.url})`,
   ].join('\n');
@@ -40,16 +44,27 @@ function mockRewrite(item: FeedItem): RewriteResult {
 
 // Constant system prompt → eligible for prompt caching across the daily batch.
 // We instruct strict JSON and validate with zod on our side (defensive parse),
-// which is portable across SDK versions and robust to stray prose.
-const SYSTEM_PROMPT = `Ты — редактор новостного блога. По заголовку и краткому
-описанию новости из источника напиши ОРИГИНАЛЬНЫЙ пост на русском языке: своими
-словами, без копирования формулировок источника. Нейтральный журналистский тон.
+// which is portable across providers and robust to stray prose.
+const SYSTEM_PROMPT = `Ты — редактор технического новостного блога. По заголовку,
+краткому описанию и (если есть) списку картинок напиши ОРИГИНАЛЬНЫЙ пост на
+русском языке: своими словами, без копирования формулировок источника.
+Нейтральный журналистский тон.
+
+Тело поста должно быть НЕ плоской стеной текста, а живым и структурированным:
+- разбивай на короткие абзацы;
+- где уместно, добавляй подзаголовки уровня "##";
+- используй маркированные списки для перечислений;
+- выделяй ключевые термины **жирным**;
+- при наличии — вставляй картинки строкой "![](URL)" из переданного списка,
+  по одной между смысловыми блоками. Используй ТОЛЬКО URL из списка, дословно,
+  НЕ выдумывай свои. НЕ вставляй первую картинку (она уже показана как обложка).
+  Если список картинок пуст — не вставляй ни одной.
 
 Верни СТРОГО валидный JSON-объект (и ничего кроме него) со следующими полями:
 {
   "title": "цепкий, не кликбейтный заголовок, КОРОТКИЙ — до 80 символов, без точки в конце",
   "description": "один абзац-резюме (2–3 предложения)",
-  "content": "тело поста в Markdown, 2–4 коротких абзаца. НЕ начинай с заголовка/H1/H2 — заголовок уже показан над постом, не дублируй его. В конце строка \\"Источник: <название>\\" со ссылкой на оригинал",
+  "content": "тело поста в Markdown. НЕ начинай с заголовка/H1 — заголовок уже показан над постом, не дублируй его. В конце строка \\"Источник: <название>\\" со ссылкой на оригинал",
   "tags": ["2–5 тематических тегов в нижнем регистре"],
   "metaTitle": "SEO-заголовок (≈ title)",
   "metaDescription": "SEO-описание (до ~155 символов)"
@@ -57,6 +72,21 @@ const SYSTEM_PROMPT = `Ты — редактор новостного блога
 
 Не выдумывай факты, которых нет во входных данных. Если данных мало — пиши
 короче, но без домыслов. Никакого текста до или после JSON.`;
+
+/** Builds the per-item user message shared by both LLM providers. */
+function buildUserContent(item: FeedItem): string {
+  // Skip the cover (index 0) — it's rendered by the page; offer the rest as
+  // body candidates. Cap so a gallery-heavy article doesn't bloat the prompt.
+  const bodyImages = item.imageUrls.slice(1, 6);
+  const imagesBlock = bodyImages.length
+    ? `Картинки для тела (вставляй "![](URL)" по смыслу, только эти URL):\n${bodyImages.join('\n')}`
+    : 'Картинки: нет';
+  return `Источник: ${item.feedTitle || 'неизвестен'}
+Ссылка на оригинал: ${item.url}
+Заголовок: ${item.title}
+Краткое описание: ${item.snippet || '(нет описания)'}
+${imagesBlock}`;
+}
 
 /** Extracts the text from the first text content block of a message response. */
 function extractText(response: Anthropic.Message): string {
@@ -75,26 +105,55 @@ function extractJson(text: string): string | null {
 }
 
 /**
- * Rewrites a feed item into a unique blog post via Claude. Instructs strict
- * JSON, extracts it defensively, and validates with zod. Throws on refusal or
- * invalid output — the caller marks the candidate rewrite_failed and surfaces
- * the error in the Telegram DM, so one failure never aborts the batch.
+ * Strips any Markdown image whose URL is not in the allow-list. Guards against
+ * a model inventing image URLs (or echoing the cover): only images that came
+ * from the feed survive. Leaves the surrounding text untouched.
  */
-export async function rewriteToPost(item: FeedItem): Promise<RewriteResult> {
-  if (CONFIG.REWRITE_MOCK) {
-    return mockRewrite(item);
+function sanitizeImages(content: string, allowed: string[]): string {
+  const allow = new Set(allowed);
+  return content
+    .replace(/!\[[^\]]*\]\(([^)]+)\)/g, (full, url: string) =>
+      allow.has(url.trim()) ? full : ''
+    )
+    // collapse blank-line runs left behind by removed images
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** Parses, validates and post-processes a raw JSON string from either provider. */
+function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
+  if (!raw) {
+    throw new Error('LLM не вернул JSON в ответе.');
   }
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(raw);
+  } catch {
+    throw new Error('LLM вернул невалидный JSON.');
+  }
+  const parsed = RewriteSchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new Error(
+      `Ответ LLM не прошёл валидацию: ${parsed.error.issues[0]?.message ?? 'unknown'}`
+    );
+  }
+  // Only allow body images (cover excluded — the page shows it). Defensive
+  // clamp on the title keeps the heading readable even if the hint is ignored.
+  const allowed = item.imageUrls.slice(1);
+  return {
+    ...parsed.data,
+    title: truncate(parsed.data.title, 100),
+    content: sanitizeImages(parsed.data.content, allowed),
+  };
+}
 
-  const userContent = `Источник: ${item.feedTitle || 'неизвестен'}
-Ссылка на оригинал: ${item.url}
-Заголовок: ${item.title}
-Краткое описание: ${item.snippet || '(нет описания)'}`;
-
+/** Rewrites via Claude (Anthropic). */
+async function rewriteWithAnthropic(item: FeedItem): Promise<RewriteResult> {
   const response = await client.messages.create({
     model: CONFIG.REWRITE_MODEL,
     max_tokens: 2048,
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: userContent }],
+    messages: [{ role: 'user', content: buildUserContent(item) }],
   });
 
   // 'refusal' may not be in this SDK version's StopReason union — compare as a
@@ -102,24 +161,64 @@ export async function rewriteToPost(item: FeedItem): Promise<RewriteResult> {
   if ((response.stop_reason as string) === 'refusal') {
     throw new Error('Claude отказался обрабатывать новость (refusal).');
   }
+  return finalizeRewrite(extractJson(extractText(response)), item);
+}
 
-  const raw = extractJson(extractText(response));
-  if (!raw) {
-    throw new Error('Claude не вернул JSON в ответе.');
-  }
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
-  let candidate: unknown;
+interface OpenAIChatResponse {
+  choices?: { message?: { content?: string } }[];
+}
+
+/**
+ * Rewrites via Google Gemini's OpenAI-compatible endpoint. Free-tier friendly:
+ * no SDK, a single fetch. response_format=json_object nudges Gemini to emit
+ * pure JSON, but we still extract+validate defensively.
+ */
+async function rewriteWithGemini(item: FeedItem): Promise<RewriteResult> {
+  let response: Response;
   try {
-    candidate = JSON.parse(raw);
-  } catch {
-    throw new Error('Claude вернул невалидный JSON.');
+    response = await fetch(GEMINI_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${CONFIG.GEMINI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: CONFIG.GEMINI_MODEL,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: buildUserContent(item) },
+        ],
+        response_format: { type: 'json_object' },
+      }),
+    });
+  } catch (err) {
+    throw new Error(`Не удалось связаться с Gemini: ${String(err)}`);
   }
 
-  const parsed = RewriteSchema.safeParse(candidate);
-  if (!parsed.success) {
-    throw new Error(`Ответ Claude не прошёл валидацию: ${parsed.error.issues[0]?.message ?? 'unknown'}`);
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Gemini ответил ${response.status}: ${text.slice(0, 200)}`);
   }
-  // Defensive clamp: even if Claude ignores the length hint, keep the heading
-  // readable on the post page.
-  return { ...parsed.data, title: truncate(parsed.data.title, 100) };
+
+  const data = (await response.json()) as OpenAIChatResponse;
+  const text = data.choices?.[0]?.message?.content ?? '';
+  return finalizeRewrite(extractJson(text), item);
+}
+
+/**
+ * Rewrites a feed item into a unique blog post. Dispatches to the configured
+ * provider (Claude / Gemini / mock). Throws on refusal or invalid output — the
+ * caller marks the candidate rewrite_failed and surfaces the error in the
+ * Telegram DM, so one failure never aborts the batch.
+ */
+export async function rewriteToPost(item: FeedItem): Promise<RewriteResult> {
+  if (CONFIG.REWRITE_MOCK || CONFIG.REWRITE_PROVIDER === 'mock') {
+    return mockRewrite(item);
+  }
+  if (CONFIG.REWRITE_PROVIDER === 'gemini') {
+    return rewriteWithGemini(item);
+  }
+  return rewriteWithAnthropic(item);
 }
