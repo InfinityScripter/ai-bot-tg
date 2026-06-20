@@ -137,8 +137,12 @@ describe('rewrite-on-publish flow', () => {
     const c = store.get(id)!;
     expect(c.state).toBe('pending_review');
     expect(store.getRewrite(c)).toEqual(VALID_REWRITE);
-    // the preview card was rendered (shows the rewritten title)
-    expect(edits.some((t) => t.includes('Rewritten'))).toBe(true);
+    // an "in progress" placeholder is shown first, then the preview
+    expect(edits[0]).toContain('Перерабатываю');
+    // the preview card shows the rewritten title AND the start of the body
+    const preview = edits.at(-1)!;
+    expect(preview).toContain('Rewritten'); // title
+    expect(preview).toContain('Body'); // body text shown for review
     store.close();
   });
 

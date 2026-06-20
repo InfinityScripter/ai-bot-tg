@@ -95,15 +95,37 @@ function renderRaw(candidate: Candidate): string {
  */
 function renderPreview(candidate: Candidate, rewrite: RewriteResult, modelLabel: string): string {
   const tags = rewrite.tags.length ? `\n🏷 ${escapeMarkdown(rewrite.tags.join(', '))}` : '';
+  // Show the start of the actual body so the owner sees what will be published.
+  // Drop Markdown image lines (![](url)) — they publish to the blog but render
+  // as ugly raw syntax in a Telegram preview. Collapse blank runs, then clamp.
+  const bodyText = rewrite.content
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  const bodyBlock = bodyText
+    ? ['', '— — —', escapeMarkdown(truncate(bodyText, 500))]
+    : [];
   return [
     `📝 *${escapeMarkdown(rewrite.title)}*`,
     '',
-    escapeMarkdown(truncate(rewrite.description, 600)),
+    escapeMarkdown(truncate(rewrite.description, 400)),
     tags,
+    ...bodyBlock,
     '',
     `🤖 Модель: ${escapeMarkdown(modelLabel)}`,
     `Источник: ${escapeMarkdown(candidate.feedTitle ?? 'неизвестен')}`,
     escapeMarkdown(candidate.sourceUrl),
+  ].join('\n');
+}
+
+/** The "in progress" placeholder shown while a rewrite runs. */
+function renderRewriting(candidate: Candidate, modelLabel: string): string {
+  return [
+    `⏳ *Перерабатываю…*`,
+    '',
+    escapeMarkdown(candidate.sourceTitle ?? candidate.sourceUrl),
+    '',
+    `🤖 Модель: ${escapeMarkdown(modelLabel)}`,
   ].join('\n');
 }
 
@@ -345,6 +367,12 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
       await ackSilently(ctx, { text: 'Перерабатываю…' });
       const active = resolveActiveProvider(store);
       const modelLabel = `${PROVIDERS[active.provider].label} / ${active.model}`;
+
+      // Visible "in progress" state: replace the card with a placeholder (no
+      // buttons) so the owner sees the rewrite is running, not a frozen card.
+      await ctx
+        .editMessageText(renderRewriting(candidate, modelLabel), { parse_mode: 'Markdown' })
+        .catch(logEditError('rewrite in-progress'));
 
       try {
         const item = store.getFeedItem(candidate);
