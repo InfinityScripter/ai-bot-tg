@@ -261,3 +261,35 @@ describe('CandidateStore', () => {
     });
   });
 });
+
+describe('mock override', () => {
+  it('returns null when unset', () => {
+    const store = new CandidateStore(':memory:');
+    expect(store.getMockOverride()).toBeNull();
+    store.close();
+  });
+
+  it('round-trips an enabled flag', () => {
+    const store = new CandidateStore(':memory:');
+    store.setMockOverride(true);
+    expect(store.getMockOverride()).toEqual({ enabled: true });
+    store.setMockOverride(false);
+    expect(store.getMockOverride()).toEqual({ enabled: false });
+    store.close();
+  });
+
+  it('clears back to null', () => {
+    const store = new CandidateStore(':memory:');
+    store.setMockOverride(true);
+    store.clearMockOverride();
+    expect(store.getMockOverride()).toBeNull();
+    store.close();
+  });
+
+  it('returns null on a corrupt row', () => {
+    const store = new CandidateStore(':memory:');
+    store.setRawSetting('mock_override', 'not json');
+    expect(store.getMockOverride()).toBeNull();
+    store.close();
+  });
+});

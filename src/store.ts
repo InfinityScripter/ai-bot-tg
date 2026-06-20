@@ -38,10 +38,18 @@ const SCHEMA = `
 /** The single settings row holding the active provider/model override. */
 const MODEL_OVERRIDE_KEY = 'model_override';
 
+/** The single settings row holding the runtime mock ("без LLM") override. */
+const MOCK_OVERRIDE_KEY = 'mock_override';
+
 /** Runtime override of the rewrite provider/model, stored in `settings`. */
 export interface ModelOverride {
   provider: string;
   model: string;
+}
+
+/** Runtime override of mock mode, stored in `settings`. */
+export interface MockOverride {
+  enabled: boolean;
 }
 // Lightweight additive migrations for pre-existing DBs (ignore if present).
 // snippet + image_urls hold the RAW feed item so a rewrite can run later
@@ -389,6 +397,36 @@ export class CandidateStore {
   /** Clears the override; the rewriter then uses the env default. */
   clearModelOverride(): void {
     this.db.prepare('DELETE FROM settings WHERE key = ?').run(MODEL_OVERRIDE_KEY);
+  }
+
+  /**
+   * The active mock override, or null if none is set. When set, it is strictly
+   * authoritative over the env REWRITE_MOCK (so an admin toggling mock OFF in
+   * the panel truly disables it even if REWRITE_MOCK=1). A corrupt row returns
+   * null rather than throwing, so resolution cleanly falls back to env.
+   */
+  getMockOverride(): MockOverride | null {
+    const raw = this.getRawSetting(MOCK_OVERRIDE_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as Partial<MockOverride>;
+      if (typeof parsed.enabled === 'boolean') {
+        return { enabled: parsed.enabled };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Sets (upserts) the mock override. */
+  setMockOverride(enabled: boolean): void {
+    this.setRawSetting(MOCK_OVERRIDE_KEY, JSON.stringify({ enabled }));
+  }
+
+  /** Clears the mock override; resolution then falls back to env REWRITE_MOCK. */
+  clearMockOverride(): void {
+    this.db.prepare('DELETE FROM settings WHERE key = ?').run(MOCK_OVERRIDE_KEY);
   }
 
   close(): void {
