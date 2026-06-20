@@ -17,6 +17,7 @@ const ITEM: FeedItem = {
   title: 'Source headline',
   snippet: 'Source snippet',
   feedTitle: 'Feed',
+  imageUrl: null,
 };
 
 const VALID = {
@@ -61,5 +62,30 @@ describe('rewriteToPost', () => {
   it('throws when JSON is present but fails schema validation', async () => {
     create.mockResolvedValueOnce(textResponse(JSON.stringify({ title: 'only title' })));
     await expect(rewriteToPost(ITEM)).rejects.toThrow(/валидаци/i);
+  });
+
+  it('clamps an over-long Claude title to keep the heading readable', async () => {
+    const longTitle = 'А'.repeat(250);
+    create.mockResolvedValueOnce(textResponse(JSON.stringify({ ...VALID, title: longTitle })));
+    const result = await rewriteToPost(ITEM);
+    expect(result.title.length).toBeLessThanOrEqual(101); // 100 + ellipsis
+  });
+});
+
+describe('rewriteToPost (REWRITE_MOCK)', () => {
+  it('mock body does not start with a markdown heading and clamps the title', async () => {
+    vi.stubEnv('REWRITE_MOCK', '1');
+    vi.resetModules();
+    const mod = await import('../src/rewriter.js');
+    const longTitleItem = { ...ITEM, title: 'Б'.repeat(250), snippet: 'Тело новости.' };
+
+    const result = await mod.rewriteToPost(longTitleItem);
+
+    expect(result.content.startsWith('#')).toBe(false); // no "## title" duplicate
+    expect(result.content).toContain('Тело новости.');
+    expect(result.title.length).toBeLessThanOrEqual(101);
+
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
 });

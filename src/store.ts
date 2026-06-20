@@ -13,6 +13,7 @@ const SCHEMA = `
     source_url    TEXT NOT NULL,
     source_title  TEXT,
     feed_title    TEXT,
+    image_url     TEXT,
     state         TEXT NOT NULL,
     rewrite_json  TEXT,
     tg_message_id INTEGER,
@@ -22,6 +23,8 @@ const SCHEMA = `
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `;
+// Lightweight migration: add image_url to pre-existing DBs (ignore if present).
+const MIGRATIONS = [`ALTER TABLE candidates ADD COLUMN image_url TEXT`];
 // The UNIQUE constraint on dedup_key already creates an index — no separate
 // CREATE INDEX needed.
 
@@ -31,6 +34,7 @@ interface CandidateRow {
   source_url: string;
   source_title: string | null;
   feed_title: string | null;
+  image_url: string | null;
   state: string;
   rewrite_json: string | null;
   tg_message_id: number | null;
@@ -47,6 +51,7 @@ function mapRow(row: CandidateRow): Candidate {
     sourceUrl: row.source_url,
     sourceTitle: row.source_title,
     feedTitle: row.feed_title,
+    imageUrl: row.image_url,
     state: row.state as CandidateState,
     rewriteJson: row.rewrite_json,
     tgMessageId: row.tg_message_id,
@@ -72,6 +77,15 @@ export class CandidateStore {
     this.db = new Database(path);
     this.db.pragma('journal_mode = WAL');
     this.db.exec(SCHEMA);
+    // Apply additive migrations; ALTER ADD COLUMN throws if it already exists,
+    // which is the "already migrated" case — safe to ignore.
+    for (const sql of MIGRATIONS) {
+      try {
+        this.db.exec(sql);
+      } catch {
+        /* column already present */
+      }
+    }
   }
 
   /**
@@ -81,14 +95,15 @@ export class CandidateStore {
   insertCollected(item: FeedItem): number | null {
     const info = this.db
       .prepare(
-        `INSERT OR IGNORE INTO candidates (dedup_key, source_url, source_title, feed_title, state)
-         VALUES (@dedupKey, @url, @title, @feedTitle, 'collected')`
+        `INSERT OR IGNORE INTO candidates (dedup_key, source_url, source_title, feed_title, image_url, state)
+         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, 'collected')`
       )
       .run({
         dedupKey: item.dedupKey,
         url: item.url,
         title: item.title,
         feedTitle: item.feedTitle,
+        imageUrl: item.imageUrl,
       });
     return info.changes === 1 ? Number(info.lastInsertRowid) : null;
   }

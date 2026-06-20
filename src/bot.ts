@@ -134,7 +134,7 @@ export function createBot(store: CandidateStore, onFetch: () => Promise<void> | 
       }
 
       try {
-        const postId = await publishToBlog(rewrite);
+        const postId = await publishToBlog(rewrite, candidate.imageUrl);
         store.setPublished(id, postId);
         await ctx
           .editMessageText(`✅ Опубликовано: *${escapeMarkdown(rewrite.title)}*`, {

@@ -8,3 +8,6 @@ process.env.BOT_API_TOKEN = 'test-bot-api-token-value';
 process.env.SQLITE_PATH = ':memory:';
 process.env.CRON_SCHEDULE = '0 9 * * *';
 process.env.CRON_TZ = 'Europe/Moscow';
+// Force the real Claude path in tests regardless of a local .env (which may set
+// REWRITE_MOCK=1 for manual no-credit testing). The rewriter tests mock the SDK.
+process.env.REWRITE_MOCK = '0';

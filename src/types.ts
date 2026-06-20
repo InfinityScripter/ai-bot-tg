@@ -11,6 +11,8 @@ export interface FeedItem {
   snippet: string;
   /** Title of the source feed, for attribution. */
   feedTitle: string;
+  /** Cover image URL from the feed (enclosure / media:*), if any. */
+  imageUrl: string | null;
 }
 
 /**
@@ -36,6 +38,7 @@ export interface Candidate {
   sourceUrl: string;
   sourceTitle: string | null;
   feedTitle: string | null;
+  imageUrl: string | null;
   state: CandidateState;
   rewriteJson: string | null;
   tgMessageId: number | null;
@@ -69,5 +72,7 @@ export interface BlogPostBody {
   metaTitle: string;
   metaDescription: string;
   metaKeywords: string[];
+  /** Cover image URL; omitted → backend applies its default cover. */
+  coverUrl?: string;
   publish: 'draft' | 'published';
 }

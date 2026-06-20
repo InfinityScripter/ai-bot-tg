@@ -40,6 +40,47 @@ describe('fetchAllFeeds', () => {
     });
   });
 
+  it('extracts a cover image from an RSS enclosure', async () => {
+    parseURL.mockResolvedValueOnce({
+      title: 'Feed',
+      items: [
+        {
+          title: 'With image',
+          link: 'https://example.com/a',
+          guid: 'https://example.com/a',
+          enclosure: { url: 'https://cdn.example.com/pic.jpg', type: 'image/jpeg' },
+        },
+      ],
+    });
+    const items = await fetchAllFeeds(['https://feed.one/rss']);
+    expect(items[0]?.imageUrl).toBe('https://cdn.example.com/pic.jpg');
+  });
+
+  it('extracts a cover image from media:content', async () => {
+    parseURL.mockResolvedValueOnce({
+      title: 'Feed',
+      items: [
+        {
+          title: 'Media item',
+          link: 'https://example.com/b',
+          guid: 'https://example.com/b',
+          mediaContent: [{ $: { url: 'https://cdn.example.com/m.jpg', medium: 'image' } }],
+        },
+      ],
+    });
+    const items = await fetchAllFeeds(['https://feed.one/rss']);
+    expect(items[0]?.imageUrl).toBe('https://cdn.example.com/m.jpg');
+  });
+
+  it('leaves imageUrl null when no image is present', async () => {
+    parseURL.mockResolvedValueOnce({
+      title: 'Feed',
+      items: [{ title: 'No image', link: 'https://example.com/c', guid: 'https://example.com/c' }],
+    });
+    const items = await fetchAllFeeds(['https://feed.one/rss']);
+    expect(items[0]?.imageUrl).toBeNull();
+  });
+
   it('skips items with no stable identifier and no title', async () => {
     parseURL.mockResolvedValueOnce({
       title: 'Feed',

@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe('toBlogPostBody', () => {
-  it('maps a rewrite into the publish body with published status', () => {
+  it('maps a rewrite into the publish body with published status (no cover)', () => {
     const body = toBlogPostBody(REWRITE);
     expect(body).toEqual({
       title: 'New title',
@@ -29,6 +29,16 @@ describe('toBlogPostBody', () => {
       metaKeywords: ['t1', 't2'],
       publish: 'published',
     });
+    expect(body).not.toHaveProperty('coverUrl');
+  });
+
+  it('includes coverUrl when an image is provided', () => {
+    const body = toBlogPostBody(REWRITE, 'https://cdn.example.com/p.jpg');
+    expect(body.coverUrl).toBe('https://cdn.example.com/p.jpg');
+  });
+
+  it('omits coverUrl when image is null', () => {
+    expect(toBlogPostBody(REWRITE, null)).not.toHaveProperty('coverUrl');
   });
 });
 

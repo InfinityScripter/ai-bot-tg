@@ -20,6 +20,15 @@ const EnvSchema = z.object({
   REWRITE_MODEL: z.string().default('claude-haiku-4-5'),
   /** Max candidates surfaced per run, to cap Claude spend on a noisy day. */
   MAX_PER_RUN: z.coerce.number().int().positive().default(15),
+  /**
+   * When '1'/'true', skip the Claude call and build the post from the feed item
+   * directly. Lets the full pipeline (collect → approve → publish) be tested
+   * without API credits. NOT for production — output isn't a real rewrite.
+   */
+  REWRITE_MOCK: z
+    .enum(['0', '1', 'true', 'false'])
+    .default('0')
+    .transform((v) => v === '1' || v === 'true'),
 });
 
 function loadConfig() {

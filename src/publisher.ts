@@ -1,8 +1,12 @@
 import { CONFIG } from './config.js';
 import type { BlogPostBody, RewriteResult } from './types.js';
 
-/** Builds the blog post body from a rewrite result. */
-export function toBlogPostBody(rewrite: RewriteResult): BlogPostBody {
+/**
+ * Builds the blog post body from a rewrite result and an optional cover image
+ * URL (taken from the source feed, not the rewrite). Omitting coverUrl lets the
+ * backend apply its default cover.
+ */
+export function toBlogPostBody(rewrite: RewriteResult, coverUrl?: string | null): BlogPostBody {
   return {
     title: rewrite.title,
     description: rewrite.description,
@@ -11,6 +15,7 @@ export function toBlogPostBody(rewrite: RewriteResult): BlogPostBody {
     metaTitle: rewrite.metaTitle,
     metaDescription: rewrite.metaDescription,
     metaKeywords: rewrite.tags,
+    ...(coverUrl ? { coverUrl } : {}),
     publish: 'published',
   };
 }
@@ -20,7 +25,7 @@ export function toBlogPostBody(rewrite: RewriteResult): BlogPostBody {
  * the new blog post id on success; throws with a readable message otherwise so
  * the caller can surface it in the Telegram DM and mark publish_failed.
  */
-export async function publishToBlog(rewrite: RewriteResult): Promise<string> {
+export async function publishToBlog(rewrite: RewriteResult, coverUrl?: string | null): Promise<string> {
   const url = `${CONFIG.BLOG_API_URL.replace(/\/$/, '')}/api/post/new`;
   let response: Response;
   try {
@@ -30,7 +35,7 @@ export async function publishToBlog(rewrite: RewriteResult): Promise<string> {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${CONFIG.BOT_API_TOKEN}`,
       },
-      body: JSON.stringify(toBlogPostBody(rewrite)),
+      body: JSON.stringify(toBlogPostBody(rewrite, coverUrl)),
     });
   } catch (err) {
     throw new Error(`Не удалось связаться с блогом: ${String(err)}`);

@@ -10,6 +10,7 @@ function item(overrides: Partial<FeedItem> = {}): FeedItem {
     title: 'Title A',
     snippet: 'snippet',
     feedTitle: 'Feed',
+    imageUrl: null,
     ...overrides,
   };
 }
