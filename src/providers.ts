@@ -50,9 +50,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     baseUrl: 'https://api.z.ai/api/paas/v4',
     apiKey: () => CONFIG.GLM_API_KEY,
     defaultModel: CONFIG.GLM_MODEL,
-    // glm-4.7-flash is free and works (verified live) though it isn't always in
-    // the account /models list; glm-4.6/glm-4.5-air are listed fallbacks.
-    fallbackModels: ['glm-4.7-flash', 'glm-4.6', 'glm-4.5-air'],
+    // The *-flash variants are FREE and verified working, but the live /models
+    // list returns only PAID models — so these must be in the fallback to ever
+    // appear as buttons. Free ones first.
+    fallbackModels: ['glm-4.7-flash', 'glm-4.5-flash', 'glm-4.6', 'glm-4.5-air'],
   },
   deepseek: {
     label: 'DeepSeek',

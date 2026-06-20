@@ -22,7 +22,12 @@ describe('listModels', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const models = await list('glm');
-    expect(models).toEqual(['glm-4.7', 'glm-4.7-flash']);
+    // Live ids are merged after the fallback (which holds the free models); the
+    // duplicate 'glm-4.7-flash' is de-duped, and 'glm-4.7' (paid, live) appears.
+    expect(models).toContain('glm-4.7'); // from live
+    expect(models).toContain('glm-4.7-flash'); // from fallback, once
+    expect(models.filter((m) => m === 'glm-4.7-flash')).toHaveLength(1);
+    expect(models.indexOf('glm-4.7-flash')).toBeLessThan(models.indexOf('glm-4.7'));
     const url = fetchMock.mock.calls[0]![0] as string;
     expect(url).toContain('api.z.ai');
     expect(url).toContain('/models');

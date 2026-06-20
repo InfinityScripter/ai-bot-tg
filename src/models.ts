@@ -54,13 +54,30 @@ export async function listModels(provider: ProviderName): Promise<string[]> {
     });
     if (!response.ok) return spec.fallbackModels;
     const data = (await response.json()) as ModelsListResponse;
-    const ids = (data.data ?? [])
+    const live = (data.data ?? [])
       .map((m) => m.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
-    return ids.length ? ids.slice(0, MAX_MODELS) : spec.fallbackModels;
+    // Merge fallback FIRST, then live. The fallback holds the known-good (often
+    // free) models — e.g. GLM's free *-flash variants are absent from the live
+    // /models list, which returns only paid models. Listing fallback first
+    // guarantees those stay one tap away; de-dupe keeps each id once.
+    return dedupe([...spec.fallbackModels, ...live]).slice(0, MAX_MODELS);
   } catch {
     return spec.fallbackModels;
   }
+}
+
+/** Order-preserving de-duplication. */
+function dedupe(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const it of items) {
+    if (!seen.has(it)) {
+      seen.add(it);
+      out.push(it);
+    }
+  }
+  return out;
 }
 
 /**
