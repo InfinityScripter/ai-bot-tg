@@ -95,6 +95,21 @@ describe('resolveActiveProvider', () => {
   });
 });
 
+describe('modelPriceLabel', () => {
+  it('marks free models with 🆓 and paid models with 💲 + note', async () => {
+    const { modelPriceLabel } = await importProviders();
+    expect(modelPriceLabel('glm-4.7-flash')).toContain('🆓');
+    const paid = modelPriceLabel('deepseek-v4-flash');
+    expect(paid).toContain('💲');
+    expect(paid).toMatch(/\$/); // has a price note
+  });
+
+  it('returns empty for an unknown model id', async () => {
+    const { modelPriceLabel } = await importProviders();
+    expect(modelPriceLabel('some-unknown-model-xyz')).toBe('');
+  });
+});
+
 describe('hasActiveOverride', () => {
   it('is false with no override, true with a valid one', async () => {
     vi.stubEnv('REWRITE_PROVIDER', 'glm');

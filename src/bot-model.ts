@@ -1,4 +1,4 @@
-import { PROVIDERS, isProviderName, providerNames } from './providers.js';
+import { PROVIDERS, isProviderName, modelPriceLabel, providerNames } from './providers.js';
 import type { ProviderName } from './providers.js';
 
 /**
@@ -92,7 +92,10 @@ export function modelButtons(provider: ProviderName, models: string[]): ButtonSp
   for (const m of models) {
     const data = encodeModel(provider, m);
     if (Buffer.byteLength(data, 'utf8') <= MAX_CALLBACK_BYTES) {
-      rows.push({ text: m, data });
+      // Append a free/paid price hint when we know one (callback data is
+      // unaffected — the label is display-only and stays well under 64 bytes).
+      const price = modelPriceLabel(m);
+      rows.push({ text: price ? `${m} — ${price}` : m, data });
     }
   }
   rows.push({ text: '← Провайдеры', data: CB.BACK });

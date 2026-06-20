@@ -64,16 +64,27 @@ describe('button specs', () => {
     for (const b of buttons) expect(b.data.startsWith(CB.PROVIDER)).toBe(true);
   });
 
-  it('modelButtons lists models and appends a back button', () => {
+  it('modelButtons lists models (with price hints) and appends a back button', () => {
     const buttons = modelButtons('glm', ['glm-4.7-flash', 'glm-4.7']);
-    expect(buttons.map((b) => b.text)).toEqual(['glm-4.7-flash', 'glm-4.7', '← Провайдеры']);
-    expect(buttons.at(-1)!.data).toBe(CB.BACK);
+    // callback data stays the bare encoded id; the visible text gains a hint.
+    expect(buttons.map((b) => b.data)).toEqual([
+      encodeModel('glm', 'glm-4.7-flash'),
+      encodeModel('glm', 'glm-4.7'),
+      CB.BACK,
+    ]);
+    expect(buttons[0]!.text).toContain('glm-4.7-flash');
+    expect(buttons[0]!.text).toContain('🆓'); // free model marked
+    expect(buttons[1]!.text).toContain('💲'); // paid model marked
+    expect(buttons.at(-1)!.text).toBe('← Провайдеры');
   });
 
   it('modelButtons drops a model whose callback data would exceed 64 bytes', () => {
     const tooLong = 'x'.repeat(70); // 'mm_glm__' + 70 > 64
     const buttons = modelButtons('glm', ['glm-4.7-flash', tooLong]);
-    expect(buttons.map((b) => b.text)).toEqual(['glm-4.7-flash', '← Провайдеры']);
+    expect(buttons.map((b) => b.data)).toEqual([
+      encodeModel('glm', 'glm-4.7-flash'),
+      CB.BACK,
+    ]);
     // every surviving button is within the limit
     for (const b of buttons) {
       expect(Buffer.byteLength(b.data, 'utf8')).toBeLessThanOrEqual(64);

@@ -72,6 +72,49 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
   },
 };
 
+/**
+ * Rough price hints per model, for the /model buttons. Prices are USD per 1M
+ * tokens (input/output), approximate and provider-published — meant to flag
+ * "free vs paid", not for billing. A model absent here renders without a hint.
+ *   tier 'free'  → 🆓
+ *   tier 'paid'  → 💲 with the $in/$out note
+ */
+export interface ModelPrice {
+  tier: 'free' | 'paid';
+  /** Short note shown next to the model, e.g. "$0.14/$0.28 за 1M". */
+  note?: string;
+}
+
+export const MODEL_PRICES: Record<string, ModelPrice> = {
+  // GLM (Z.ai) — *-flash are free; others are paid.
+  'glm-4.7-flash': { tier: 'free' },
+  'glm-4.5-flash': { tier: 'free' },
+  'glm-4.6': { tier: 'paid', note: '$0.60/$2.20 за 1M' },
+  'glm-4.7': { tier: 'paid', note: '$0.60/$2.20 за 1M' },
+  'glm-4.5-air': { tier: 'paid', note: 'дёшево' },
+  'glm-5': { tier: 'paid', note: '$1.00/… за 1M' },
+  // DeepSeek — both V4 tiers are paid but cheap.
+  'deepseek-v4-flash': { tier: 'paid', note: '$0.14/$0.28 за 1M' },
+  'deepseek-v4-pro': { tier: 'paid', note: '$1.74/$3.48 за 1M' },
+  'deepseek-chat': { tier: 'paid', note: '≈ v4-flash' },
+  // Claude — paid.
+  'claude-haiku-4-5': { tier: 'paid', note: 'Anthropic, платно' },
+  'claude-sonnet-4-6': { tier: 'paid', note: 'Anthropic, дороже' },
+  // Gemini — free tier exists but is geo/quota limited from RU.
+  'gemini-2.0-flash': { tier: 'free', note: 'free-tier (гео-лимит из РФ)' },
+  'gemini-2.5-flash': { tier: 'free', note: 'free-tier (гео-лимит из РФ)' },
+  // Mock — no cost.
+  mock: { tier: 'free' },
+};
+
+/** A short price/tier label for a model, or '' if unknown. */
+export function modelPriceLabel(model: string): string {
+  const p = MODEL_PRICES[model];
+  if (!p) return '';
+  if (p.tier === 'free') return p.note ? `🆓 ${p.note}` : '🆓';
+  return p.note ? `💲 ${p.note}` : '💲';
+}
+
 /** All provider names, in registry order. */
 export function providerNames(): ProviderName[] {
   return Object.keys(PROVIDERS) as ProviderName[];
