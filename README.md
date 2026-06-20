@@ -97,7 +97,16 @@ Tests mock the network (RSS, Claude, blog) — no live keys needed.
 
 ## Deploy
 
-Designed to run as a long-lived process (e.g. a systemd unit) on the same VDS as
-the blog. `npm run build` emits `dist/`; run `node dist/src/index.js`, or run the
-TS directly with `tsx src/index.ts`. Point `BLOG_API_URL` at the public API
-(`https://api.talalaev.su:8444`) or, if co-located, `http://localhost:7272`.
+**Live in prod** on the same VDS as the blog (systemd `blog-newsbot`). A push to
+`main` auto-deploys via GitHub Actions.
+
+- **[deploy/RUNBOOK.md](deploy/RUNBOOK.md)** — reproducible recipe: deploy style,
+  the four CI secrets (and where the SSH key comes from — the step that bit us
+  once), first manual deploy, the backend-must-know-the-bot gotcha, verify, and
+  rollback. **Read this before setting up CI for a new service or re-running.**
+- **[deploy/DEPLOY.md](deploy/DEPLOY.md)** — exact env keys, the systemd unit, and
+  the CI / rollback reference.
+
+Runs the TS entrypoint directly with `tsx` (`node --import tsx src/index.ts`) — no
+build step. `BLOG_API_URL` points at `http://localhost:7272` (co-located) or the
+public API `https://api.talalaev.su:8444`.
