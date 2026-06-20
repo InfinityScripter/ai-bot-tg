@@ -71,7 +71,22 @@ Telegram commands (owner-only):
 - `/fetch` — run a collection cycle now (same as the daily cron)
 - `/model` — switch the rewrite provider/model at runtime; pings the chosen
   model before saving and persists the choice across restarts (in the SQLite
-  ledger). "↩️ Сбросить на env" reverts to the `.env` default.
+  ledger). The menu also has a **🧪 Mock** toggle (publish a copy of the source
+  without an LLM) — its db value is authoritative over the `REWRITE_MOCK` env.
+  Picking a model clears Mock; "↩️ Сбросить на env" clears both overrides.
+
+## Admin control server (optional)
+
+When `BOT_CONTROL_TOKEN` is set, the bot also starts a **localhost-only**
+(`127.0.0.1:CONTROL_PORT`) HTTP control server so a co-located backend / web
+admin can read and change the active model + Mock without Telegram. Every
+request needs `Authorization: Bearer <BOT_CONTROL_TOKEN>` (constant-time check).
+Unset the token → the server isn't started and the bot runs normally; a bind
+failure (port taken) only disables the panel, never the news pipeline.
+
+Endpoints: `GET /control/status`, `GET /control/providers`,
+`GET /control/models?provider=`, `POST /control/model {provider,model}`,
+`POST /control/mock {enabled}`.
 
 ## How a run works
 
