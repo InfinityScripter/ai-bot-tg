@@ -2,6 +2,7 @@ import { CONFIG } from './config.js';
 import { createBot } from './bot.js';
 import { runCollection } from './collector.js';
 import { scheduleDaily } from './scheduler.js';
+import { startControlServer } from './control-server.js';
 import { CandidateStore } from './store.js';
 
 /**
@@ -59,6 +60,24 @@ async function main() {
 
   const job = scheduleDaily(scheduledRun);
 
+  // The admin control server is started only when a token is configured. Unset
+  // = no control server, bot still runs/publishes — so deploying this code
+  // before the env var is added can never crash the pipeline.
+  const controlServer = CONFIG.BOT_CONTROL_TOKEN
+    ? startControlServer({
+        port: CONFIG.CONTROL_PORT,
+        token: CONFIG.BOT_CONTROL_TOKEN,
+        store,
+        nextRun: () => job.nextRun(),
+      })
+    : null;
+  // eslint-disable-next-line no-console
+  console.log(
+    controlServer
+      ? `[index] control server on 127.0.0.1:${CONFIG.CONTROL_PORT}`
+      : '[index] control server disabled (BOT_CONTROL_TOKEN unset)'
+  );
+
   // eslint-disable-next-line no-console
   console.log(
     `[index] started. Next run: ${job.nextRun()?.toISOString() ?? 'n/a'} (${CONFIG.CRON_TZ})`
@@ -73,6 +92,7 @@ async function main() {
     let code = 0;
     try {
       job.stop();
+      if (controlServer) await controlServer.close();
       await bot.stop(); // grammy: stops polling; does not drain handlers
       await drain(); // wait for any in-flight publish to finish its DB writes
     } catch (err) {
