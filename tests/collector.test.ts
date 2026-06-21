@@ -20,6 +20,14 @@ vi.mock('../src/relevance.js', () => ({
   filterRelevant: (...a: unknown[]) => filterRelevant(...(a as Parameters<typeof filterRelevant>)),
 }));
 
+// Keep the collector offline: stub the audit emitter so it never hits the
+// network. We still assert it's invoked with the decisions when present.
+const emitRelevanceDecisions = vi.fn(async () => {});
+vi.mock('../src/audit-emit.js', () => ({
+  emitRelevanceDecisions: (...a: unknown[]) =>
+    emitRelevanceDecisions(...(a as Parameters<typeof emitRelevanceDecisions>)),
+}));
+
 const { runCollection } = await import('../src/collector.js');
 const { CandidateStore } = await import('../src/store.js');
 
@@ -43,6 +51,8 @@ afterEach(() => {
   // Restore the pass-through default so one case's override doesn't leak.
   filterRelevant.mockReset();
   filterRelevant.mockImplementation(async (items: FeedItem[]) => ({ kept: items, decisions: [] }));
+  emitRelevanceDecisions.mockReset();
+  emitRelevanceDecisions.mockImplementation(async () => {});
 });
 
 describe('runCollection — raw cards, no rewrite at collection', () => {
@@ -197,5 +207,42 @@ describe('runCollection — raw cards, no rewrite at collection', () => {
     store.close();
     vi.doUnmock('../src/relevance.js');
     vi.resetModules();
+  });
+
+  it('forwards the relevance decisions to the audit emitter (mode shadow, non-empty)', async () => {
+    vi.resetModules();
+    const feeds = await import('../src/feeds.js');
+    vi.spyOn(feeds, 'fetchAllFeeds').mockResolvedValue([feedItem({ url: 'https://ex.com/1' })]);
+
+    const decisions = [
+      { url: 'https://ex.com/1', title: 'T', kept: false, stage: 'llm', score: 0, reason: 'r' },
+    ];
+    const filter = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions }));
+    vi.doMock('../src/relevance.js', () => ({ filterRelevant: filter }));
+    const emit = vi.fn(async (_decisions: unknown, _mode: string) => {});
+    vi.doMock('../src/audit-emit.js', () => ({ emitRelevanceDecisions: emit }));
+    // Default RELEVANCE_MODE in the test env is 'shadow' (not 'off'), so emit fires.
+    const { runCollection: run } = await import('../src/collector.js');
+    const { CandidateStore: Store } = await import('../src/store.js');
+    const store = new Store(':memory:');
+
+    await run(store, async () => {}, 0);
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit.mock.calls[0]![0]).toEqual(decisions);
+    expect(emit.mock.calls[0]![1]).toBe('shadow');
+    store.close();
+    vi.doUnmock('../src/relevance.js');
+    vi.doUnmock('../src/audit-emit.js');
+    vi.resetModules();
+  });
+
+  it('does NOT call the audit emitter when there are no decisions (off/shadow no-op)', async () => {
+    // The top-level relevance mock returns decisions: [] → emit must be skipped.
+    const store = new CandidateStore(':memory:');
+    fetchAllFeeds.mockResolvedValue([feedItem()]);
+    await runCollection(store, async () => {}, 0);
+    expect(emitRelevanceDecisions).not.toHaveBeenCalled();
+    store.close();
   });
 });

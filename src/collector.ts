@@ -1,7 +1,9 @@
+import { emitRelevanceDecisions } from './audit-emit.js';
 import { CONFIG } from './config.js';
 import { curateForQueue, parseKeywords } from './curate.js';
 import { fetchAllFeeds } from './feeds.js';
 import { filterRelevant } from './relevance.js';
+import type { RelevanceMode } from './relevance.js';
 import type { CandidateStore } from './store.js';
 import type { Candidate } from './types.js';
 
@@ -66,7 +68,7 @@ export async function runCollection(
 
   // Topic relevance filter (AI/tech). In off/shadow mode kept === curated, so
   // nothing is dropped until the owner flips RELEVANCE_MODE=on.
-  const { kept } = await filterRelevant(curated, store);
+  const { kept, decisions } = await filterRelevant(curated, store);
   summary.afterRelevance = kept.length;
   summary.droppedRelevance = curated.length - kept.length;
 
@@ -105,5 +107,15 @@ export async function runCollection(
       `afterRelevance=${summary.afterRelevance} droppedRelevance=${summary.droppedRelevance} ` +
       `fresh=${summary.fresh} sent=${summary.sent} failed=${summary.failed}`
   );
+
+  // Mirror the relevance decisions into the backend audit log. Mode 'off'
+  // produces no decisions; the mode here must match the one filterRelevant
+  // resolved (both read CONFIG.RELEVANCE_MODE). Fire-and-forget and fail-silent:
+  // emitRelevanceDecisions never throws, so a backend outage cannot break the run.
+  const mode = CONFIG.RELEVANCE_MODE as RelevanceMode;
+  if (CONFIG.RELEVANCE_AUDIT && mode !== 'off' && decisions.length > 0) {
+    await emitRelevanceDecisions(decisions, mode);
+  }
+
   return summary;
 }

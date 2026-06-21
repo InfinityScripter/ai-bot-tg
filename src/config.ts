@@ -75,6 +75,16 @@ const EnvSchema = z.object({
   /** Optional model for the classify call; default = the active rewrite model. */
   RELEVANCE_MODEL: z.string().optional(),
   /**
+   * Mirror each relevance decision into the backend audit log
+   * (/dashboard/admin/audit-logs). Default ON. Lets the owner silence audit
+   * emission without disabling the filter itself — emission is fire-and-forget
+   * and fail-silent, so this only controls noise, never the pipeline.
+   */
+  RELEVANCE_AUDIT: z
+    .enum(['0', '1', 'true', 'false'])
+    .default('1')
+    .transform((v) => v === '1' || v === 'true'),
+  /**
    * When '1'/'true', skip the Claude call and build the post from the feed item
    * directly. Lets the full pipeline (collect → approve → publish) be tested
    * without API credits. NOT for production — output isn't a real rewrite.
