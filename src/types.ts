@@ -1,10 +1,13 @@
-import { z } from "zod";
-
 import { PublishStatus, CandidateState } from "./enums.js";
 
 // Re-exported so existing importers of these domain enums can keep importing
 // them from "./types.js" alongside the interfaces that use them.
 export { PublishStatus, CandidateState } from "./enums.js";
+
+// The rewrite zod schema + its inferred type live in src/schemas/ (validation
+// separated by entity). Re-exported here so "./types.js" stays the one type hub.
+export { RewriteSchema } from "./schemas/rewrite-schema.js";
+export type { RewriteResult } from "./schemas/rewrite-schema.js";
 
 /** A normalized item pulled from an RSS/Atom feed. */
 export interface FeedItem {
@@ -51,21 +54,6 @@ export interface Candidate {
   createdAt: string;
   updatedAt: string;
 }
-
-/**
- * Structured output of the Claude rewrite. Validated with this schema; the
- * blog publish body is derived directly from these fields.
- */
-export const RewriteSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().min(1),
-  content: z.string().min(1),
-  tags: z.array(z.string()).max(8),
-  metaTitle: z.string(),
-  metaDescription: z.string(),
-});
-
-export type RewriteResult = z.infer<typeof RewriteSchema>;
 
 /** The exact body POSTed to the blog's /api/post/new. */
 export interface BlogPostBody {

@@ -1,7 +1,7 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
-import { RelevanceMode } from "../src/enums.js";
 import { CandidateStore } from "../src/store.js";
+import { RelevanceMode, RelevanceStage } from "../src/enums.js";
 import {
   filterRelevant,
   ON_TOPIC_MARKERS,
@@ -53,7 +53,7 @@ describe("filterRelevant — stage A blocklist (mode on)", () => {
 
     expect(kept).toHaveLength(0);
     expect(classify).not.toHaveBeenCalled();
-    expect(decisions.every((d) => d.kept === false && d.stage === "blocklist")).toBe(true);
+    expect(decisions.every((d) => d.kept === false && d.stage === RelevanceStage.Blocklist)).toBe(true);
   });
 });
 
@@ -66,7 +66,7 @@ describe("filterRelevant — stage A fast-accept (mode on)", () => {
     expect(kept).toHaveLength(1);
     expect(classify).not.toHaveBeenCalled();
     expect(decisions[0]!.kept).toBe(true);
-    expect(decisions[0]!.stage).toBe("accept");
+    expect(decisions[0]!.stage).toBe(RelevanceStage.Accept);
   });
 });
 
@@ -82,7 +82,7 @@ describe("filterRelevant — stage B LLM (mode on)", () => {
 
     expect(classify).toHaveBeenCalledTimes(1);
     expect(kept).toHaveLength(1);
-    expect(decisions[0]!.stage).toBe("llm");
+    expect(decisions[0]!.stage).toBe(RelevanceStage.Llm);
     expect(decisions[0]!.kept).toBe(true);
     expect(decisions[0]!.score).toBe(3);
   });
@@ -98,7 +98,7 @@ describe("filterRelevant — stage B LLM (mode on)", () => {
 
     expect(classify).toHaveBeenCalledTimes(1);
     expect(kept).toHaveLength(0);
-    expect(decisions[0]!.stage).toBe("llm");
+    expect(decisions[0]!.stage).toBe(RelevanceStage.Llm);
     expect(decisions[0]!.kept).toBe(false);
     expect(decisions[0]!.score).toBe(1);
   });
@@ -112,7 +112,7 @@ describe("filterRelevant — fail-open (mode on)", () => {
 
     expect(kept).toHaveLength(1);
     expect(decisions[0]!.kept).toBe(true);
-    expect(decisions[0]!.stage).toBe("failopen");
+    expect(decisions[0]!.stage).toBe(RelevanceStage.FailOpen);
     expect(decisions[0]!.score).toBeNull();
   });
 
@@ -123,7 +123,7 @@ describe("filterRelevant — fail-open (mode on)", () => {
 
     expect(kept).toHaveLength(1);
     expect(decisions[0]!.kept).toBe(true);
-    expect(decisions[0]!.stage).toBe("failopen");
+    expect(decisions[0]!.stage).toBe(RelevanceStage.FailOpen);
     expect(decisions[0]!.score).toBeNull();
   });
 });
@@ -144,11 +144,11 @@ describe("filterRelevant — shadow mode", () => {
     // But the decision booleans still reflect what WOULD happen.
     const byUrl = new Map(decisions.map((d) => [d.url, d]));
     expect(byUrl.get("https://ex/horo")!.kept).toBe(false);
-    expect(byUrl.get("https://ex/horo")!.stage).toBe("blocklist");
+    expect(byUrl.get("https://ex/horo")!.stage).toBe(RelevanceStage.Blocklist);
     expect(byUrl.get("https://ex/amb")!.kept).toBe(false);
-    expect(byUrl.get("https://ex/amb")!.stage).toBe("llm");
+    expect(byUrl.get("https://ex/amb")!.stage).toBe(RelevanceStage.Llm);
     expect(byUrl.get("https://ex/ai")!.kept).toBe(true);
-    expect(byUrl.get("https://ex/ai")!.stage).toBe("accept");
+    expect(byUrl.get("https://ex/ai")!.stage).toBe(RelevanceStage.Accept);
   });
 });
 

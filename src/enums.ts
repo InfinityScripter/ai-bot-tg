@@ -87,3 +87,17 @@ export enum RelevanceAuditAction {
   ShadowDropped = "bot.relevance_shadow_dropped",
   Kept = "bot.relevance_kept",
 }
+
+/** Which stage of the relevance filter produced a decision (diagnostic field). */
+export enum RelevanceStage {
+  /** Dropped by an off-topic keyword marker. */
+  Blocklist = "blocklist",
+  /** Kept by an on-topic keyword marker (no LLM needed). */
+  Accept = "accept",
+  /** Scored by the LLM classifier. */
+  Llm = "llm",
+  /** Kept because the classifier was unavailable (fail-open). */
+  FailOpen = "failopen",
+  /** Shadow mode: a decision was computed but never enforced. */
+  Shadow = "shadow",
+}

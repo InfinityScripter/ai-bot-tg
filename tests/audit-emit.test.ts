@@ -1,6 +1,6 @@
 import { it, vi, expect, describe } from "vitest";
 
-import { RelevanceMode, RelevanceAuditAction } from "../src/enums.js";
+import { RelevanceMode, RelevanceStage, RelevanceAuditAction } from "../src/enums.js";
 import {
   relevanceActionFor,
   emitRelevanceDecision,
@@ -14,7 +14,7 @@ function decision(overrides: Partial<RelevanceDecision> = {}): RelevanceDecision
     url: "https://ex.com/post",
     title: "A title",
     kept: false,
-    stage: "llm",
+    stage: RelevanceStage.Llm,
     score: 1,
     reason: "score=1 threshold=2",
     ...overrides,
@@ -63,7 +63,7 @@ describe("emitRelevanceDecision — request shape", () => {
   it("POSTs to /api/admin/audit/ingest with bearer header and correct body", async () => {
     const { fetchFn, calls } = fakeFetch();
     await emitRelevanceDecision(
-      decision({ url: "https://ex.com/x", title: "Hi", score: 1, stage: "llm", reason: "why" }),
+      decision({ url: "https://ex.com/x", title: "Hi", score: 1, stage: RelevanceStage.Llm, reason: "why" }),
       RelevanceMode.On,
       { fetchFn },
     );
@@ -86,7 +86,7 @@ describe("emitRelevanceDecision — request shape", () => {
     expect(body.action).toBe(RelevanceAuditAction.Dropped);
     expect(body.targetType).toBe("post");
     expect(body.targetId).toBe("https://ex.com/x");
-    expect(body.metadata).toEqual({ title: "Hi", score: 1, stage: "llm", reason: "why" });
+    expect(body.metadata).toEqual({ title: "Hi", score: 1, stage: RelevanceStage.Llm, reason: "why" });
   });
 
   it("truncates title to keep metadata JSON well under 4000 chars", async () => {
@@ -119,12 +119,12 @@ describe("emitRelevanceDecisions — volume guard", () => {
     const { fetchFn, calls } = fakeFetch();
     const decisions: RelevanceDecision[] = [
       // Drops — all emitted regardless of stage.
-      decision({ url: "https://ex/drop-block", kept: false, stage: "blocklist", score: null }),
-      decision({ url: "https://ex/drop-llm", kept: false, stage: "llm", score: 0 }),
+      decision({ url: "https://ex/drop-block", kept: false, stage: RelevanceStage.Blocklist, score: null }),
+      decision({ url: "https://ex/drop-llm", kept: false, stage: RelevanceStage.Llm, score: 0 }),
       // Keeps — only llm + failopen are emitted.
-      decision({ url: "https://ex/keep-accept", kept: true, stage: "accept", score: null }), // SKIP
-      decision({ url: "https://ex/keep-llm", kept: true, stage: "llm", score: 4 }),
-      decision({ url: "https://ex/keep-failopen", kept: true, stage: "failopen", score: null }),
+      decision({ url: "https://ex/keep-accept", kept: true, stage: RelevanceStage.Accept, score: null }), // SKIP
+      decision({ url: "https://ex/keep-llm", kept: true, stage: RelevanceStage.Llm, score: 4 }),
+      decision({ url: "https://ex/keep-failopen", kept: true, stage: RelevanceStage.FailOpen, score: null }),
     ];
 
     await emitRelevanceDecisions(decisions, RelevanceMode.On, { fetchFn });
@@ -151,8 +151,8 @@ describe("emitRelevanceDecisions — volume guard", () => {
     }) as unknown as typeof fetch;
 
     const decisions = [
-      decision({ url: "https://ex/a", kept: false, stage: "llm" }),
-      decision({ url: "https://ex/b", kept: false, stage: "llm" }),
+      decision({ url: "https://ex/a", kept: false, stage: RelevanceStage.Llm }),
+      decision({ url: "https://ex/b", kept: false, stage: RelevanceStage.Llm }),
     ];
     await expect(emitRelevanceDecisions(decisions, RelevanceMode.On, { fetchFn })).resolves.toBeUndefined();
     expect(fetchFn).toHaveBeenCalledTimes(2);

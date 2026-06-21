@@ -1,5 +1,5 @@
 import { CONFIG } from "./config.js";
-import { RelevanceMode } from "./enums.js";
+import { RelevanceMode, RelevanceStage } from "./enums.js";
 import { classifyRelevance } from "./relevance-classify.js";
 import { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevance-markers.js";
 
@@ -8,7 +8,7 @@ import type { CandidateStore } from "./store.js";
 
 // Re-exported so "./relevance.js" stays the stable import path for the markers,
 // the classifier, and the RelevanceMode enum after the module split.
-export { RelevanceMode } from "./enums.js";
+export { RelevanceMode, RelevanceStage } from "./enums.js";
 export { classifyRelevance } from "./relevance-classify.js";
 export { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevance-markers.js";
 
@@ -30,7 +30,7 @@ export interface RelevanceDecision {
   /** What WOULD happen: true = keep, false = drop. */
   kept: boolean;
   /** Which path decided it. */
-  stage: "blocklist" | "accept" | "llm" | "failopen" | "shadow";
+  stage: RelevanceStage;
   /** The LLM score (0–4), or null when no LLM call was made/usable. */
   score: number | null;
   reason: string;
@@ -58,11 +58,23 @@ async function decide(
   const base = { url: item.url, title: item.title };
   // Stage A — hard blocklist: unambiguously off-topic, drop for free.
   if (hasMarker(item, OFF_TOPIC_MARKERS)) {
-    return { ...base, kept: false, stage: "blocklist", score: null, reason: "off-topic marker" };
+    return {
+      ...base,
+      kept: false,
+      stage: RelevanceStage.Blocklist,
+      score: null,
+      reason: "off-topic marker",
+    };
   }
   // Stage A — on-topic fast-accept: obvious AI/tech, keep without an LLM call.
   if (hasMarker(item, ON_TOPIC_MARKERS)) {
-    return { ...base, kept: true, stage: "accept", score: null, reason: "on-topic marker" };
+    return {
+      ...base,
+      kept: true,
+      stage: RelevanceStage.Accept,
+      score: null,
+      reason: "on-topic marker",
+    };
   }
   // Stage B — single LLM classify. null (mock/error/unparsable) → fail open.
   // Guard the call too: an injected classifier that THROWS must also fail open
@@ -74,10 +86,22 @@ async function decide(
     score = null;
   }
   if (score === null) {
-    return { ...base, kept: true, stage: "failopen", score: null, reason: "classify unavailable" };
+    return {
+      ...base,
+      kept: true,
+      stage: RelevanceStage.FailOpen,
+      score: null,
+      reason: "classify unavailable",
+    };
   }
   const kept = score >= threshold;
-  return { ...base, kept, stage: "llm", score, reason: `score=${score} threshold=${threshold}` };
+  return {
+    ...base,
+    kept,
+    stage: RelevanceStage.Llm,
+    score,
+    reason: `score=${score} threshold=${threshold}`,
+  };
 }
 
 /** Logs one decision. Would-drops in shadow mode are prefixed 'SHADOW-DROP'. */

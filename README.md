@@ -40,6 +40,29 @@ repo: `docs/superpowers/specs/2026-06-20-news-bot-design.md`.
 - [zod](https://zod.dev) — env + rewrite validation
 - TypeScript, run with [tsx](https://www.npmjs.com/package/tsx)
 
+## Code style & structure
+
+Shares the blog frontend's house style (ESLint airbnb-base + perfectionist +
+Prettier, see `.eslintrc.cjs`). Run `npm run lint` / `npm run lint:fix` and
+`npm run fm:fix`. Conventions, organised by entity:
+
+- **`src/enums.ts`** — domain string enums (member value = the wire string, so
+  DB/env/JSON stay byte-identical): `CandidateState`, `ProviderName`,
+  `ProviderKind`, `RelevanceMode`, `RelevanceStage`, `PublishStatus`,
+  `CallbackKind`, `InputKind`, `RelevanceAuditAction`. No raw string-literal
+  unions for these — always the enum member.
+- **`src/consts.ts`** — non-enum string constants (Telegram callback-data
+  prefixes: `MODEL_CALLBACK`, `CARD_CALLBACK`, `MODEL_CALLBACK_SEP`).
+- **`src/types.ts`** — the type hub: domain interfaces, re-exporting the enums
+  and the rewrite schema's inferred type.
+- **`src/schemas/`** — zod validation, one file per entity: `rewrite-schema.ts`
+  (the LLM rewrite output), `env-schema.ts` (the environment contract).
+- Business logic is split into focused modules under ~200 lines (`max-lines`
+  ESLint rule, locked at error): e.g. the bot is `bot.ts` + `bot-render` /
+  `bot-keyboards` / `bot-edit` / `bot-model-menu` / `bot-handlers` /
+  `bot-ingest`; the store is `store.ts` + `store-schema` / `store-settings`;
+  relevance is `relevance.ts` + `relevance-markers` / `relevance-classify`.
+
 ## Setup
 
 ```bash

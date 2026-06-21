@@ -1,5 +1,5 @@
 import { CONFIG } from "./config.js";
-import { RelevanceMode, RelevanceAuditAction } from "./enums.js";
+import { RelevanceMode, RelevanceStage, RelevanceAuditAction } from "./enums.js";
 
 import type { RelevanceDecision } from "./relevance.js";
 
@@ -62,7 +62,11 @@ export function relevanceActionFor(
  * is always a drop, so it's covered by the kept === false branch.
  */
 function isInteresting(decision: RelevanceDecision): boolean {
-  return decision.kept === false || decision.stage === "llm" || decision.stage === "failopen";
+  return (
+    decision.kept === false ||
+    decision.stage === RelevanceStage.Llm ||
+    decision.stage === RelevanceStage.FailOpen
+  );
 }
 
 /**
