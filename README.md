@@ -9,9 +9,10 @@ publish-time**, not at collection — tokens are spent only on items the owner
 chooses to process.
 
 ```
-croner (daily) ─► feeds (RSS) ─► dedup (SQLite) ─► store RAW item
-                                  │
-                                  ▼
+croner (daily) ─► feeds (RSS) ─┐
+owner DMs a URL / text ─────────┼─► dedup (SQLite) ─► store RAW item
+                                │
+                                ▼
    Telegram DM (RAW): source title + snippet + [🔄 Переработать] [❌ Пропустить]
                                   │  (owner taps 🔄 — rewrite with the active /model)
                                   ▼
@@ -21,6 +22,9 @@ croner (daily) ─► feeds (RSS) ─► dedup (SQLite) ─► store RAW item
                                   ▼
         POST {BLOG_API_URL}/api/post/new  (Bearer BOT_API_TOKEN)
 ```
+
+Two entry points feed the same pipeline: the daily RSS collector and an owner
+message (a link or text) — see [Send a link or text](#send-a-link-or-text-manual-ingest).
 
 The bot talks to the blog only over the HTTP publish API. It owns its own state
 (a single SQLite file); the blog owns posts. See the design doc in the backend
@@ -74,6 +78,21 @@ Telegram commands (owner-only):
   ledger). The menu also has a **🧪 Mock** toggle (publish a copy of the source
   without an LLM) — its db value is authoritative over the `REWRITE_MOCK` env.
   Picking a model clears Mock; "↩️ Сбросить на env" clears both overrides.
+
+### Send a link or text (manual ingest)
+
+Besides the daily RSS feed, the owner can inject a one-off post by **DMing the
+bot a message** — no command needed:
+
+- **A URL** (`https://…`) — the bot scrapes the page (title, body, og:image +
+  body images) and turns it into a candidate.
+- **Plain text** — the first line becomes the title, the rest the body. Paste an
+  article or write your own.
+
+Either way the bot replies with the usual **raw card** (🔄 Переработать /
+❌ Пропустить), so the message flows through the *same* rewrite → preview →
+publish path as a collected feed item. A URL already seen (or identical text
+re-sent) is deduped with a short "уже была" reply.
 
 ## Admin control server (optional)
 

@@ -11,13 +11,14 @@ import {
   providerButtons,
   statusText,
 } from './bot-model.js';
+import { classifyInput, fetchArticle, feedItemFromText } from './ingest.js';
 import { listModels, pingModel } from './models.js';
 import { PROVIDERS, hasActiveOverride, isMockActive, resolveActiveProvider } from './providers.js';
 import { PublishError, publishToBlog } from './publisher.js';
 import { rewriteToPost } from './rewriter.js';
 import type { ButtonSpec } from './bot-model.js';
 import type { CandidateStore } from './store.js';
-import type { Candidate, CandidateState, RewriteResult } from './types.js';
+import type { Candidate, CandidateState, FeedItem, RewriteResult } from './types.js';
 import { escapeMarkdown, truncate } from './utils.js';
 
 /** Logs a swallowed edit error instead of hiding it entirely. */
@@ -223,6 +224,21 @@ export function createBot(
   bot.command('model', async (ctx) => {
     const { text, keyboard } = modelMenu(store);
     await ctx.reply(text, { reply_markup: keyboard });
+  });
+
+  // Manual ingest: the owner DMs the bot a URL or free text, and the bot turns
+  // it into a candidate that flows through the SAME rewrite → preview → publish
+  // pipeline as a daily-collected RSS item. Registered after the commands, so it
+  // only fires for non-command text (grammy routes "/cmd" to bot.command).
+  bot.on('message:text', async (ctx) => {
+    const raw = ctx.message.text;
+    // Defensive: an unknown "/command" reaches here (no matching bot.command).
+    // Don't treat it as article text — guide instead of ingesting "/foo".
+    if (raw.startsWith('/')) {
+      await ctx.reply('Неизвестная команда. /fetch — собрать новости, /model — модель, /ping — проверка.');
+      return;
+    }
+    await ingestMessage(ctx, raw);
   });
 
   bot.on('callback_query:data', async (ctx) => {
@@ -514,6 +530,49 @@ export function createBot(
         logEditError(`${label} resend-markdown`)(sendErr);
       }
     }
+  }
+
+  /**
+   * Handles an owner-sent message (URL or free text): build a FeedItem, insert
+   * it as a fresh candidate, and DM the raw card — from there it's the normal
+   * rewrite → preview → publish flow. A URL is scraped; free text is taken as
+   * the article. A dedup hit (already seen) replies instead of inserting; a URL
+   * fetch failure surfaces the error and inserts nothing.
+   */
+  async function ingestMessage(ctx: Context, raw: string): Promise<void> {
+    const input = classifyInput(raw);
+    if (input.kind === 'empty') {
+      await ctx.reply('Пришлите ссылку на статью или текст — переработаю в пост.');
+      return;
+    }
+
+    let item: FeedItem;
+    if (input.kind === 'url') {
+      await ctx.reply('⏳ Загружаю статью по ссылке…');
+      try {
+        item = await fetchArticle(input.url);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await ctx.reply(`⚠️ Не удалось получить статью: ${message}`);
+        return;
+      }
+    } else {
+      item = feedItemFromText(input.text);
+    }
+
+    const id = store.insertCollected(item);
+    if (id === null) {
+      await ctx.reply('Эта новость уже была в очереди или опубликована.');
+      return;
+    }
+    const candidate = store.get(id);
+    if (!candidate) {
+      // Should not happen (just inserted) — guard so we never call sendRawCard
+      // with a stale id.
+      await ctx.reply('⚠️ Не удалось создать карточку — попробуйте ещё раз.');
+      return;
+    }
+    await sendRawCard(candidate);
   }
 
   /** Sends the owner a RAW card for a freshly-collected candidate. */

@@ -79,8 +79,9 @@ function extractImageUrl(item: Parser.Item & RssItem): string | null {
 }
 
 // Matches src="..." / src='...' inside an <img …> tag. Capture group 1 is the
-// URL. Global so we can sweep every image in the article body.
-const IMG_SRC_RE = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+// URL. Global so we can sweep every image in the article body. Exported so the
+// manual-ingest article scraper can sweep a page's <img> tags the same way.
+export const IMG_SRC_RE = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
 
 /**
  * Collects every usable image URL for an item: the cover first, then every
@@ -109,10 +110,10 @@ function extractImageUrls(item: Parser.Item & RssItem, cover: string | null): st
 }
 
 /** Matches a <meta property="og:image"> / name="twitter:image" content URL. */
-const OG_IMAGE_RE =
+export const OG_IMAGE_RE =
   /<meta[^>]+(?:property|name)=["'](?:og:image|og:image:url|twitter:image)["'][^>]+content=["']([^"']+)["']/i;
 /** Same, but with content before the property/name attribute (order varies). */
-const OG_IMAGE_RE_ALT =
+export const OG_IMAGE_RE_ALT =
   /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|og:image:url|twitter:image)["']/i;
 
 /**
