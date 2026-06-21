@@ -14,7 +14,10 @@ describe("classifyInput", () => {
       kind: InputKind.Url,
       url: "https://ex.com/article",
     });
-    expect(classifyInput("http://ex.com/a")).toEqual({ kind: InputKind.Url, url: "http://ex.com/a" });
+    expect(classifyInput("http://ex.com/a")).toEqual({
+      kind: InputKind.Url,
+      url: "http://ex.com/a",
+    });
   });
 
   it("takes the URL when the message is a URL plus a trailing note", () => {

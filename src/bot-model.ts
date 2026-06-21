@@ -128,7 +128,7 @@ export function statusText(
   if (mockActive) {
     return "Режим Mock ВКЛ — пост публикуется как копия источника, без LLM.\n\nВыберите провайдера или выключите Mock:";
   }
-  const {label} = PROVIDERS[active.provider];
+  const { label } = PROVIDERS[active.provider];
   const source = hasOverride ? "override" : "env";
   return `Текущая модель: ${label} / ${active.model} (источник: ${source})\n\nВыберите провайдера:`;
 }

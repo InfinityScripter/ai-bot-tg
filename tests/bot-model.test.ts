@@ -15,7 +15,10 @@ import {
 describe("callback data round-trip", () => {
   it("encodes and parses a provider pick", () => {
     const data = encodeProvider(ProviderName.Glm);
-    expect(parseCallback(data)).toEqual({ kind: CallbackKind.Provider, provider: ProviderName.Glm });
+    expect(parseCallback(data)).toEqual({
+      kind: CallbackKind.Provider,
+      provider: ProviderName.Glm,
+    });
   });
 
   it("encodes and parses a model pick, preserving dotted model ids", () => {

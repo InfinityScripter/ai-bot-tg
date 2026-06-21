@@ -5,10 +5,11 @@ import Database from "better-sqlite3";
 import { CONFIG } from "./config.js";
 import { CandidateState } from "./enums.js";
 import * as settings from "./store-settings.js";
+import * as mutations from "./store-mutations.js";
 import { SCHEMA, mapRow, MIGRATIONS } from "./store-schema.js";
 
 import type { FeedItem, Candidate, RewriteResult } from "./types.js";
-import type { CandidateRow , MockOverride, ModelOverride } from "./store-schema.js";
+import type { CandidateRow, MockOverride, ModelOverride } from "./store-schema.js";
 
 // Re-exported so existing importers can keep importing these settings shapes
 // from "./store.js" alongside the CandidateStore that produces them.
@@ -55,15 +56,7 @@ export class CandidateStore {
    * → 'pending_review' (re-offer publish). Idempotent; runs once per process.
    */
   private recoverInFlight(): void {
-    const move = this.db.prepare(
-      `UPDATE candidates SET state = ?, updated_at = datetime('now') WHERE state = ?`,
-    );
-    // 'rewriting' is safe to retry — no external side effect happened.
-    move.run(CandidateState.Collected, CandidateState.Rewriting);
-    // 'publishing' MAY have already POSTed to the blog. Do NOT reset to
-    // pending_review (that re-offers Publish and can create a duplicate post);
-    // move to needs_verification so the owner is warned before re-publishing.
-    move.run(CandidateState.NeedsVerification, CandidateState.Publishing);
+    mutations.recoverInFlight(this.db);
   }
 
   /**
@@ -184,80 +177,34 @@ export class CandidateStore {
     return row ? mapRow(row) : null;
   }
 
-  /**
-   * Atomically claims a candidate for publishing: transitions
-   * pending_review → publishing in a single UPDATE and reports whether THIS
-   * caller won. Two concurrent Publish taps both call this; exactly one gets
-   * `true` (changes === 1), the other gets `false` — preventing a double-post.
-   */
+  /** Atomically claims pending_review/needs_verification → publishing (one winner). */
   claimForPublishing(id: number): boolean {
-    const from = [CandidateState.PendingReview, CandidateState.NeedsVerification];
-    const info = this.db
-      .prepare(
-        `UPDATE candidates SET state = ?, updated_at = datetime('now')
-         WHERE id = ? AND state IN (?, ?)`,
-      )
-      .run(CandidateState.Publishing, id, ...from);
-    return info.changes === 1;
+    return mutations.claimForPublishing(this.db, id);
   }
 
-  /**
-   * Atomically claims a candidate for rewriting: transitions a
-   * collected/pending_review/rewrite_failed row → 'rewriting' in one UPDATE and
-   * reports whether THIS caller won. Mirrors claimForPublishing — a double-tap
-   * of 🔄 can't start two concurrent (token-spending) rewrites on one candidate.
-   */
+  /** Atomically claims collected/pending_review/rewrite_failed → rewriting (one winner). */
   claimForRewriting(id: number): boolean {
-    const from = [
-      CandidateState.Collected,
-      CandidateState.PendingReview,
-      CandidateState.RewriteFailed,
-    ];
-    const info = this.db
-      .prepare(
-        `UPDATE candidates SET state = ?, error = NULL, updated_at = datetime('now')
-         WHERE id = ? AND state IN (?, ?, ?)`,
-      )
-      .run(CandidateState.Rewriting, id, ...from);
-    return info.changes === 1;
+    return mutations.claimForRewriting(this.db, id);
   }
 
   /** Sets the state (and optionally an error message) for a candidate. */
   setState(id: number, state: CandidateState, error: string | null = null): void {
-    this.db
-      .prepare(
-        `UPDATE candidates SET state = ?, error = ?, updated_at = datetime('now') WHERE id = ?`,
-      )
-      .run(state, error, id);
+    mutations.setState(this.db, id, state, error);
   }
 
   /** Stores the rewrite result and moves the candidate to 'pending_review'. */
   attachRewrite(id: number, rewrite: RewriteResult): void {
-    this.db
-      .prepare(
-        `UPDATE candidates
-         SET rewrite_json = ?, state = ?, error = NULL, updated_at = datetime('now')
-         WHERE id = ?`,
-      )
-      .run(JSON.stringify(rewrite), CandidateState.PendingReview, id);
+    mutations.attachRewrite(this.db, id, rewrite);
   }
 
   /** Records the Telegram message id of the approval DM. */
   setTelegramMessage(id: number, messageId: number): void {
-    this.db
-      .prepare(`UPDATE candidates SET tg_message_id = ?, updated_at = datetime('now') WHERE id = ?`)
-      .run(messageId, id);
+    mutations.setTelegramMessage(this.db, id, messageId);
   }
 
   /** Marks a candidate published and records the blog post id. */
   setPublished(id: number, blogPostId: string): void {
-    this.db
-      .prepare(
-        `UPDATE candidates
-         SET state = ?, blog_post_id = ?, error = NULL, updated_at = datetime('now')
-         WHERE id = ?`,
-      )
-      .run(CandidateState.Published, blogPostId, id);
+    mutations.setPublished(this.db, id, blogPostId);
   }
 
   /** Parses and returns the stored rewrite for a candidate, or null. */
@@ -275,25 +222,41 @@ export class CandidateStore {
   // method set/signatures are unchanged so existing callers keep working.
 
   /** Low-level setter for a settings key. Exposed mainly for tests. */
-  setRawSetting(key: string, value: string): void { settings.setRawSetting(this.db, key, value); }
+  setRawSetting(key: string, value: string): void {
+    settings.setRawSetting(this.db, key, value);
+  }
 
   /** The active provider/model override, or null if none is set. */
-  getModelOverride(): ModelOverride | null { return settings.getModelOverride(this.db); }
+  getModelOverride(): ModelOverride | null {
+    return settings.getModelOverride(this.db);
+  }
 
   /** Sets (upserts) the active provider/model override. */
-  setModelOverride(provider: string, model: string): void { settings.setModelOverride(this.db, provider, model); }
+  setModelOverride(provider: string, model: string): void {
+    settings.setModelOverride(this.db, provider, model);
+  }
 
   /** Clears the override; the rewriter then uses the env default. */
-  clearModelOverride(): void { settings.clearModelOverride(this.db); }
+  clearModelOverride(): void {
+    settings.clearModelOverride(this.db);
+  }
 
   /** The active mock override, or null if none is set. */
-  getMockOverride(): MockOverride | null { return settings.getMockOverride(this.db); }
+  getMockOverride(): MockOverride | null {
+    return settings.getMockOverride(this.db);
+  }
 
   /** Sets (upserts) the mock override. */
-  setMockOverride(enabled: boolean): void { settings.setMockOverride(this.db, enabled); }
+  setMockOverride(enabled: boolean): void {
+    settings.setMockOverride(this.db, enabled);
+  }
 
   /** Clears the mock override; resolution then falls back to env REWRITE_MOCK. */
-  clearMockOverride(): void { settings.clearMockOverride(this.db); }
+  clearMockOverride(): void {
+    settings.clearMockOverride(this.db);
+  }
 
-  close(): void { this.db.close(); }
+  close(): void {
+    this.db.close();
+  }
 }

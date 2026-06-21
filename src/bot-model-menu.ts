@@ -1,4 +1,4 @@
-import type { Context , InlineKeyboard } from "grammy";
+import type { Context, InlineKeyboard } from "grammy";
 
 import { CallbackKind } from "./enums.js";
 import { MODEL_CALLBACK } from "./consts.js";
@@ -47,9 +47,7 @@ export async function handleModelCallback(
     store.clearMockOverride();
     const { text, keyboard } = modelMenu(store);
     await ackSilently(ctx, { text: "Сброшено на env." });
-    await ctx
-      .editMessageText(text, { reply_markup: keyboard })
-      .catch(logEditError("model reset"));
+    await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError("model reset"));
     return;
   }
 
@@ -68,9 +66,7 @@ export async function handleModelCallback(
     await ackSilently(ctx, {
       text: cb.kind === CallbackKind.MockOn ? "Mock включён." : "Mock выключен.",
     });
-    await ctx
-      .editMessageText(text, { reply_markup: keyboard })
-      .catch(logEditError("mock toggle"));
+    await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError("mock toggle"));
     return;
   }
 

@@ -179,7 +179,10 @@ describe("mock override precedence", () => {
     const s = new CandidateStore(":memory:");
     s.setModelOverride(ProviderName.Glm, "glm-4.7-flash");
     s.setMockOverride(false);
-    expect(resolveActiveProvider(s)).toEqual({ provider: ProviderName.Glm, model: "glm-4.7-flash" });
+    expect(resolveActiveProvider(s)).toEqual({
+      provider: ProviderName.Glm,
+      model: "glm-4.7-flash",
+    });
     s.close();
   });
 });
