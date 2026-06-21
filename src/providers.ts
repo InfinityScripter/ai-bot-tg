@@ -1,12 +1,11 @@
 import { CONFIG } from "./config.js";
+import { ProviderKind, ProviderName } from "./enums.js";
 
 import type { CandidateStore } from "./store.js";
 
-/** All rewrite backends the bot can use. */
-export type ProviderName = "anthropic" | "gemini" | "glm" | "deepseek" | "mock";
-
-/** How a provider is called. */
-export type ProviderKind = "anthropic" | "openai-compat" | "mock";
+// Re-exported so existing importers can keep importing these domain enums from
+// "./providers.js" alongside the registry and helpers that use them.
+export { ProviderKind, ProviderName } from "./enums.js";
 
 /** Static + lazy description of one provider. */
 export interface ProviderSpec {
@@ -29,24 +28,24 @@ export interface ProviderSpec {
  * accessors live here so adding a provider touches exactly one place.
  */
 export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
-  anthropic: {
+  [ProviderName.Anthropic]: {
     label: "Claude",
-    kind: "anthropic",
+    kind: ProviderKind.Anthropic,
     apiKey: () => CONFIG.ANTHROPIC_API_KEY,
     defaultModel: CONFIG.REWRITE_MODEL,
     fallbackModels: ["claude-haiku-4-5", "claude-sonnet-4-6"],
   },
-  gemini: {
+  [ProviderName.Gemini]: {
     label: "Gemini",
-    kind: "openai-compat",
+    kind: ProviderKind.OpenAICompat,
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     apiKey: () => CONFIG.GEMINI_API_KEY,
     defaultModel: CONFIG.GEMINI_MODEL,
     fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash"],
   },
-  glm: {
+  [ProviderName.Glm]: {
     label: "GLM",
-    kind: "openai-compat",
+    kind: ProviderKind.OpenAICompat,
     // Z.ai's OpenAI-compatible base (paas/v4); chat at {baseUrl}/chat/completions.
     baseUrl: "https://api.z.ai/api/paas/v4",
     apiKey: () => CONFIG.GLM_API_KEY,
@@ -56,17 +55,17 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     // appear as buttons. Free ones first.
     fallbackModels: ["glm-4.7-flash", "glm-4.5-flash", "glm-4.6", "glm-4.5-air"],
   },
-  deepseek: {
+  [ProviderName.DeepSeek]: {
     label: "DeepSeek",
-    kind: "openai-compat",
+    kind: ProviderKind.OpenAICompat,
     baseUrl: "https://api.deepseek.com",
     apiKey: () => CONFIG.DEEPSEEK_API_KEY,
     defaultModel: CONFIG.DEEPSEEK_MODEL,
     fallbackModels: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat"],
   },
-  mock: {
+  [ProviderName.Mock]: {
     label: "Mock (без LLM)",
-    kind: "mock",
+    kind: ProviderKind.Mock,
     apiKey: () => "mock",
     defaultModel: "mock",
     fallbackModels: ["mock"],
@@ -132,7 +131,11 @@ export function isProviderName(value: string): value is ProviderName {
  * stay in PROVIDERS so the Telegram /model path keeps working — only the admin
  * control surface is narrowed.
  */
-export const CONTROL_PROVIDERS = ["glm", "deepseek", "mock"] as const;
+export const CONTROL_PROVIDERS = [
+  ProviderName.Glm,
+  ProviderName.DeepSeek,
+  ProviderName.Mock,
+] as const;
 
 /** A provider name the admin panel is allowed to select. */
 export type ControlProviderName = (typeof CONTROL_PROVIDERS)[number];
@@ -149,7 +152,7 @@ export function chatUrl(spec: ProviderSpec): string {
 
 /** The env-configured default provider (mock if forced), with no override. */
 function envDefaultProvider(): ProviderName {
-  if (CONFIG.REWRITE_MOCK) return "mock";
+  if (CONFIG.REWRITE_MOCK) return ProviderName.Mock;
   return CONFIG.REWRITE_PROVIDER as ProviderName;
 }
 
@@ -169,7 +172,7 @@ export function resolveActiveProvider(store: CandidateStore): {
   const mockDb = store.getMockOverride();
   const forceMock = mockDb ? mockDb.enabled : CONFIG.REWRITE_MOCK;
   if (forceMock) {
-    return { provider: "mock", model: PROVIDERS.mock.defaultModel };
+    return { provider: ProviderName.Mock, model: PROVIDERS[ProviderName.Mock].defaultModel };
   }
   const override = store.getModelOverride();
   if (override) {

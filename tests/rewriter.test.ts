@@ -9,6 +9,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 }));
 
 const { rewriteToPost } = await import("../src/rewriter.js");
+import { ProviderName } from "../src/enums.js";
 import { CandidateStore } from "../src/store.js";
 
 import type { FeedItem } from "../src/types.js";
@@ -118,13 +119,18 @@ describe("rewriteToPost", () => {
 // right base URL + key env, and that a non-OK response surfaces its label.
 const OPENAI_COMPAT = [
   {
-    provider: "gemini",
+    provider: ProviderName.Gemini,
     keyEnv: "GEMINI_API_KEY",
     host: "generativelanguage.googleapis.com",
     label: "Gemini",
   },
-  { provider: "glm", keyEnv: "GLM_API_KEY", host: "api.z.ai", label: "GLM" },
-  { provider: "deepseek", keyEnv: "DEEPSEEK_API_KEY", host: "api.deepseek.com", label: "DeepSeek" },
+  { provider: ProviderName.Glm, keyEnv: "GLM_API_KEY", host: "api.z.ai", label: "GLM" },
+  {
+    provider: ProviderName.DeepSeek,
+    keyEnv: "DEEPSEEK_API_KEY",
+    host: "api.deepseek.com",
+    label: "DeepSeek",
+  },
 ] as const;
 
 describe.each(OPENAI_COMPAT)(
@@ -192,7 +198,7 @@ describe("rewriteToPost (store override)", () => {
 
     const storeMod = await import("../src/store.js");
     const store = new storeMod.CandidateStore(":memory:");
-    store.setModelOverride("glm", "glm-4.7-flash");
+    store.setModelOverride(ProviderName.Glm, "glm-4.7-flash");
 
     const mod = await import("../src/rewriter.js");
     const result = await mod.rewriteToPost(ITEM, store);

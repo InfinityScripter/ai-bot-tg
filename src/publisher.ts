@@ -1,4 +1,5 @@
 import { CONFIG } from "./config.js";
+import { PublishStatus } from "./enums.js";
 import { pickDefaultCover } from "./tags.js";
 
 import type { BlogPostBody, RewriteResult } from "./types.js";
@@ -38,7 +39,7 @@ export function toBlogPostBody(rewrite: RewriteResult, coverUrl?: string | null)
     metaDescription: rewrite.metaDescription,
     metaKeywords: rewrite.tags,
     coverUrl: coverUrl || pickDefaultCover(rewrite.title),
-    publish: "published",
+    publish: PublishStatus.Published,
   };
 }
 

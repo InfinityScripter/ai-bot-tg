@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { InputKind } from "./enums.js";
 import { truncate, stripHtml, canonicalizeUrl } from "./utils.js";
 import { IMG_SRC_RE, OG_IMAGE_RE, OG_IMAGE_RE_ALT } from "./feeds.js";
 
@@ -7,9 +8,9 @@ import type { FeedItem } from "./types.js";
 
 /** The result of classifying an owner-sent message. */
 export type ClassifiedInput =
-  | { kind: "url"; url: string }
-  | { kind: "text"; text: string }
-  | { kind: "empty" };
+  | { kind: InputKind.Url; url: string }
+  | { kind: InputKind.Text; text: string }
+  | { kind: InputKind.Empty };
 
 /** True when the token is an absolute http(s) URL. */
 function isHttpUrl(token: string): boolean {
@@ -30,10 +31,10 @@ function isHttpUrl(token: string): boolean {
  */
 export function classifyInput(raw: string): ClassifiedInput {
   const text = (raw ?? "").trim();
-  if (!text) return { kind: "empty" };
+  if (!text) return { kind: InputKind.Empty };
   const firstToken = text.split(/\s+/, 1)[0] ?? "";
-  if (isHttpUrl(firstToken)) return { kind: "url", url: firstToken };
-  return { kind: "text", text };
+  if (isHttpUrl(firstToken)) return { kind: InputKind.Url, url: firstToken };
+  return { kind: InputKind.Text, text };
 }
 
 /** Matches og:title / twitter:title (both attribute orders). */

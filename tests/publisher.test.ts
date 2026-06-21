@@ -1,5 +1,6 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
+import { PublishStatus } from "../src/enums.js";
 import { publishToBlog, toBlogPostBody } from "../src/publisher.js";
 
 import type { RewriteResult } from "../src/types.js";
@@ -28,7 +29,7 @@ describe("toBlogPostBody", () => {
       metaTitle: "Meta",
       metaDescription: "Meta desc",
       metaKeywords: ["t1", "t2"],
-      publish: "published",
+      publish: PublishStatus.Published,
     });
     // We always send a cover now (themed default when the source had none), so
     // bot posts never fall back to the backend placeholder.

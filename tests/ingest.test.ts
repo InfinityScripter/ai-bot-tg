@@ -1,5 +1,6 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
+import { InputKind } from "../src/enums.js";
 import { fetchArticle, classifyInput, feedItemFromText } from "../src/ingest.js";
 
 afterEach(() => {
@@ -10,34 +11,34 @@ afterEach(() => {
 describe("classifyInput", () => {
   it("classifies a bare http(s) URL as url mode", () => {
     expect(classifyInput("https://ex.com/article")).toEqual({
-      kind: "url",
+      kind: InputKind.Url,
       url: "https://ex.com/article",
     });
-    expect(classifyInput("http://ex.com/a")).toEqual({ kind: "url", url: "http://ex.com/a" });
+    expect(classifyInput("http://ex.com/a")).toEqual({ kind: InputKind.Url, url: "http://ex.com/a" });
   });
 
   it("takes the URL when the message is a URL plus a trailing note", () => {
     expect(classifyInput("https://ex.com/article смотри это")).toEqual({
-      kind: "url",
+      kind: InputKind.Url,
       url: "https://ex.com/article",
     });
   });
 
   it("classifies free text as text mode", () => {
     expect(classifyInput("Просто новость про ИИ")).toEqual({
-      kind: "text",
+      kind: InputKind.Text,
       text: "Просто новость про ИИ",
     });
   });
 
   it("does NOT treat text that merely contains a non-leading url as url mode", () => {
     const r = classifyInput("читай тут https://ex.com/a");
-    expect(r.kind).toBe("text");
+    expect(r.kind).toBe(InputKind.Text);
   });
 
   it("classifies empty / whitespace as empty", () => {
-    expect(classifyInput("")).toEqual({ kind: "empty" });
-    expect(classifyInput("   \n  ")).toEqual({ kind: "empty" });
+    expect(classifyInput("")).toEqual({ kind: InputKind.Empty });
+    expect(classifyInput("   \n  ")).toEqual({ kind: InputKind.Empty });
   });
 });
 

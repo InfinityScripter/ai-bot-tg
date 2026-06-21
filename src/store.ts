@@ -3,102 +3,16 @@ import { mkdirSync } from "node:fs";
 import Database from "better-sqlite3";
 
 import { CONFIG } from "./config.js";
+import { CandidateState } from "./enums.js";
+import * as settings from "./store-settings.js";
+import { SCHEMA, mapRow, MIGRATIONS } from "./store-schema.js";
 
-import type { FeedItem, Candidate, RewriteResult, CandidateState } from "./types.js";
+import type { FeedItem, Candidate, RewriteResult } from "./types.js";
+import type { CandidateRow , MockOverride, ModelOverride } from "./store-schema.js";
 
-const SCHEMA = `
-  CREATE TABLE IF NOT EXISTS candidates (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    dedup_key     TEXT UNIQUE NOT NULL,
-    source_url    TEXT NOT NULL,
-    source_title  TEXT,
-    feed_title    TEXT,
-    image_url     TEXT,
-    snippet       TEXT,
-    image_urls    TEXT,
-    state         TEXT NOT NULL,
-    rewrite_json  TEXT,
-    tg_message_id INTEGER,
-    blog_post_id  TEXT,
-    error         TEXT,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS settings (
-    key        TEXT PRIMARY KEY,
-    value      TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS seen_keys (
-    dedup_key TEXT PRIMARY KEY,
-    seen_at   TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`;
-
-/** The single settings row holding the active provider/model override. */
-const MODEL_OVERRIDE_KEY = "model_override";
-
-/** The single settings row holding the runtime mock ("без LLM") override. */
-const MOCK_OVERRIDE_KEY = "mock_override";
-
-/** Runtime override of the rewrite provider/model, stored in `settings`. */
-export interface ModelOverride {
-  provider: string;
-  model: string;
-}
-
-/** Runtime override of mock mode, stored in `settings`. */
-export interface MockOverride {
-  enabled: boolean;
-}
-// Lightweight additive migrations for pre-existing DBs (ignore if present).
-// snippet + image_urls hold the RAW feed item so a rewrite can run later
-// (on a /publish-time button tap), not only inline at collection.
-const MIGRATIONS = [
-  `ALTER TABLE candidates ADD COLUMN image_url TEXT`,
-  `ALTER TABLE candidates ADD COLUMN snippet TEXT`,
-  `ALTER TABLE candidates ADD COLUMN image_urls TEXT`,
-];
-// The UNIQUE constraint on dedup_key already creates an index — no separate
-// CREATE INDEX needed.
-
-interface CandidateRow {
-  id: number;
-  dedup_key: string;
-  source_url: string;
-  source_title: string | null;
-  feed_title: string | null;
-  image_url: string | null;
-  snippet: string | null;
-  image_urls: string | null;
-  state: string;
-  rewrite_json: string | null;
-  tg_message_id: number | null;
-  blog_post_id: string | null;
-  error: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-function mapRow(row: CandidateRow): Candidate {
-  return {
-    id: row.id,
-    dedupKey: row.dedup_key,
-    sourceUrl: row.source_url,
-    sourceTitle: row.source_title,
-    feedTitle: row.feed_title,
-    imageUrl: row.image_url,
-    snippet: row.snippet,
-    imageUrls: row.image_urls,
-    state: row.state as CandidateState,
-    rewriteJson: row.rewrite_json,
-    tgMessageId: row.tg_message_id,
-    blogPostId: row.blog_post_id,
-    error: row.error,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
+// Re-exported so existing importers can keep importing these settings shapes
+// from "./store.js" alongside the CandidateStore that produces them.
+export type { MockOverride, ModelOverride } from "./store-schema.js";
 
 /**
  * The candidate store. One SQLite file doubles as the dedup ledger and the
@@ -141,20 +55,15 @@ export class CandidateStore {
    * → 'pending_review' (re-offer publish). Idempotent; runs once per process.
    */
   private recoverInFlight(): void {
+    const move = this.db.prepare(
+      `UPDATE candidates SET state = ?, updated_at = datetime('now') WHERE state = ?`,
+    );
     // 'rewriting' is safe to retry — no external side effect happened.
-    this.db
-      .prepare(
-        `UPDATE candidates SET state = 'collected', updated_at = datetime('now') WHERE state = 'rewriting'`,
-      )
-      .run();
+    move.run(CandidateState.Collected, CandidateState.Rewriting);
     // 'publishing' MAY have already POSTed to the blog. Do NOT reset to
     // pending_review (that re-offers Publish and can create a duplicate post);
     // move to needs_verification so the owner is warned before re-publishing.
-    this.db
-      .prepare(
-        `UPDATE candidates SET state = 'needs_verification', updated_at = datetime('now') WHERE state = 'publishing'`,
-      )
-      .run();
+    move.run(CandidateState.NeedsVerification, CandidateState.Publishing);
   }
 
   /**
@@ -173,7 +82,7 @@ export class CandidateStore {
       .prepare(
         `INSERT OR IGNORE INTO candidates
            (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, state)
-         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, 'collected')`,
+         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, @state)`,
       )
       .run({
         dedupKey: item.dedupKey,
@@ -183,6 +92,7 @@ export class CandidateStore {
         imageUrl: item.imageUrl,
         snippet: item.snippet,
         imageUrls: JSON.stringify(item.imageUrls ?? []),
+        state: CandidateState.Collected,
       });
     return info.changes === 1 ? Number(info.lastInsertRowid) : null;
   }
@@ -253,15 +163,15 @@ export class CandidateStore {
         .prepare(
           `INSERT OR IGNORE INTO seen_keys (dedup_key)
              SELECT dedup_key FROM candidates
-             WHERE state IN ('published', 'skipped') AND updated_at < ?`,
+             WHERE state IN (?, ?) AND updated_at < ?`,
         )
-        .run(cutoff);
+        .run(CandidateState.Published, CandidateState.Skipped, cutoff);
       const info = this.db
         .prepare(
           `DELETE FROM candidates
-             WHERE state IN ('published', 'skipped') AND updated_at < ?`,
+             WHERE state IN (?, ?) AND updated_at < ?`,
         )
-        .run(cutoff);
+        .run(CandidateState.Published, CandidateState.Skipped, cutoff);
       return info.changes;
     });
     return tx() as number;
@@ -281,12 +191,13 @@ export class CandidateStore {
    * `true` (changes === 1), the other gets `false` — preventing a double-post.
    */
   claimForPublishing(id: number): boolean {
+    const from = [CandidateState.PendingReview, CandidateState.NeedsVerification];
     const info = this.db
       .prepare(
-        `UPDATE candidates SET state = 'publishing', updated_at = datetime('now')
-         WHERE id = ? AND state IN ('pending_review', 'needs_verification')`,
+        `UPDATE candidates SET state = ?, updated_at = datetime('now')
+         WHERE id = ? AND state IN (?, ?)`,
       )
-      .run(id);
+      .run(CandidateState.Publishing, id, ...from);
     return info.changes === 1;
   }
 
@@ -297,12 +208,17 @@ export class CandidateStore {
    * of 🔄 can't start two concurrent (token-spending) rewrites on one candidate.
    */
   claimForRewriting(id: number): boolean {
+    const from = [
+      CandidateState.Collected,
+      CandidateState.PendingReview,
+      CandidateState.RewriteFailed,
+    ];
     const info = this.db
       .prepare(
-        `UPDATE candidates SET state = 'rewriting', error = NULL, updated_at = datetime('now')
-         WHERE id = ? AND state IN ('collected', 'pending_review', 'rewrite_failed')`,
+        `UPDATE candidates SET state = ?, error = NULL, updated_at = datetime('now')
+         WHERE id = ? AND state IN (?, ?, ?)`,
       )
-      .run(id);
+      .run(CandidateState.Rewriting, id, ...from);
     return info.changes === 1;
   }
 
@@ -320,10 +236,10 @@ export class CandidateStore {
     this.db
       .prepare(
         `UPDATE candidates
-         SET rewrite_json = ?, state = 'pending_review', error = NULL, updated_at = datetime('now')
+         SET rewrite_json = ?, state = ?, error = NULL, updated_at = datetime('now')
          WHERE id = ?`,
       )
-      .run(JSON.stringify(rewrite), id);
+      .run(JSON.stringify(rewrite), CandidateState.PendingReview, id);
   }
 
   /** Records the Telegram message id of the approval DM. */
@@ -338,10 +254,10 @@ export class CandidateStore {
     this.db
       .prepare(
         `UPDATE candidates
-         SET state = 'published', blog_post_id = ?, error = NULL, updated_at = datetime('now')
+         SET state = ?, blog_post_id = ?, error = NULL, updated_at = datetime('now')
          WHERE id = ?`,
       )
-      .run(blogPostId, id);
+      .run(CandidateState.Published, blogPostId, id);
   }
 
   /** Parses and returns the stored rewrite for a candidate, or null. */
@@ -354,86 +270,30 @@ export class CandidateStore {
     }
   }
 
-  // --- settings: runtime model override ------------------------------------
+  // --- settings: runtime model + mock override (delegated to store-settings) -
+  // Thin delegations to the free functions in store-settings.ts; the public
+  // method set/signatures are unchanged so existing callers keep working.
 
   /** Low-level setter for a settings key. Exposed mainly for tests. */
-  setRawSetting(key: string, value: string): void {
-    this.db
-      .prepare(
-        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-      )
-      .run(key, value);
-  }
+  setRawSetting(key: string, value: string): void { settings.setRawSetting(this.db, key, value); }
 
-  /** Low-level getter for a settings key, or null if absent. */
-  private getRawSetting(key: string): string | null {
-    const row = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as
-      | { value: string }
-      | undefined;
-    return row?.value ?? null;
-  }
-
-  /**
-   * The active provider/model override, or null if none is set. A corrupt row
-   * (e.g. hand-edited, or a shape change) returns null rather than throwing, so
-   * the rewriter cleanly falls back to the env default.
-   */
-  getModelOverride(): ModelOverride | null {
-    const raw = this.getRawSetting(MODEL_OVERRIDE_KEY);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw) as Partial<ModelOverride>;
-      if (typeof parsed.provider === "string" && typeof parsed.model === "string") {
-        return { provider: parsed.provider, model: parsed.model };
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
+  /** The active provider/model override, or null if none is set. */
+  getModelOverride(): ModelOverride | null { return settings.getModelOverride(this.db); }
 
   /** Sets (upserts) the active provider/model override. */
-  setModelOverride(provider: string, model: string): void {
-    this.setRawSetting(MODEL_OVERRIDE_KEY, JSON.stringify({ provider, model }));
-  }
+  setModelOverride(provider: string, model: string): void { settings.setModelOverride(this.db, provider, model); }
 
   /** Clears the override; the rewriter then uses the env default. */
-  clearModelOverride(): void {
-    this.db.prepare("DELETE FROM settings WHERE key = ?").run(MODEL_OVERRIDE_KEY);
-  }
+  clearModelOverride(): void { settings.clearModelOverride(this.db); }
 
-  /**
-   * The active mock override, or null if none is set. When set, it is strictly
-   * authoritative over the env REWRITE_MOCK (so an admin toggling mock OFF in
-   * the panel truly disables it even if REWRITE_MOCK=1). A corrupt row returns
-   * null rather than throwing, so resolution cleanly falls back to env.
-   */
-  getMockOverride(): MockOverride | null {
-    const raw = this.getRawSetting(MOCK_OVERRIDE_KEY);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw) as Partial<MockOverride>;
-      if (typeof parsed.enabled === "boolean") {
-        return { enabled: parsed.enabled };
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
+  /** The active mock override, or null if none is set. */
+  getMockOverride(): MockOverride | null { return settings.getMockOverride(this.db); }
 
   /** Sets (upserts) the mock override. */
-  setMockOverride(enabled: boolean): void {
-    this.setRawSetting(MOCK_OVERRIDE_KEY, JSON.stringify({ enabled }));
-  }
+  setMockOverride(enabled: boolean): void { settings.setMockOverride(this.db, enabled); }
 
   /** Clears the mock override; resolution then falls back to env REWRITE_MOCK. */
-  clearMockOverride(): void {
-    this.db.prepare("DELETE FROM settings WHERE key = ?").run(MOCK_OVERRIDE_KEY);
-  }
+  clearMockOverride(): void { settings.clearMockOverride(this.db); }
 
-  close(): void {
-    this.db.close();
-  }
+  close(): void { this.db.close(); }
 }

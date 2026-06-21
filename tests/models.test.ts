@@ -1,5 +1,6 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
+import { ProviderName } from "../src/enums.js";
 import { PROVIDERS } from "../src/providers.js";
 import { pingModel, listModels } from "../src/models.js";
 
@@ -21,7 +22,7 @@ describe("listModels", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const models = await list("glm");
+    const models = await list(ProviderName.Glm);
     // Live ids are merged after the fallback (which holds the free models); the
     // duplicate 'glm-4.7-flash' is de-duped, and 'glm-4.7' (paid, live) appears.
     expect(models).toContain("glm-4.7"); // from live
@@ -39,7 +40,7 @@ describe("listModels", () => {
     const { listModels: list } = await import("../src/models.js");
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
-    const models = await list("glm");
+    const models = await list(ProviderName.Glm);
     expect(models).toEqual(PROVIDERS.glm.fallbackModels);
   });
 
@@ -52,7 +53,7 @@ describe("listModels", () => {
       "fetch",
       vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: [] }) }),
     );
-    const models = await list("deepseek");
+    const models = await list(ProviderName.DeepSeek);
     expect(models).toEqual(PROVIDERS.deepseek.fallbackModels);
   });
 
@@ -62,14 +63,14 @@ describe("listModels", () => {
     const { listModels: list } = await import("../src/models.js");
 
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
-    expect(await list("glm")).toEqual(PROVIDERS.glm.fallbackModels);
+    expect(await list(ProviderName.Glm)).toEqual(PROVIDERS.glm.fallbackModels);
   });
 
   it("returns the static list without calling fetch when the key is missing", async () => {
     // no GLM_API_KEY stubbed → fallback, no network
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const models = await listModels("glm");
+    const models = await listModels(ProviderName.Glm);
     expect(models).toEqual(PROVIDERS.glm.fallbackModels);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -77,13 +78,13 @@ describe("listModels", () => {
   it("returns the static list for anthropic without hitting a /models endpoint", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const models = await listModels("anthropic");
+    const models = await listModels(ProviderName.Anthropic);
     expect(models).toEqual(PROVIDERS.anthropic.fallbackModels);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("returns the static list for mock", async () => {
-    expect(await listModels("mock")).toEqual(PROVIDERS.mock.fallbackModels);
+    expect(await listModels(ProviderName.Mock)).toEqual(PROVIDERS.mock.fallbackModels);
   });
 
   it("caps a huge live list so the keyboard stays renderable", async () => {
@@ -96,7 +97,7 @@ describe("listModels", () => {
       "fetch",
       vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: many }) }),
     );
-    const models = await list("glm");
+    const models = await list(ProviderName.Glm);
     expect(models.length).toBeLessThanOrEqual(50);
   });
 });
@@ -113,7 +114,7 @@ describe("pingModel", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const res = await ping("glm", "glm-4.7-flash");
+    const res = await ping(ProviderName.Glm, "glm-4.7-flash");
     expect(res.ok).toBe(true);
     // the probe must send the model under test
     const opts = fetchMock.mock.calls[0]![1] as { body: string };
@@ -129,7 +130,7 @@ describe("pingModel", () => {
       "fetch",
       vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => "bad key" }),
     );
-    const res = await ping("glm", "glm-4.7-flash");
+    const res = await ping(ProviderName.Glm, "glm-4.7-flash");
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/GLM.*401/);
   });
@@ -137,7 +138,7 @@ describe("pingModel", () => {
   it("returns an error when the key is missing, without calling fetch", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const res = await pingModel("glm", "glm-4.7-flash");
+    const res = await pingModel(ProviderName.Glm, "glm-4.7-flash");
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/ключ/i);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -146,7 +147,7 @@ describe("pingModel", () => {
   it("returns ok for the mock provider without any network call", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const res = await pingModel("mock", "mock");
+    const res = await pingModel(ProviderName.Mock, "mock");
     expect(res.ok).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -155,7 +156,7 @@ describe("pingModel", () => {
     // setup.ts sets ANTHROPIC_API_KEY, so the default import has a key.
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const res = await pingModel("anthropic", "claude-haiku-4-5");
+    const res = await pingModel(ProviderName.Anthropic, "claude-haiku-4-5");
     expect(res.ok).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -169,7 +170,7 @@ describe("pingModel", () => {
       "fetch",
       vi.fn().mockResolvedValue({ ok: true, json: async () => ({ error: "nope" }) }),
     );
-    const res = await ping("glm", "glm-4.7-flash");
+    const res = await ping(ProviderName.Glm, "glm-4.7-flash");
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/choices/i);
   });
@@ -181,7 +182,7 @@ describe("pingModel", () => {
 
     const timeoutErr = Object.assign(new Error("aborted"), { name: "TimeoutError" });
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(timeoutErr));
-    const res = await ping("glm", "glm-4.7-flash");
+    const res = await ping(ProviderName.Glm, "glm-4.7-flash");
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/Таймаут/);
   });

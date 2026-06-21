@@ -18,6 +18,8 @@ const { createBot } = await import("../src/bot.js");
 const { CandidateStore } = await import("../src/store.js");
 import type { Update } from "grammy/types";
 
+import { CandidateState } from "../src/enums.js";
+
 import type { FeedItem } from "../src/types.js";
 
 const OWNER_ID = 123456789; // matches setup.ts OWNER_TELEGRAM_ID
@@ -160,7 +162,7 @@ describe("rewrite-on-publish flow", () => {
     expect(passedItem.snippet).toBe("raw body text");
     // candidate now holds the saved rewrite, awaiting publish
     const c = store.get(id)!;
-    expect(c.state).toBe("pending_review");
+    expect(c.state).toBe(CandidateState.PendingReview);
     expect(store.getRewrite(c)).toEqual(VALID_REWRITE);
     // an "in progress" placeholder is shown first, then the preview
     expect(edits[0]).toContain("Перерабатываю");
@@ -179,7 +181,7 @@ describe("rewrite-on-publish flow", () => {
 
     await expect(bot.handleUpdate(callbackUpdate(`rewrite_${id}`))).resolves.toBeUndefined();
 
-    expect(store.get(id)!.state).toBe("rewrite_failed");
+    expect(store.get(id)!.state).toBe(CandidateState.RewriteFailed);
     store.close();
   });
 
@@ -232,12 +234,12 @@ describe("rewrite-on-publish flow", () => {
     const { bot, store } = makeBot(() => ({}));
     await bot.init();
     const id = store.insertCollected(rawItem())!;
-    store.setState(id, "skipped");
+    store.setState(id, CandidateState.Skipped);
 
     await bot.handleUpdate(callbackUpdate(`rewrite_${id}`));
 
     expect(rewriteToPost).not.toHaveBeenCalled(); // not rewritable
-    expect(store.get(id)!.state).toBe("skipped");
+    expect(store.get(id)!.state).toBe(CandidateState.Skipped);
     store.close();
   });
 
@@ -254,7 +256,7 @@ describe("rewrite-on-publish flow", () => {
 
     await bot.handleUpdate(callbackUpdate(`approve_${id}`));
 
-    expect(store.get(id)!.state).toBe("needs_verification");
+    expect(store.get(id)!.state).toBe(CandidateState.NeedsVerification);
     vi.unstubAllGlobals();
     store.close();
   });
@@ -271,7 +273,7 @@ describe("rewrite-on-publish flow", () => {
 
     await bot.handleUpdate(callbackUpdate(`approve_${id}`));
 
-    expect(store.get(id)!.state).toBe("pending_review");
+    expect(store.get(id)!.state).toBe(CandidateState.PendingReview);
     vi.unstubAllGlobals();
     store.close();
   });
@@ -337,7 +339,7 @@ describe("manual ingest: owner sends a text or URL", () => {
 
     await bot.handleUpdate(messageUpdate("Заголовок\n\nТело новости про ИИ."));
 
-    const collected = store.listByState("collected");
+    const collected = store.listByState(CandidateState.Collected);
     expect(collected).toHaveLength(1);
     expect(collected[0]!.sourceTitle).toBe("Заголовок");
     expect(collected[0]!.dedupKey).toMatch(/^manual:/);
@@ -364,7 +366,7 @@ describe("manual ingest: owner sends a text or URL", () => {
     await bot.handleUpdate(messageUpdate("https://ex.com/post"));
 
     expect(fetchArticle).toHaveBeenCalledWith("https://ex.com/post");
-    const collected = store.listByState("collected");
+    const collected = store.listByState(CandidateState.Collected);
     expect(collected).toHaveLength(1);
     expect(collected[0]!.sourceTitle).toBe("Scraped title");
     expect(sends.some((t) => t.includes("Scraped title"))).toBe(true);
@@ -379,7 +381,7 @@ describe("manual ingest: owner sends a text or URL", () => {
 
     await bot.handleUpdate(messageUpdate("https://ex.com/missing"));
 
-    expect(store.listByState("collected")).toHaveLength(0);
+    expect(store.listByState(CandidateState.Collected)).toHaveLength(0);
     expect(sends.some((t) => t.includes("Не удалось получить статью") && t.includes("404"))).toBe(
       true,
     );
@@ -395,7 +397,7 @@ describe("manual ingest: owner sends a text or URL", () => {
     await bot.handleUpdate(messageUpdate("Та же новость"));
     await bot.handleUpdate(messageUpdate("Та же новость"));
 
-    expect(store.listByState("collected")).toHaveLength(1);
+    expect(store.listByState(CandidateState.Collected)).toHaveLength(1);
     expect(sends.some((t) => t.includes("уже была"))).toBe(true);
     store.close();
   });
@@ -407,7 +409,7 @@ describe("manual ingest: owner sends a text or URL", () => {
 
     await bot.handleUpdate(messageUpdate("/unknown"));
 
-    expect(store.listByState("collected")).toHaveLength(0);
+    expect(store.listByState(CandidateState.Collected)).toHaveLength(0);
     expect(sends.some((t) => t.includes("Неизвестная команда"))).toBe(true);
     store.close();
   });

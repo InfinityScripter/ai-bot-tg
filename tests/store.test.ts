@@ -1,6 +1,7 @@
 import { rmSync } from "node:fs";
 import { it, expect, describe, afterEach, beforeEach } from "vitest";
 
+import { CandidateState } from "../src/enums.js";
 import { CandidateStore } from "../src/store.js";
 
 import type { FeedItem, RewriteResult } from "../src/types.js";
@@ -43,7 +44,7 @@ describe("CandidateStore", () => {
     const id = store.insertCollected(item());
     expect(id).not.toBeNull();
     const c = store.get(id!);
-    expect(c?.state).toBe("collected");
+    expect(c?.state).toBe(CandidateState.Collected);
     expect(c?.sourceTitle).toBe("Title A");
   });
 
@@ -67,7 +68,7 @@ describe("CandidateStore", () => {
     const id = store.insertCollected(item())!;
     store.attachRewrite(id, REWRITE);
     const c = store.get(id)!;
-    expect(c.state).toBe("pending_review");
+    expect(c.state).toBe(CandidateState.PendingReview);
     expect(store.getRewrite(c)).toEqual(REWRITE);
   });
 
@@ -82,15 +83,15 @@ describe("CandidateStore", () => {
     store.attachRewrite(id, REWRITE);
     store.setPublished(id, "post-123");
     const c = store.get(id)!;
-    expect(c.state).toBe("published");
+    expect(c.state).toBe(CandidateState.Published);
     expect(c.blogPostId).toBe("post-123");
   });
 
   it("stores an error with a failed state", () => {
     const id = store.insertCollected(item())!;
-    store.setState(id, "rewrite_failed", "boom");
+    store.setState(id, CandidateState.RewriteFailed, "boom");
     const c = store.get(id)!;
-    expect(c.state).toBe("rewrite_failed");
+    expect(c.state).toBe(CandidateState.RewriteFailed);
     expect(c.error).toBe("boom");
   });
 
@@ -157,7 +158,7 @@ describe("CandidateStore", () => {
       const id = store.insertCollected(item())!; // 'collected'
       expect(store.claimForRewriting(id)).toBe(true);
       expect(store.claimForRewriting(id)).toBe(false); // now 'rewriting'
-      expect(store.get(id)?.state).toBe("rewriting");
+      expect(store.get(id)?.state).toBe(CandidateState.Rewriting);
     });
 
     it("claims from pending_review and rewrite_failed too (regenerate / retry)", () => {
@@ -166,7 +167,7 @@ describe("CandidateStore", () => {
       expect(store.claimForRewriting(a)).toBe(true);
 
       const b = store.insertCollected(item({ dedupKey: "b" }))!;
-      store.setState(b, "rewrite_failed", "boom");
+      store.setState(b, CandidateState.RewriteFailed, "boom");
       expect(store.claimForRewriting(b)).toBe(true);
     });
   });
@@ -177,16 +178,16 @@ describe("CandidateStore", () => {
       rmSync(tmp, { force: true });
       const s1 = new CandidateStore(tmp);
       const id = s1.insertCollected(item())!;
-      s1.setState(id, "rewriting"); // simulate a crash mid-rewrite
+      s1.setState(id, CandidateState.Rewriting); // simulate a crash mid-rewrite
       const pid = s1.insertCollected(item({ dedupKey: "pub" }))!;
-      s1.setState(pid, "publishing");
+      s1.setState(pid, CandidateState.Publishing);
       s1.close();
 
       const s2 = new CandidateStore(tmp); // constructor runs recoverInFlight
-      expect(s2.get(id)?.state).toBe("collected"); // rewriting → collected
+      expect(s2.get(id)?.state).toBe(CandidateState.Collected); // rewriting → collected
       // publishing → needs_verification (NOT pending_review — avoids a silent
       // duplicate post if the POST had already reached the blog).
-      expect(s2.get(pid)?.state).toBe("needs_verification");
+      expect(s2.get(pid)?.state).toBe(CandidateState.NeedsVerification);
       s2.close();
 
       for (const suffix of ["", "-wal", "-shm"]) rmSync(`${tmp}${suffix}`, { force: true });
@@ -200,20 +201,20 @@ describe("CandidateStore", () => {
 
       expect(store.claimForPublishing(id)).toBe(true); // first tap wins
       expect(store.claimForPublishing(id)).toBe(false); // second tap loses
-      expect(store.get(id)?.state).toBe("publishing");
+      expect(store.get(id)?.state).toBe(CandidateState.Publishing);
     });
 
     it("does not claim a candidate that is not pending_review", () => {
       const id = store.insertCollected(item())!; // state 'collected'
       expect(store.claimForPublishing(id)).toBe(false);
-      expect(store.get(id)?.state).toBe("collected");
+      expect(store.get(id)?.state).toBe(CandidateState.Collected);
     });
 
     it("claims a needs_verification row too (owner chose to finish publishing)", () => {
       const id = store.insertCollected(item())!;
-      store.setState(id, "needs_verification");
+      store.setState(id, CandidateState.NeedsVerification);
       expect(store.claimForPublishing(id)).toBe(true);
-      expect(store.get(id)?.state).toBe("publishing");
+      expect(store.get(id)?.state).toBe(CandidateState.Publishing);
     });
   });
 
@@ -253,12 +254,12 @@ describe("CandidateStore", () => {
   describe("listByState", () => {
     it("returns only candidates in the given state", () => {
       const a = store.insertCollected(item({ dedupKey: "a" }))!;
-      store.setState(a, "needs_verification");
+      store.setState(a, CandidateState.NeedsVerification);
       const b = store.insertCollected(item({ dedupKey: "b" }))!;
-      store.setState(b, "needs_verification");
+      store.setState(b, CandidateState.NeedsVerification);
       store.insertCollected(item({ dedupKey: "c" })); // stays 'collected'
 
-      const rows = store.listByState("needs_verification");
+      const rows = store.listByState(CandidateState.NeedsVerification);
       expect(rows.map((r) => r.id).sort()).toEqual([a, b].sort());
     });
   });

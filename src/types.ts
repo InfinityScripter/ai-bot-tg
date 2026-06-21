@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import { PublishStatus, CandidateState } from "./enums.js";
+
+// Re-exported so existing importers of these domain enums can keep importing
+// them from "./types.js" alongside the interfaces that use them.
+export { PublishStatus, CandidateState } from "./enums.js";
+
 /** A normalized item pulled from an RSS/Atom feed. */
 export interface FeedItem {
   /** Stable dedup key: lowercased, tracking-stripped guid|link. */
@@ -24,32 +30,6 @@ export interface FeedItem {
    */
   publishedAt: number | null;
 }
-
-/**
- * Lifecycle of a candidate (rewrite happens on a publish-time button tap, not
- * at collection):
- *   collected ──🔄──→ rewriting → pending_review (preview saved)
- *      │                  │              │  └──✅──→ publishing → published
- *      │                  │              │                          └→ publish_failed
- *      │                  └→ rewrite_failed (🔄 retry)              └→ (back to pending_review on fail)
- *      └──❌──→ skipped                  └──🔄 заново──→ rewriting (overwrites preview)
- */
-export type CandidateState =
-  | "collected"
-  | "rewriting"
-  | "rewrite_failed"
-  | "pending_review"
-  | "skipped"
-  | "publishing"
-  | "published"
-  | "publish_failed"
-  /**
-   * A crash/deploy landed mid-publish: the POST may or may not have reached the
-   * blog. Recovery puts the row here (NOT back to pending_review) so the owner
-   * is warned the post might already be live before re-publishing — avoiding a
-   * silent duplicate article.
-   */
-  | "needs_verification";
 
 /** A row in the candidates table. */
 export interface Candidate {
@@ -98,5 +78,5 @@ export interface BlogPostBody {
   metaKeywords: string[];
   /** Cover image URL; omitted → backend applies its default cover. */
   coverUrl?: string;
-  publish: "draft" | "published";
+  publish: PublishStatus;
 }

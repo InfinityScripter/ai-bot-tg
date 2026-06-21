@@ -1,6 +1,11 @@
 import { CONFIG } from "./config.js";
+import { RelevanceMode, RelevanceAuditAction } from "./enums.js";
 
-import type { RelevanceMode, RelevanceDecision } from "./relevance.js";
+import type { RelevanceDecision } from "./relevance.js";
+
+// Re-exported so "./audit-emit.js" stays the stable import path for the action
+// enum after it moved into enums.ts (preserves the original public API).
+export { RelevanceAuditAction } from "./enums.js";
 
 /**
  * Mirrors each relevance decision into the backend audit log so the owner can
@@ -16,12 +21,6 @@ import type { RelevanceMode, RelevanceDecision } from "./relevance.js";
  *                  'bot.relevance_kept' } — anything else → 400.
  *     - metadata JSON length must stay <= 4000 chars.
  */
-
-/** The exact action literals the backend accepts; anything else → 400. */
-export type RelevanceAuditAction =
-  | "bot.relevance_dropped"
-  | "bot.relevance_shadow_dropped"
-  | "bot.relevance_kept";
 
 /** Injectable deps so tests never touch the real network; defaults to global fetch. */
 export interface EmitDeps {
@@ -47,8 +46,10 @@ export function relevanceActionFor(
   decision: RelevanceDecision,
   mode: RelevanceMode,
 ): RelevanceAuditAction {
-  if (decision.kept) return "bot.relevance_kept";
-  return mode === "shadow" ? "bot.relevance_shadow_dropped" : "bot.relevance_dropped";
+  if (decision.kept) return RelevanceAuditAction.Kept;
+  return mode === RelevanceMode.Shadow
+    ? RelevanceAuditAction.ShadowDropped
+    : RelevanceAuditAction.Dropped;
 }
 
 /**

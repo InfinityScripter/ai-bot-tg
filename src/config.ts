@@ -1,6 +1,8 @@
 import { z } from "zod";
 import "dotenv/config";
 
+import { ProviderName } from "./enums.js";
+
 /**
  * Environment schema. Parsed once at import; a missing/invalid var aborts the
  * process with a readable error rather than failing deep inside the bot loop.
@@ -104,7 +106,7 @@ const EnvSchema = z
     // Fail fast at boot if the chosen provider is missing its key, rather than
     // crashing deep in the rewrite during a run. REWRITE_MOCK overrides the
     // provider, so skip the check then.
-    if (cfg.REWRITE_MOCK || cfg.REWRITE_PROVIDER === "mock") return;
+    if (cfg.REWRITE_MOCK || cfg.REWRITE_PROVIDER === ProviderName.Mock) return;
     // provider → the env key it requires.
     const REQUIRED_KEY = {
       anthropic: "ANTHROPIC_API_KEY",

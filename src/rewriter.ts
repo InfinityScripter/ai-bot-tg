@@ -5,6 +5,7 @@ import { normalizeTags } from "./tags.js";
 import { RewriteSchema } from "./types.js";
 import { truncate, stripHtml } from "./utils.js";
 import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
+import { ProviderKind, ProviderName as ProviderNameEnum } from "./enums.js";
 
 import type { CandidateStore } from "./store.js";
 import type { FeedItem, RewriteResult } from "./types.js";
@@ -249,11 +250,11 @@ async function rewriteWith(
   provider: ProviderName,
   model: string,
 ): Promise<RewriteResult> {
-  if (provider === "mock") {
+  if (provider === ProviderNameEnum.Mock) {
     return mockRewrite(item);
   }
   const spec = PROVIDERS[provider];
-  if (spec.kind === "anthropic") {
+  if (spec.kind === ProviderKind.Anthropic) {
     return rewriteWithAnthropic(item, model);
   }
   return rewriteWithOpenAICompat(item, spec, model);

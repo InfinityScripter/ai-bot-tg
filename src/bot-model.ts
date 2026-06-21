@@ -1,3 +1,5 @@
+import { CallbackKind, ProviderKind } from "./enums.js";
+import { MODEL_CALLBACK, MODEL_CALLBACK_SEP } from "./consts.js";
 import { PROVIDERS, providerNames, isProviderName, modelPriceLabel } from "./providers.js";
 
 import type { ProviderName } from "./providers.js";
@@ -14,14 +16,6 @@ import type { ProviderName } from "./providers.js";
  *   mback                    back to the provider list
  *   mmock_on / mmock_off     turn the runtime mock (без LLM) override on/off
  */
-export const CB = {
-  PROVIDER: "mp_",
-  MODEL: "mm_",
-  RESET: "mreset",
-  BACK: "mback",
-  MOCK_ON: "mmock_on",
-  MOCK_OFF: "mmock_off",
-} as const;
 
 /** A button: a label and the callback data it carries. */
 export interface ButtonSpec {
@@ -31,7 +25,7 @@ export interface ButtonSpec {
 
 /** Encodes the provider-pick callback data. */
 export function encodeProvider(provider: ProviderName): string {
-  return `${CB.PROVIDER}${provider}`;
+  return `${MODEL_CALLBACK.PROVIDER}${provider}`;
 }
 
 /**
@@ -39,39 +33,39 @@ export function encodeProvider(provider: ProviderName): string {
  * contain a single '-' or '.', but not '__', so the split is unambiguous.
  */
 export function encodeModel(provider: ProviderName, model: string): string {
-  return `${CB.MODEL}${provider}__${model}`;
+  return `${MODEL_CALLBACK.MODEL}${provider}${MODEL_CALLBACK_SEP}${model}`;
 }
 
 export type ParsedCallback =
-  | { kind: "provider"; provider: ProviderName }
-  | { kind: "model"; provider: ProviderName; model: string }
-  | { kind: "reset" }
-  | { kind: "back" }
-  | { kind: "mockOn" }
-  | { kind: "mockOff" }
+  | { kind: CallbackKind.Provider; provider: ProviderName }
+  | { kind: CallbackKind.Model; provider: ProviderName; model: string }
+  | { kind: CallbackKind.Reset }
+  | { kind: CallbackKind.Back }
+  | { kind: CallbackKind.MockOn }
+  | { kind: CallbackKind.MockOff }
   | null;
 
 /** Decodes /model callback data, or null if it isn't a /model callback. */
 export function parseCallback(data: string): ParsedCallback {
-  if (data === CB.RESET) return { kind: "reset" };
-  if (data === CB.BACK) return { kind: "back" };
-  if (data === CB.MOCK_ON) return { kind: "mockOn" };
-  if (data === CB.MOCK_OFF) return { kind: "mockOff" };
+  if (data === MODEL_CALLBACK.RESET) return { kind: CallbackKind.Reset };
+  if (data === MODEL_CALLBACK.BACK) return { kind: CallbackKind.Back };
+  if (data === MODEL_CALLBACK.MOCK_ON) return { kind: CallbackKind.MockOn };
+  if (data === MODEL_CALLBACK.MOCK_OFF) return { kind: CallbackKind.MockOff };
 
-  if (data.startsWith(CB.MODEL)) {
-    const rest = data.slice(CB.MODEL.length);
-    const sep = rest.indexOf("__");
+  if (data.startsWith(MODEL_CALLBACK.MODEL)) {
+    const rest = data.slice(MODEL_CALLBACK.MODEL.length);
+    const sep = rest.indexOf(MODEL_CALLBACK_SEP);
     if (sep === -1) return null;
     const provider = rest.slice(0, sep);
-    const model = rest.slice(sep + 2);
+    const model = rest.slice(sep + MODEL_CALLBACK_SEP.length);
     if (!isProviderName(provider) || !model) return null;
-    return { kind: "model", provider, model };
+    return { kind: CallbackKind.Model, provider, model };
   }
 
-  if (data.startsWith(CB.PROVIDER)) {
-    const provider = data.slice(CB.PROVIDER.length);
+  if (data.startsWith(MODEL_CALLBACK.PROVIDER)) {
+    const provider = data.slice(MODEL_CALLBACK.PROVIDER.length);
     if (!isProviderName(provider)) return null;
-    return { kind: "provider", provider };
+    return { kind: CallbackKind.Provider, provider };
   }
 
   return null;
@@ -81,7 +75,7 @@ export function parseCallback(data: string): ParsedCallback {
 export function providerButtons(): ButtonSpec[] {
   return providerNames().map((name) => {
     const spec = PROVIDERS[name];
-    const hasKey = spec.kind === "mock" || Boolean(spec.apiKey());
+    const hasKey = spec.kind === ProviderKind.Mock || Boolean(spec.apiKey());
     return { text: `${spec.label}${hasKey ? "" : " 🔑"}`, data: encodeProvider(name) };
   });
 }
@@ -106,7 +100,7 @@ export function modelButtons(provider: ProviderName, models: string[]): ButtonSp
       rows.push({ text: price ? `${m} — ${price}` : m, data });
     }
   }
-  rows.push({ text: "← Провайдеры", data: CB.BACK });
+  rows.push({ text: "← Провайдеры", data: MODEL_CALLBACK.BACK });
   return rows;
 }
 
@@ -117,8 +111,8 @@ export function modelButtons(provider: ProviderName, models: string[]): ButtonSp
  */
 export function mockToggleButton(mockActive: boolean): ButtonSpec {
   return mockActive
-    ? { text: "🧪 Mock ВКЛ → выключить", data: CB.MOCK_OFF }
-    : { text: "🧪 Mock ВЫКЛ → включить", data: CB.MOCK_ON };
+    ? { text: "🧪 Mock ВКЛ → выключить", data: MODEL_CALLBACK.MOCK_OFF }
+    : { text: "🧪 Mock ВЫКЛ → включить", data: MODEL_CALLBACK.MOCK_ON };
 }
 
 /**

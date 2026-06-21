@@ -1,3 +1,4 @@
+import { ProviderKind } from "./enums.js";
 import { PROVIDERS } from "./providers.js";
 
 import type { ProviderName, ProviderSpec } from "./providers.js";
@@ -39,7 +40,7 @@ const MAX_MODELS = 50;
  */
 export async function listModels(provider: ProviderName): Promise<string[]> {
   const spec = PROVIDERS[provider];
-  if (spec.kind !== "openai-compat") {
+  if (spec.kind !== ProviderKind.OpenAICompat) {
     return spec.fallbackModels;
   }
   const key = spec.apiKey();
@@ -92,10 +93,10 @@ function dedupe(items: string[]): string[] {
 export async function pingModel(provider: ProviderName, model: string): Promise<PingResult> {
   const spec = PROVIDERS[provider];
 
-  if (spec.kind === "mock") {
+  if (spec.kind === ProviderKind.Mock) {
     return { ok: true };
   }
-  if (spec.kind === "anthropic") {
+  if (spec.kind === ProviderKind.Anthropic) {
     // No cheap probe here; accept as long as a key is configured so Claude is
     // selectable. A genuinely bad model surfaces at the next /fetch.
     return spec.apiKey()

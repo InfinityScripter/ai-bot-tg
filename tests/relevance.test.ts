@@ -1,5 +1,6 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
+import { RelevanceMode } from "../src/enums.js";
 import { CandidateStore } from "../src/store.js";
 import {
   filterRelevant,
@@ -48,7 +49,7 @@ describe("filterRelevant — stage A blocklist (mode on)", () => {
       item({ url: "https://ex/horo", title: "Гороскоп на неделю" }),
       item({ url: "https://ex/dress", title: "Дуа Липа показала платье", snippet: "шоу-бизнес" }),
     ];
-    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: "on" });
+    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: RelevanceMode.On });
 
     expect(kept).toHaveLength(0);
     expect(classify).not.toHaveBeenCalled();
@@ -60,7 +61,7 @@ describe("filterRelevant — stage A fast-accept (mode on)", () => {
   it("keeps an obvious AI item WITHOUT calling classify", async () => {
     const classify = vi.fn();
     const items = [item({ url: "https://ex/llm", title: "Новая LLM от OpenAI" })];
-    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: "on" });
+    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: RelevanceMode.On });
 
     expect(kept).toHaveLength(1);
     expect(classify).not.toHaveBeenCalled();
@@ -75,7 +76,7 @@ describe("filterRelevant — stage B LLM (mode on)", () => {
     const items = [item({ url: "https://ex/x", title: "Заголовок без явных признаков темы" })];
     const { kept, decisions } = await filterRelevant(items, STORE, {
       classify,
-      mode: "on",
+      mode: RelevanceMode.On,
       threshold: 2,
     });
 
@@ -91,7 +92,7 @@ describe("filterRelevant — stage B LLM (mode on)", () => {
     const items = [item({ url: "https://ex/y", title: "Светская хроника недели" })];
     const { kept, decisions } = await filterRelevant(items, STORE, {
       classify,
-      mode: "on",
+      mode: RelevanceMode.On,
       threshold: 2,
     });
 
@@ -107,7 +108,7 @@ describe("filterRelevant — fail-open (mode on)", () => {
   it("keeps the item when classify throws", async () => {
     const classify = vi.fn().mockRejectedValue(new Error("boom"));
     const items = [item({ url: "https://ex/z", title: "Непонятная общая новость" })];
-    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: "on" });
+    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: RelevanceMode.On });
 
     expect(kept).toHaveLength(1);
     expect(decisions[0]!.kept).toBe(true);
@@ -118,7 +119,7 @@ describe("filterRelevant — fail-open (mode on)", () => {
   it("keeps the item when classify returns null (mock provider path)", async () => {
     const classify = vi.fn().mockResolvedValue(null);
     const items = [item({ url: "https://ex/m", title: "Совсем неопределённая новость" })];
-    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: "on" });
+    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: RelevanceMode.On });
 
     expect(kept).toHaveLength(1);
     expect(decisions[0]!.kept).toBe(true);
@@ -135,7 +136,7 @@ describe("filterRelevant — shadow mode", () => {
       item({ url: "https://ex/amb", title: "Расплывчатая новость" }), // llm score 0 would-drop
       item({ url: "https://ex/ai", title: "Anthropic выпустила модель" }), // fast-accept keep
     ];
-    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: "shadow" });
+    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: RelevanceMode.Shadow });
 
     // Shadow never actually drops: kept === all input.
     expect(kept).toHaveLength(items.length);
@@ -155,7 +156,7 @@ describe("filterRelevant — off mode", () => {
   it("returns input untouched and does no work (no decisions, no classify)", async () => {
     const classify = vi.fn();
     const items = [item({ url: "https://ex/horo", title: "Гороскоп на год" })];
-    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: "off" });
+    const { kept, decisions } = await filterRelevant(items, STORE, { classify, mode: RelevanceMode.Off });
 
     expect(kept).toBe(items); // same reference — no work
     expect(decisions).toEqual([]);
