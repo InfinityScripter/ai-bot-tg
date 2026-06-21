@@ -8,7 +8,7 @@
  */
 
 /** Backend files a post under /news when this tag is present — always required. */
-export const NEWS_TAG = 'новости';
+export const NEWS_TAG = "новости";
 
 /**
  * Allowed topical tags, lowercase. Kept tight (AI/tech focus + news rubrics) so
@@ -18,19 +18,19 @@ export const NEWS_TAG = 'новости';
  */
 export const TAG_WHITELIST: readonly string[] = [
   NEWS_TAG, // новости
-  'технологии',
-  'наука',
-  'политика',
-  'культура',
-  'ai',
-  'llm',
-  'агенты',
-  'нейросети',
-  'безопасность',
-  'разработка',
-  'гаджеты',
-  'бизнес',
-  'наука и техника',
+  "технологии",
+  "наука",
+  "политика",
+  "культура",
+  "ai",
+  "llm",
+  "агенты",
+  "нейросети",
+  "безопасность",
+  "разработка",
+  "гаджеты",
+  "бизнес",
+  "наука и техника",
 ];
 
 const WHITELIST_SET = new Set(TAG_WHITELIST);
@@ -41,28 +41,28 @@ const WHITELIST_SET = new Set(TAG_WHITELIST);
  * tag from Claude survives as `ai` instead of being dropped.
  */
 const SYNONYMS: Record<string, string> = {
-  ии: 'ai',
-  'искусственный интеллект': 'ai',
-  'artificial intelligence': 'ai',
-  tech: 'технологии',
-  technology: 'технологии',
-  technologies: 'технологии',
-  science: 'наука',
-  politics: 'политика',
-  culture: 'культура',
-  security: 'безопасность',
-  кибербезопасность: 'безопасность',
-  development: 'разработка',
-  dev: 'разработка',
-  программирование: 'разработка',
-  gadgets: 'гаджеты',
-  business: 'бизнес',
-  neural: 'нейросети',
-  'neural networks': 'нейросети',
-  нейросеть: 'нейросети',
-  agents: 'агенты',
-  agent: 'агенты',
-  агент: 'агенты',
+  ии: "ai",
+  "искусственный интеллект": "ai",
+  "artificial intelligence": "ai",
+  tech: "технологии",
+  technology: "технологии",
+  technologies: "технологии",
+  science: "наука",
+  politics: "политика",
+  culture: "культура",
+  security: "безопасность",
+  кибербезопасность: "безопасность",
+  development: "разработка",
+  dev: "разработка",
+  программирование: "разработка",
+  gadgets: "гаджеты",
+  business: "бизнес",
+  neural: "нейросети",
+  "neural networks": "нейросети",
+  нейросеть: "нейросети",
+  agents: "агенты",
+  agent: "агенты",
+  агент: "агенты",
   news: NEWS_TAG,
 };
 
@@ -101,11 +101,11 @@ export function normalizeTags(rawTags: string[]): string[] {
  * back to the backend's generic placeholder (the "all mock images" problem).
  */
 export const DEFAULT_COVERS: readonly string[] = [
-  'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80', // circuit board
-  'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=1200&q=80', // AI neural abstract
-  'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80', // matrix code
-  'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80', // cyber security
-  'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80', // global network
+  "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80", // circuit board
+  "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=1200&q=80", // AI neural abstract
+  "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80", // matrix code
+  "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80", // cyber security
+  "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80", // global network
 ];
 
 /**
@@ -123,5 +123,5 @@ export function pickDefaultCover(title: string): string {
   const index = Math.abs(hash) % DEFAULT_COVERS.length;
   // DEFAULT_COVERS is a non-empty literal, so the indexed access is defined;
   // the fallback satisfies noUncheckedIndexedAccess without ever triggering.
-  return DEFAULT_COVERS[index] ?? DEFAULT_COVERS[0] ?? '';
+  return DEFAULT_COVERS[index] ?? DEFAULT_COVERS[0] ?? "";
 }

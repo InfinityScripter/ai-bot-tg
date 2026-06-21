@@ -1,5 +1,6 @@
-import { PROVIDERS } from './providers.js';
-import type { ProviderName, ProviderSpec } from './providers.js';
+import { PROVIDERS } from "./providers.js";
+
+import type { ProviderName, ProviderSpec } from "./providers.js";
 
 /** Result of a model ping probe. */
 export type PingResult = { ok: true } | { ok: false; error: string };
@@ -38,7 +39,7 @@ const MAX_MODELS = 50;
  */
 export async function listModels(provider: ProviderName): Promise<string[]> {
   const spec = PROVIDERS[provider];
-  if (spec.kind !== 'openai-compat') {
+  if (spec.kind !== "openai-compat") {
     return spec.fallbackModels;
   }
   const key = spec.apiKey();
@@ -48,7 +49,7 @@ export async function listModels(provider: ProviderName): Promise<string[]> {
 
   try {
     const response = await fetch(modelsUrl(spec), {
-      method: 'GET',
+      method: "GET",
       headers: { Authorization: `Bearer ${key}` },
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
@@ -56,7 +57,7 @@ export async function listModels(provider: ProviderName): Promise<string[]> {
     const data = (await response.json()) as ModelsListResponse;
     const live = (data.data ?? [])
       .map((m) => m.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
     // Merge fallback FIRST, then live. The fallback holds the known-good (often
     // free) models — e.g. GLM's free *-flash variants are absent from the live
     // /models list, which returns only paid models. Listing fallback first
@@ -91,10 +92,10 @@ function dedupe(items: string[]): string[] {
 export async function pingModel(provider: ProviderName, model: string): Promise<PingResult> {
   const spec = PROVIDERS[provider];
 
-  if (spec.kind === 'mock') {
+  if (spec.kind === "mock") {
     return { ok: true };
   }
-  if (spec.kind === 'anthropic') {
+  if (spec.kind === "anthropic") {
     // No cheap probe here; accept as long as a key is configured so Claude is
     // selectable. A genuinely bad model surfaces at the next /fetch.
     return spec.apiKey()
@@ -110,20 +111,20 @@ export async function pingModel(provider: ProviderName, model: string): Promise<
   let response: Response;
   try {
     response = await fetch(`${spec.baseUrl}/chat/completions`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: 'user', content: 'ответь одним словом: ok' }],
+        messages: [{ role: "user", content: "ответь одним словом: ok" }],
         max_tokens: 8,
       }),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
   } catch (err) {
-    const timedOut = err instanceof Error && err.name === 'TimeoutError';
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
     return {
       ok: false,
       error: timedOut
@@ -133,7 +134,7 @@ export async function pingModel(provider: ProviderName, model: string): Promise<
   }
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
+    const text = await response.text().catch(() => "");
     return { ok: false, error: `${spec.label} ответил ${response.status}: ${text.slice(0, 160)}` };
   }
 

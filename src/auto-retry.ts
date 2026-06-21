@@ -1,5 +1,6 @@
-import { HttpError } from 'grammy';
-import type { Transformer } from 'grammy';
+import type { Transformer } from "grammy";
+
+import { HttpError } from "grammy";
 
 /**
  * A tiny, dependency-free grammY API transformer that mirrors the essential
@@ -41,7 +42,7 @@ export function autoRetry(): Transformer {
     for (;;) {
       const result = await call();
       const retryAfter = result.parameters?.retry_after;
-      if (typeof retryAfter === 'number') {
+      if (typeof retryAfter === "number") {
         // 429: wait exactly as long as Telegram asks, then resubmit.
         await pause(retryAfter);
         nextBackoff = INITIAL_BACKOFF_S;

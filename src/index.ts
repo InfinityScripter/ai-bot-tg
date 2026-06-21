@@ -1,9 +1,9 @@
-import { CONFIG } from './config.js';
-import { createBot } from './bot.js';
-import { runCollection } from './collector.js';
-import { scheduleDaily } from './scheduler.js';
-import { startControlServer } from './control-server.js';
-import { CandidateStore } from './store.js';
+import { CONFIG } from "./config.js";
+import { createBot } from "./bot.js";
+import { CandidateStore } from "./store.js";
+import { runCollection } from "./collector.js";
+import { scheduleDaily } from "./scheduler.js";
+import { startControlServer } from "./control-server.js";
 
 /**
  * Entrypoint. Wires the store, bot, collector, and scheduler together, then
@@ -24,7 +24,7 @@ async function main() {
       return `⚠️ Фильтр отсёк все ${s.fetched} новостей — проверьте FILTER_INCLUDE/FILTER_EXCLUDE.`;
     }
     if (s.fresh === 0) return `Новых новостей нет (получено ${s.fetched}).`;
-    return `Готово: новых ${s.fresh}, отправлено ${s.sent}${s.failed ? `, ошибок ${s.failed}` : ''}.`;
+    return `Готово: новых ${s.fresh}, отправлено ${s.sent}${s.failed ? `, ошибок ${s.failed}` : ""}.`;
   };
   const { bot, sendRawCard, notifyNeedsVerification, drain } = createBot(store, run);
 
@@ -50,7 +50,7 @@ async function main() {
       const note = await run();
       // Only ping the owner on the cron when something needs attention (a filter
       // hid everything) — a normal run stays quiet to avoid daily noise.
-      if (note.startsWith('⚠️')) await notifyOwner(note);
+      if (note.startsWith("⚠️")) await notifyOwner(note);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(`[index] scheduled run failed: ${String(err)}`);
@@ -75,12 +75,12 @@ async function main() {
   console.log(
     controlServer
       ? `[index] control server on 127.0.0.1:${CONFIG.CONTROL_PORT}`
-      : '[index] control server disabled (BOT_CONTROL_TOKEN unset)'
+      : "[index] control server disabled (BOT_CONTROL_TOKEN unset)",
   );
 
   // eslint-disable-next-line no-console
   console.log(
-    `[index] started. Next run: ${job.nextRun()?.toISOString() ?? 'n/a'} (${CONFIG.CRON_TZ})`
+    `[index] started. Next run: ${job.nextRun()?.toISOString() ?? "n/a"} (${CONFIG.CRON_TZ})`,
   );
 
   let shuttingDown = false;
@@ -104,8 +104,8 @@ async function main() {
     }
     process.exit(code);
   };
-  process.once('SIGINT', () => void shutdown('SIGINT'));
-  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
 
   // Blocks until stopped.
   await bot.start({
@@ -120,6 +120,6 @@ async function main() {
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
-  console.error('[index] fatal:', err);
+  console.error("[index] fatal:", err);
   process.exit(1);
 });

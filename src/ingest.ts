@@ -1,14 +1,15 @@
-import { createHash } from 'node:crypto';
+import { createHash } from "node:crypto";
 
-import { IMG_SRC_RE, OG_IMAGE_RE, OG_IMAGE_RE_ALT } from './feeds.js';
-import { canonicalizeUrl, stripHtml, truncate } from './utils.js';
-import type { FeedItem } from './types.js';
+import { truncate, stripHtml, canonicalizeUrl } from "./utils.js";
+import { IMG_SRC_RE, OG_IMAGE_RE, OG_IMAGE_RE_ALT } from "./feeds.js";
+
+import type { FeedItem } from "./types.js";
 
 /** The result of classifying an owner-sent message. */
 export type ClassifiedInput =
-  | { kind: 'url'; url: string }
-  | { kind: 'text'; text: string }
-  | { kind: 'empty' };
+  | { kind: "url"; url: string }
+  | { kind: "text"; text: string }
+  | { kind: "empty" };
 
 /** True when the token is an absolute http(s) URL. */
 function isHttpUrl(token: string): boolean {
@@ -28,11 +29,11 @@ function isHttpUrl(token: string): boolean {
  * anything else non-empty is free text.
  */
 export function classifyInput(raw: string): ClassifiedInput {
-  const text = (raw ?? '').trim();
-  if (!text) return { kind: 'empty' };
-  const firstToken = text.split(/\s+/, 1)[0] ?? '';
-  if (isHttpUrl(firstToken)) return { kind: 'url', url: firstToken };
-  return { kind: 'text', text };
+  const text = (raw ?? "").trim();
+  if (!text) return { kind: "empty" };
+  const firstToken = text.split(/\s+/, 1)[0] ?? "";
+  if (isHttpUrl(firstToken)) return { kind: "url", url: firstToken };
+  return { kind: "text", text };
 }
 
 /** Matches og:title / twitter:title (both attribute orders). */
@@ -50,21 +51,21 @@ const TITLE_TAG_RE = /<title[^>]*>([^<]*)<\/title>/i;
 
 /** Decodes the HTML entities common in meta/title text, named and numeric. */
 function decodeEntities(input: string): string {
-  return input
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
-      String.fromCodePoint(parseInt(hex, 16))
-    )
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&mdash;/g, '—')
-    .replace(/&ndash;/g, '–')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    // Ampersand LAST so a decoded "&amp;#38;" can't re-form another entity.
-    .replace(/&amp;/g, '&')
-    .trim();
+  return (
+    input
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
+      .replace(/&nbsp;/g, " ")
+      .replace(/&mdash;/g, "—")
+      .replace(/&ndash;/g, "–")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      // Ampersand LAST so a decoded "&amp;#38;" can't re-form another entity.
+      .replace(/&amp;/g, "&")
+      .trim()
+  );
 }
 
 /**
@@ -85,13 +86,13 @@ function extractTitle(html: string): string {
   if (og?.[1]) return cleanTitle(decodeEntities(og[1]));
   const tag = TITLE_TAG_RE.exec(html);
   if (tag?.[1]) return cleanTitle(decodeEntities(tag[1]));
-  return '';
+  return "";
 }
 
 /** Pulls the meta description from a page, '' if none. */
 function extractDescription(html: string): string {
   const m = OG_DESC_RE.exec(html) ?? OG_DESC_RE_ALT.exec(html);
-  return m?.[1] ? decodeEntities(m[1]) : '';
+  return m?.[1] ? decodeEntities(m[1]) : "";
 }
 
 /** Pulls the og:image / twitter:image cover URL, or null. */
@@ -131,10 +132,10 @@ function extractImages(html: string, cover: string | null): string[] {
  */
 function extractBody(html: string): string {
   const cleaned = html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<(nav|header|footer|aside|form)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ');
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<(nav|header|footer|aside|form)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
   return truncate(stripHtml(cleaned), 4000);
 }
 
@@ -146,8 +147,8 @@ function extractBody(html: string): string {
 async function readCapped(res: Response, maxBytes: number): Promise<string> {
   const reader = res.body?.getReader?.();
   if (!reader) return (await res.text()).slice(0, maxBytes);
-  const decoder = new TextDecoder('utf-8');
-  let out = '';
+  const decoder = new TextDecoder("utf-8");
+  let out = "";
   let read = 0;
   try {
     for (;;) {
@@ -174,7 +175,7 @@ async function readCapped(res: Response, maxBytes: number): Promise<string> {
  */
 export async function fetchArticle(url: string): Promise<FeedItem> {
   const dedupKey = canonicalizeUrl(url);
-  if (!dedupKey) throw new Error('Не удалось разобрать ссылку.');
+  if (!dedupKey) throw new Error("Не удалось разобрать ссылку.");
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
@@ -183,8 +184,8 @@ export async function fetchArticle(url: string): Promise<FeedItem> {
     res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        Accept: 'text/html,application/xhtml+xml',
-        'User-Agent': 'blog-newsbot/1.0',
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "blog-newsbot/1.0",
       },
     });
   } catch (err) {
@@ -194,8 +195,8 @@ export async function fetchArticle(url: string): Promise<FeedItem> {
   }
 
   if (!res.ok) throw new Error(`Страница ответила ${res.status}.`);
-  const type = res.headers.get('content-type') ?? '';
-  if (type && !type.includes('html')) throw new Error('Ссылка ведёт не на HTML-страницу.');
+  const type = res.headers.get("content-type") ?? "";
+  if (type && !type.includes("html")) throw new Error("Ссылка ведёт не на HTML-страницу.");
 
   // The <head> meta tags and most body text live up top; cap the read so a huge
   // (or maliciously large) page can't buffer unbounded into memory. Read the
@@ -203,7 +204,7 @@ export async function fetchArticle(url: string): Promise<FeedItem> {
   const html = await readCapped(res, 256_000);
 
   const title = extractTitle(html);
-  if (!title) throw new Error('Не удалось извлечь заголовок статьи.');
+  if (!title) throw new Error("Не удалось извлечь заголовок статьи.");
 
   const cover = extractCover(html);
   const description = extractDescription(html);
@@ -211,9 +212,9 @@ export async function fetchArticle(url: string): Promise<FeedItem> {
   // Prefer the fuller of (description, body) as the rewrite input snippet.
   const snippet = body.length >= description.length ? body : description;
 
-  let host = '';
+  let host = "";
   try {
-    host = new URL(url).host;
+    ({ host } = new URL(url));
   } catch {
     /* canonicalizeUrl already validated dedupKey; host is best-effort */
   }
@@ -223,7 +224,7 @@ export async function fetchArticle(url: string): Promise<FeedItem> {
     url,
     title: truncate(title, 300),
     snippet,
-    feedTitle: host || 'Ссылка',
+    feedTitle: host || "Ссылка",
     imageUrl: cover,
     imageUrls: extractImages(html, cover),
     publishedAt: null,
@@ -237,17 +238,21 @@ export async function fetchArticle(url: string): Promise<FeedItem> {
  * distinct text never collides. No URL, no images.
  */
 export function feedItemFromText(raw: string): FeedItem {
-  const text = (raw ?? '').trim();
-  const firstLine = text.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? text;
+  const text = (raw ?? "").trim();
+  const firstLine =
+    text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find(Boolean) ?? text;
   const title = truncate(firstLine, 120);
   const snippet = truncate(text, 4000);
-  const dedupKey = `manual:${createHash('sha1').update(text).digest('hex')}`;
+  const dedupKey = `manual:${createHash("sha1").update(text).digest("hex")}`;
   return {
     dedupKey,
-    url: '',
+    url: "",
     title,
     snippet,
-    feedTitle: 'Прислано вручную',
+    feedTitle: "Прислано вручную",
     imageUrl: null,
     imageUrls: [],
     publishedAt: null,

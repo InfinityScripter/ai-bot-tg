@@ -1,25 +1,26 @@
-import { Bot, GrammyError, HttpError, InlineKeyboard } from 'grammy';
+import type { Context } from "grammy";
 
-import { autoRetry } from './auto-retry.js';
-import type { Context } from 'grammy';
+import { Bot, HttpError, GrammyError, InlineKeyboard } from "grammy";
 
-import { CONFIG } from './config.js';
+import { CONFIG } from "./config.js";
+import { autoRetry } from "./auto-retry.js";
+import { rewriteToPost } from "./rewriter.js";
+import { pingModel, listModels } from "./models.js";
+import { truncate, escapeMarkdown } from "./utils.js";
+import { PublishError, publishToBlog } from "./publisher.js";
+import { fetchArticle, classifyInput, feedItemFromText } from "./ingest.js";
+import { PROVIDERS, isMockActive, hasActiveOverride, resolveActiveProvider } from "./providers.js";
 import {
-  mockToggleButton,
+  statusText,
   modelButtons,
   parseCallback,
   providerButtons,
-  statusText,
-} from './bot-model.js';
-import { classifyInput, fetchArticle, feedItemFromText } from './ingest.js';
-import { listModels, pingModel } from './models.js';
-import { PROVIDERS, hasActiveOverride, isMockActive, resolveActiveProvider } from './providers.js';
-import { PublishError, publishToBlog } from './publisher.js';
-import { rewriteToPost } from './rewriter.js';
-import type { ButtonSpec } from './bot-model.js';
-import type { CandidateStore } from './store.js';
-import type { Candidate, CandidateState, FeedItem, RewriteResult } from './types.js';
-import { escapeMarkdown, truncate } from './utils.js';
+  mockToggleButton,
+} from "./bot-model.js";
+
+import type { ButtonSpec } from "./bot-model.js";
+import type { CandidateStore } from "./store.js";
+import type { FeedItem, Candidate, RewriteResult, CandidateState } from "./types.js";
 
 /** Logs a swallowed edit error instead of hiding it entirely. */
 function logEditError(context: string) {
@@ -37,27 +38,27 @@ function logEditError(context: string) {
  * never reject. Always swallow + log.
  */
 async function ackSilently(ctx: Context, opts?: { text: string }): Promise<void> {
-  await ctx.answerCallbackQuery(opts).catch(logEditError('answerCallbackQuery'));
+  await ctx.answerCallbackQuery(opts).catch(logEditError("answerCallbackQuery"));
 }
 
-const APPROVE_PREFIX = 'approve_';
-const SKIP_PREFIX = 'skip_';
-const REWRITE_PREFIX = 'rewrite_';
+const APPROVE_PREFIX = "approve_";
+const SKIP_PREFIX = "skip_";
+const REWRITE_PREFIX = "rewrite_";
 
 /** Keyboard for a RAW card: rewrite (with the active model) or skip. */
 function rawKeyboard(candidateId: number): InlineKeyboard {
   return new InlineKeyboard()
-    .text('🔄 Переработать', `${REWRITE_PREFIX}${candidateId}`)
-    .text('❌ Пропустить', `${SKIP_PREFIX}${candidateId}`);
+    .text("🔄 Переработать", `${REWRITE_PREFIX}${candidateId}`)
+    .text("❌ Пропустить", `${SKIP_PREFIX}${candidateId}`);
 }
 
 /** Keyboard for a PREVIEW card: regenerate, publish, or skip. */
 function previewKeyboard(candidateId: number): InlineKeyboard {
   return new InlineKeyboard()
-    .text('🔄 Заново', `${REWRITE_PREFIX}${candidateId}`)
-    .text('✅ Опубликовать', `${APPROVE_PREFIX}${candidateId}`)
+    .text("🔄 Заново", `${REWRITE_PREFIX}${candidateId}`)
+    .text("✅ Опубликовать", `${APPROVE_PREFIX}${candidateId}`)
     .row()
-    .text('❌ Пропустить', `${SKIP_PREFIX}${candidateId}`);
+    .text("❌ Пропустить", `${SKIP_PREFIX}${candidateId}`);
 }
 
 /** Turns pure ButtonSpecs into a one-button-per-row inline keyboard. */
@@ -73,7 +74,7 @@ function modelMenu(store: CandidateStore): { text: string; keyboard: InlineKeybo
   const mockActive = isMockActive(store);
   const buttons = providerButtons();
   buttons.push(mockToggleButton(mockActive));
-  buttons.push({ text: '↩️ Сбросить на env', data: 'mreset' });
+  buttons.push({ text: "↩️ Сбросить на env", data: "mreset" });
   return {
     text: statusText(active, hasActiveOverride(store), mockActive),
     keyboard: keyboardFrom(buttons),
@@ -88,14 +89,15 @@ function modelMenu(store: CandidateStore): { text: string; keyboard: InlineKeybo
 function renderRaw(candidate: Candidate): string {
   return [
     `📥 *${escapeMarkdown(candidate.sourceTitle ?? candidate.sourceUrl)}*`,
-    '',
-    escapeMarkdown(truncate(candidate.snippet ?? '', 600)) || '_(нет текста — будет переработан заголовок)_',
-    '',
-    `Источник: ${escapeMarkdown(candidate.feedTitle ?? 'неизвестен')}`,
+    "",
+    escapeMarkdown(truncate(candidate.snippet ?? "", 600)) ||
+      "_(нет текста — будет переработан заголовок)_",
+    "",
+    `Источник: ${escapeMarkdown(candidate.feedTitle ?? "неизвестен")}`,
     escapeMarkdown(candidate.sourceUrl),
-    '',
-    '_Нажмите «Переработать» — текст перепишет активная модель (см. /model)._',
-  ].join('\n');
+    "",
+    "_Нажмите «Переработать» — текст перепишет активная модель (см. /model)._",
+  ].join("\n");
 }
 
 /**
@@ -103,39 +105,37 @@ function renderRaw(candidate: Candidate): string {
  * provider/model produced it. All interpolated content is escaped.
  */
 function renderPreview(candidate: Candidate, rewrite: RewriteResult, modelLabel: string): string {
-  const tags = rewrite.tags.length ? `\n🏷 ${escapeMarkdown(rewrite.tags.join(', '))}` : '';
+  const tags = rewrite.tags.length ? `\n🏷 ${escapeMarkdown(rewrite.tags.join(", "))}` : "";
   // Show the start of the actual body so the owner sees what will be published.
   // Drop Markdown image lines (![](url)) — they publish to the blog but render
   // as ugly raw syntax in a Telegram preview. Collapse blank runs, then clamp.
   const bodyText = rewrite.content
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/\n{3,}/g, '\n\n')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
-  const bodyBlock = bodyText
-    ? ['', '— — —', escapeMarkdown(truncate(bodyText, 500))]
-    : [];
+  const bodyBlock = bodyText ? ["", "— — —", escapeMarkdown(truncate(bodyText, 500))] : [];
   return [
     `📝 *${escapeMarkdown(rewrite.title)}*`,
-    '',
+    "",
     escapeMarkdown(truncate(rewrite.description, 400)),
     tags,
     ...bodyBlock,
-    '',
+    "",
     `🤖 Модель: ${escapeMarkdown(modelLabel)}`,
-    `Источник: ${escapeMarkdown(candidate.feedTitle ?? 'неизвестен')}`,
+    `Источник: ${escapeMarkdown(candidate.feedTitle ?? "неизвестен")}`,
     escapeMarkdown(candidate.sourceUrl),
-  ].join('\n');
+  ].join("\n");
 }
 
 /** The "in progress" placeholder shown while a rewrite runs. */
 function renderRewriting(candidate: Candidate, modelLabel: string): string {
   return [
     `⏳ *Перерабатываю…*`,
-    '',
+    "",
     escapeMarkdown(candidate.sourceTitle ?? candidate.sourceUrl),
-    '',
+    "",
     `🤖 Модель: ${escapeMarkdown(modelLabel)}`,
-  ].join('\n');
+  ].join("\n");
 }
 
 /**
@@ -157,7 +157,7 @@ function isModelNotFound(message: string): boolean {
  */
 export function createBot(
   store: CandidateStore,
-  onFetch: () => Promise<string | void> | string | void
+  onFetch: () => Promise<string | void> | string | void,
 ) {
   const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
 
@@ -176,10 +176,12 @@ export function createBot(
     const updateId = err.ctx.update.update_id;
     if (e instanceof GrammyError) {
       const benign = /message is not modified|query is too old|message to edit not found/i.test(
-        e.description
+        e.description,
       );
       // eslint-disable-next-line no-console
-      console[benign ? 'warn' : 'error'](`[bot] Telegram error on update ${updateId}: ${e.description}`);
+      console[benign ? "warn" : "error"](
+        `[bot] Telegram error on update ${updateId}: ${e.description}`,
+      );
     } else if (e instanceof HttpError) {
       // eslint-disable-next-line no-console
       console.warn(`[bot] network error on update ${updateId}: ${String(e)}`);
@@ -199,21 +201,22 @@ export function createBot(
   // every update type that carries a sender.
   bot.use(async (ctx, next) => {
     if (ctx.from?.id !== CONFIG.OWNER_TELEGRAM_ID) {
-      if (ctx.callbackQuery) await ctx.answerCallbackQuery({ text: 'Не авторизовано.' }).catch(() => {});
+      if (ctx.callbackQuery)
+        await ctx.answerCallbackQuery({ text: "Не авторизовано." }).catch(() => {});
       return; // drop the update
     }
     await next();
   });
 
-  bot.command('start', (ctx) =>
+  bot.command("start", (ctx) =>
     ctx.reply(
-      'Новостной бот на связи. /fetch — собрать новости сейчас. ' +
-        '/model — провайдер/модель. /ping — проверка.'
-    )
+      "Новостной бот на связи. /fetch — собрать новости сейчас. " +
+        "/model — провайдер/модель. /ping — проверка.",
+    ),
   );
-  bot.command('ping', (ctx) => ctx.reply('pong'));
-  bot.command('fetch', async (ctx) => {
-    await ctx.reply('Запускаю сбор новостей…');
+  bot.command("ping", (ctx) => ctx.reply("pong"));
+  bot.command("fetch", async (ctx) => {
+    await ctx.reply("Запускаю сбор новостей…");
     try {
       const note = await onFetch();
       if (note) await ctx.reply(note);
@@ -221,7 +224,7 @@ export function createBot(
       await ctx.reply(`Сбор завершился с ошибкой: ${String(err)}`);
     }
   });
-  bot.command('model', async (ctx) => {
+  bot.command("model", async (ctx) => {
     const { text, keyboard } = modelMenu(store);
     await ctx.reply(text, { reply_markup: keyboard });
   });
@@ -230,19 +233,21 @@ export function createBot(
   // it into a candidate that flows through the SAME rewrite → preview → publish
   // pipeline as a daily-collected RSS item. Registered after the commands, so it
   // only fires for non-command text (grammy routes "/cmd" to bot.command).
-  bot.on('message:text', async (ctx) => {
+  bot.on("message:text", async (ctx) => {
     const raw = ctx.message.text;
     // Defensive: an unknown "/command" reaches here (no matching bot.command).
     // Don't treat it as article text — guide instead of ingesting "/foo".
-    if (raw.startsWith('/')) {
-      await ctx.reply('Неизвестная команда. /fetch — собрать новости, /model — модель, /ping — проверка.');
+    if (raw.startsWith("/")) {
+      await ctx.reply(
+        "Неизвестная команда. /fetch — собрать новости, /model — модель, /ping — проверка.",
+      );
       return;
     }
     await ingestMessage(ctx, raw);
   });
 
-  bot.on('callback_query:data', async (ctx) => {
-    const data = ctx.callbackQuery.data;
+  bot.on("callback_query:data", async (ctx) => {
+    const {data} = ctx.callbackQuery;
 
     // /model callbacks are handled first; they don't touch a candidate.
     const modelCb = parseCallback(data);
@@ -259,10 +264,10 @@ export function createBot(
       return;
     }
 
-    const id = Number(data.slice(data.indexOf('_') + 1));
+    const id = Number(data.slice(data.indexOf("_") + 1));
     const candidate = store.get(id);
     if (!candidate) {
-      await ackSilently(ctx, { text: 'Кандидат не найден.' });
+      await ackSilently(ctx, { text: "Кандидат не найден." });
       return;
     }
 
@@ -275,21 +280,21 @@ export function createBot(
       // Skippable while the owner is still deciding (raw / preview / failed /
       // a post-crash row whose publish status is unknown).
       const skippable: CandidateState[] = [
-        'collected',
-        'pending_review',
-        'rewrite_failed',
-        'needs_verification',
+        "collected",
+        "pending_review",
+        "rewrite_failed",
+        "needs_verification",
       ];
       if (!skippable.includes(candidate.state)) {
         await ackSilently(ctx, { text: `Уже обработано (${candidate.state}).` });
         return;
       }
-      store.setState(id, 'skipped');
-      await ackSilently(ctx, { text: 'Пропущено.' });
-      await ctx.editMessageReplyMarkup().catch(logEditError('skip clear markup'));
+      store.setState(id, "skipped");
+      await ackSilently(ctx, { text: "Пропущено." });
+      await ctx.editMessageReplyMarkup().catch(logEditError("skip clear markup"));
       await ctx
         .editMessageText(`❌ Пропущено: ${candidate.sourceTitle ?? candidate.sourceUrl}`)
-        .catch(logEditError('skip edit text'));
+        .catch(logEditError("skip edit text"));
       return;
     }
 
@@ -298,25 +303,25 @@ export function createBot(
     // A concurrent double-tap loses the race here and cannot double-post.
     const won = store.claimForPublishing(id);
     if (!won) {
-      await ackSilently(ctx, { text: 'Уже обрабатывается.' });
+      await ackSilently(ctx, { text: "Уже обрабатывается." });
       return;
     }
 
     inFlight += 1;
     try {
-      await ackSilently(ctx, { text: 'Публикую…' });
-      await ctx.editMessageReplyMarkup().catch(logEditError('publish clear markup'));
+      await ackSilently(ctx, { text: "Публикую…" });
+      await ctx.editMessageReplyMarkup().catch(logEditError("publish clear markup"));
 
       const rewrite = store.getRewrite(candidate);
       if (!rewrite) {
         // No saved rewrite (corrupt/missing JSON) — send back to rewrite_failed
         // with a usable retry keyboard rather than a dead, button-less card.
-        store.setState(id, 'rewrite_failed', 'Нет сохранённого rewrite.');
+        store.setState(id, "rewrite_failed", "Нет сохранённого rewrite.");
         await ctx
-          .editMessageText('⚠️ Нет данных для публикации — переработайте заново.', {
+          .editMessageText("⚠️ Нет данных для публикации — переработайте заново.", {
             reply_markup: rawKeyboard(id),
           })
-          .catch(logEditError('publish missing-rewrite text'));
+          .catch(logEditError("publish missing-rewrite text"));
         return;
       }
 
@@ -325,9 +330,9 @@ export function createBot(
         store.setPublished(id, postId);
         await ctx
           .editMessageText(`✅ Опубликовано: *${escapeMarkdown(rewrite.title)}*`, {
-            parse_mode: 'Markdown',
+            parse_mode: "Markdown",
           })
-          .catch(logEditError('publish success text'));
+          .catch(logEditError("publish success text"));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // If the POST may have reached the blog (5xx / unreadable 201 / timeout),
@@ -335,21 +340,21 @@ export function createBot(
         // owner is warned before re-publishing, instead of a silent duplicate.
         const maybePosted = err instanceof PublishError && err.maybePosted;
         if (maybePosted) {
-          store.setState(id, 'needs_verification', message);
+          store.setState(id, "needs_verification", message);
           await ctx
             .editMessageText(
               `❓ Публикация не подтверждена: ${message}\n\n_Пост МОГ опубликоваться — проверьте блог перед повтором._`,
-              { parse_mode: 'Markdown', reply_markup: previewKeyboard(id) }
+              { parse_mode: "Markdown", reply_markup: previewKeyboard(id) },
             )
-            .catch(logEditError('publish maybe-posted text'));
+            .catch(logEditError("publish maybe-posted text"));
         } else {
           // Definitely did not post — safe to re-offer publish/regenerate.
-          store.setState(id, 'pending_review', message);
+          store.setState(id, "pending_review", message);
           await ctx
             .editMessageText(`⚠️ Не удалось опубликовать: ${message}`, {
               reply_markup: previewKeyboard(id),
             })
-            .catch(logEditError('publish failure text'));
+            .catch(logEditError("publish failure text"));
         }
       }
     } finally {
@@ -364,53 +369,57 @@ export function createBot(
    */
   async function handleModelCallback(
     ctx: Context,
-    cb: NonNullable<ReturnType<typeof parseCallback>>
+    cb: NonNullable<ReturnType<typeof parseCallback>>,
   ): Promise<void> {
-    if (cb.kind === 'reset') {
+    if (cb.kind === "reset") {
       // Full reset to env: drop BOTH the model and the mock overrides, so the
       // "Сброшено на env" toast is truthful (a lingering mock override would
       // otherwise keep shadowing the env default).
       store.clearModelOverride();
       store.clearMockOverride();
       const { text, keyboard } = modelMenu(store);
-      await ackSilently(ctx, { text: 'Сброшено на env.' });
-      await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError('model reset'));
+      await ackSilently(ctx, { text: "Сброшено на env." });
+      await ctx
+        .editMessageText(text, { reply_markup: keyboard })
+        .catch(logEditError("model reset"));
       return;
     }
 
-    if (cb.kind === 'back') {
+    if (cb.kind === "back") {
       const { text, keyboard } = modelMenu(store);
       await ackSilently(ctx);
-      await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError('model back'));
+      await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError("model back"));
       return;
     }
 
-    if (cb.kind === 'mockOn' || cb.kind === 'mockOff') {
+    if (cb.kind === "mockOn" || cb.kind === "mockOff") {
       // Toggle the runtime mock (без LLM) override; the db value is strictly
       // authoritative over env REWRITE_MOCK (see resolveActiveProvider).
-      store.setMockOverride(cb.kind === 'mockOn');
+      store.setMockOverride(cb.kind === "mockOn");
       const { text, keyboard } = modelMenu(store);
-      await ackSilently(ctx, { text: cb.kind === 'mockOn' ? 'Mock включён.' : 'Mock выключен.' });
-      await ctx.editMessageText(text, { reply_markup: keyboard }).catch(logEditError('mock toggle'));
+      await ackSilently(ctx, { text: cb.kind === "mockOn" ? "Mock включён." : "Mock выключен." });
+      await ctx
+        .editMessageText(text, { reply_markup: keyboard })
+        .catch(logEditError("mock toggle"));
       return;
     }
 
-    if (cb.kind === 'provider') {
+    if (cb.kind === "provider") {
       await ackSilently(ctx);
       const models = await listModels(cb.provider);
-      const label = PROVIDERS[cb.provider].label;
+      const {label} = PROVIDERS[cb.provider];
       await ctx
         .editMessageText(`Провайдер: ${label}. Выберите модель:`, {
           reply_markup: keyboardFrom(modelButtons(cb.provider, models)),
         })
-        .catch(logEditError('model provider list'));
+        .catch(logEditError("model provider list"));
       return;
     }
 
     // cb.kind === 'model' — ping, then save on success only.
-    await ackSilently(ctx, { text: 'Проверяю модель…' });
+    await ackSilently(ctx, { text: "Проверяю модель…" });
     const result = await pingModel(cb.provider, cb.model);
-    const label = PROVIDERS[cb.provider].label;
+    const {label} = PROVIDERS[cb.provider];
     if (result.ok) {
       store.setModelOverride(cb.provider, cb.model);
       // Picking a model is an explicit "use this provider" intent; clear any mock
@@ -418,13 +427,13 @@ export function createBot(
       // resolveActiveProvider and the switch would be a silent no-op).
       const wasMock = isMockActive(store);
       store.clearMockOverride();
-      const note = wasMock ? ' (Mock выключен)' : '';
+      const note = wasMock ? " (Mock выключен)" : "";
       const confirm = `✅ Переключено: ${label} / ${cb.model}${note}`;
       // The override IS saved; if the message can't be edited (too old/deleted),
       // send a fresh reply so the owner always gets the confirmation.
       await ctx.editMessageText(confirm).catch(async (err) => {
-        logEditError('model switch ok')(err);
-        await ctx.reply(confirm).catch(logEditError('model switch ok reply'));
+        logEditError("model switch ok")(err);
+        await ctx.reply(confirm).catch(logEditError("model switch ok reply"));
       });
     } else {
       // keep the model list so the owner can try another model
@@ -433,7 +442,7 @@ export function createBot(
         .editMessageText(`⚠️ ${result.error}\n\nВыберите другую модель:`, {
           reply_markup: keyboardFrom(modelButtons(cb.provider, models)),
         })
-        .catch(logEditError('model switch fail'));
+        .catch(logEditError("model switch fail"));
     }
   }
 
@@ -455,15 +464,15 @@ export function createBot(
 
     inFlight += 1;
     try {
-      await ackSilently(ctx, { text: 'Перерабатываю…' });
+      await ackSilently(ctx, { text: "Перерабатываю…" });
       const active = resolveActiveProvider(store);
       const modelLabel = `${PROVIDERS[active.provider].label} / ${active.model}`;
 
       // Visible "in progress" state: replace the card with a placeholder (no
       // buttons) so the owner sees the rewrite is running, not a frozen card.
       await ctx
-        .editMessageText(renderRewriting(candidate, modelLabel), { parse_mode: 'Markdown' })
-        .catch(logEditError('rewrite in-progress'));
+        .editMessageText(renderRewriting(candidate, modelLabel), { parse_mode: "Markdown" })
+        .catch(logEditError("rewrite in-progress"));
 
       try {
         const item = store.getFeedItem(candidate);
@@ -475,11 +484,11 @@ export function createBot(
           id,
           renderPreview(updated, rewrite, modelLabel),
           previewKeyboard(id),
-          'rewrite preview'
+          "rewrite preview",
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        store.setState(id, 'rewrite_failed', message);
+        store.setState(id, "rewrite_failed", message);
         // A model-not-found on the active override means that model is dead;
         // clear the override so the env default is used next.
         if (isModelNotFound(message) && hasActiveOverride(store)) {
@@ -490,7 +499,7 @@ export function createBot(
           id,
           `⚠️ Не удалось переработать: ${message}\n\nМодель: ${modelLabel}`,
           rawKeyboard(id),
-          'rewrite failed text'
+          "rewrite failed text",
         );
       }
     } finally {
@@ -509,15 +518,15 @@ export function createBot(
     id: number,
     text: string,
     keyboard: InlineKeyboard,
-    label: string
+    label: string,
   ): Promise<void> {
     try {
-      await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: keyboard });
+      await ctx.editMessageText(text, { parse_mode: "Markdown", reply_markup: keyboard });
     } catch (editErr) {
       logEditError(label)(editErr);
       try {
         const msg = await bot.api.sendMessage(CONFIG.OWNER_TELEGRAM_ID, text, {
-          parse_mode: 'Markdown',
+          parse_mode: "Markdown",
           reply_markup: keyboard,
         });
         store.setTelegramMessage(id, msg.message_id);
@@ -541,14 +550,14 @@ export function createBot(
    */
   async function ingestMessage(ctx: Context, raw: string): Promise<void> {
     const input = classifyInput(raw);
-    if (input.kind === 'empty') {
-      await ctx.reply('Пришлите ссылку на статью или текст — переработаю в пост.');
+    if (input.kind === "empty") {
+      await ctx.reply("Пришлите ссылку на статью или текст — переработаю в пост.");
       return;
     }
 
     let item: FeedItem;
-    if (input.kind === 'url') {
-      await ctx.reply('⏳ Загружаю статью по ссылке…');
+    if (input.kind === "url") {
+      await ctx.reply("⏳ Загружаю статью по ссылке…");
       try {
         item = await fetchArticle(input.url);
       } catch (err) {
@@ -562,14 +571,14 @@ export function createBot(
 
     const id = store.insertCollected(item);
     if (id === null) {
-      await ctx.reply('Эта новость уже была в очереди или опубликована.');
+      await ctx.reply("Эта новость уже была в очереди или опубликована.");
       return;
     }
     const candidate = store.get(id);
     if (!candidate) {
       // Should not happen (just inserted) — guard so we never call sendRawCard
       // with a stale id.
-      await ctx.reply('⚠️ Не удалось создать карточку — попробуйте ещё раз.');
+      await ctx.reply("⚠️ Не удалось создать карточку — попробуйте ещё раз.");
       return;
     }
     await sendRawCard(candidate);
@@ -578,7 +587,7 @@ export function createBot(
   /** Sends the owner a RAW card for a freshly-collected candidate. */
   async function sendRawCard(candidate: Candidate): Promise<void> {
     const message = await bot.api.sendMessage(CONFIG.OWNER_TELEGRAM_ID, renderRaw(candidate), {
-      parse_mode: 'Markdown',
+      parse_mode: "Markdown",
       reply_markup: rawKeyboard(candidate.id),
     });
     store.setTelegramMessage(candidate.id, message.message_id);
@@ -591,23 +600,23 @@ export function createBot(
    * (to finish if it never posted) and a skip button (to dismiss if it did).
    */
   async function notifyNeedsVerification(): Promise<void> {
-    for (const c of store.listByState('needs_verification')) {
+    for (const c of store.listByState("needs_verification")) {
       const text = [
         `❓ *Статус публикации неизвестен* (был сбой во время публикации).`,
-        '',
+        "",
         escapeMarkdown(c.sourceTitle ?? c.sourceUrl),
-        '',
-        '_Проверьте блог: пост мог уже опубликоваться._',
-        '_«Опубликовать» — если поста нет; «Пропустить» — если он уже на сайте._',
-      ].join('\n');
+        "",
+        "_Проверьте блог: пост мог уже опубликоваться._",
+        "_«Опубликовать» — если поста нет; «Пропустить» — если он уже на сайте._",
+      ].join("\n");
       try {
         const msg = await bot.api.sendMessage(CONFIG.OWNER_TELEGRAM_ID, text, {
-          parse_mode: 'Markdown',
+          parse_mode: "Markdown",
           reply_markup: previewKeyboard(c.id),
         });
         store.setTelegramMessage(c.id, msg.message_id);
       } catch (err) {
-        logEditError('needs-verification notify')(err);
+        logEditError("needs-verification notify")(err);
       }
     }
   }

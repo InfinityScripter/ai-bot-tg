@@ -1,16 +1,17 @@
-import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
-import { timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from "node:crypto";
+import { type Server, createServer, type ServerResponse, type IncomingMessage } from "node:http";
 
+import { pingModel, listModels } from "./models.js";
 import {
   PROVIDERS,
   MODEL_PRICES,
-  CONTROL_PROVIDERS,
-  resolveActiveProvider,
-  isControlProvider,
   isMockActive,
-} from './providers.js';
-import { listModels, pingModel } from './models.js';
-import type { CandidateStore } from './store.js';
+  CONTROL_PROVIDERS,
+  isControlProvider,
+  resolveActiveProvider,
+} from "./providers.js";
+
+import type { CandidateStore } from "./store.js";
 
 export interface ControlServerOptions {
   port: number;
@@ -27,7 +28,7 @@ export interface ControlServerHandle {
 
 interface EnrichedModel {
   id: string;
-  tier: 'free' | 'paid';
+  tier: "free" | "paid";
   note?: string;
 }
 
@@ -43,38 +44,39 @@ function tokenMatches(provided: string, expected: string): boolean {
 function enrich(models: string[]): EnrichedModel[] {
   return models.map((id) => {
     const price = MODEL_PRICES[id];
-    if (!price) return { id, tier: 'paid' };
+    if (!price) return { id, tier: "paid" };
     return price.note ? { id, tier: price.tier, note: price.note } : { id, tier: price.tier };
   });
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
 }
 
 /** Reads a JSON request body, capped at 64KB. Resolves {} on empty/invalid. */
 function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
-    let raw = '';
-    req.on('data', (chunk) => {
+    let raw = "";
+    req.on("data", (chunk) => {
       raw += chunk;
       if (raw.length > 64_000) raw = raw.slice(0, 64_000);
     });
-    req.on('end', () => {
-      if (!raw) return resolve({});
+    req.on("end", () => {
+      if (!raw) {
+        resolve({});
+        return;
+      }
       try {
         const parsed: unknown = JSON.parse(raw);
         resolve(
-          typeof parsed === 'object' && parsed !== null
-            ? (parsed as Record<string, unknown>)
-            : {}
+          typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {},
         );
       } catch {
         resolve({});
       }
     });
-    req.on('error', () => resolve({}));
+    req.on("error", () => resolve({}));
   });
 }
 
@@ -90,25 +92,25 @@ export function startControlServer(opts: ControlServerOptions): ControlServerHan
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const auth = req.headers.authorization;
-    if (!auth || !auth.startsWith('Bearer ')) {
-      return send(res, 401, { error: 'Unauthorized' });
+    if (!auth || !auth.startsWith("Bearer ")) {
+      return send(res, 401, { error: "Unauthorized" });
     }
-    if (!tokenMatches(auth.slice('Bearer '.length), token)) {
-      return send(res, 403, { error: 'Forbidden' });
+    if (!tokenMatches(auth.slice("Bearer ".length), token)) {
+      return send(res, 403, { error: "Forbidden" });
     }
 
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const path = url.pathname;
-    const method = req.method ?? 'GET';
+    const method = req.method ?? "GET";
 
-    if (method === 'GET' && path === '/control/status') {
+    if (method === "GET" && path === "/control/status") {
       const { provider, model } = resolveActiveProvider(store);
       // Single source of truth for the mock toggle state, shared with the bot's
       // /model menu so the panel and Telegram never disagree.
       return send(res, 200, { provider, model, isMockEnabled: isMockActive(store) });
     }
 
-    if (method === 'GET' && path === '/control/providers') {
+    if (method === "GET" && path === "/control/providers") {
       const providers = CONTROL_PROVIDERS.map((name) => ({
         name,
         label: PROVIDERS[name].label,
@@ -117,21 +119,21 @@ export function startControlServer(opts: ControlServerOptions): ControlServerHan
       return send(res, 200, { providers });
     }
 
-    if (method === 'GET' && path === '/control/models') {
-      const provider = url.searchParams.get('provider') ?? '';
+    if (method === "GET" && path === "/control/models") {
+      const provider = url.searchParams.get("provider") ?? "";
       if (!isControlProvider(provider)) {
-        return send(res, 400, { error: 'Unknown provider' });
+        return send(res, 400, { error: "Unknown provider" });
       }
       const models = enrich(await listModels(provider));
       return send(res, 200, { provider, models });
     }
 
-    if (method === 'POST' && path === '/control/model') {
+    if (method === "POST" && path === "/control/model") {
       const body = await readJson(req);
-      const provider = typeof body.provider === 'string' ? body.provider : '';
-      const model = typeof body.model === 'string' ? body.model : '';
+      const provider = typeof body.provider === "string" ? body.provider : "";
+      const model = typeof body.model === "string" ? body.model : "";
       if (!isControlProvider(provider) || !model) {
-        return send(res, 400, { error: 'Unknown provider or empty model' });
+        return send(res, 400, { error: "Unknown provider or empty model" });
       }
       const ping = await pingModel(provider, model);
       if (!ping.ok) {
@@ -142,19 +144,19 @@ export function startControlServer(opts: ControlServerOptions): ControlServerHan
       // mock override so the choice actually takes effect (mock otherwise wins
       // in resolveActiveProvider and the switch would be a silent no-op).
       store.clearMockOverride();
-      return send(res, 200, { ok: true, validation: 'pinged' });
+      return send(res, 200, { ok: true, validation: "pinged" });
     }
 
-    if (method === 'POST' && path === '/control/mock') {
+    if (method === "POST" && path === "/control/mock") {
       const body = await readJson(req);
-      if (typeof body.enabled !== 'boolean') {
-        return send(res, 400, { error: 'enabled must be a boolean' });
+      if (typeof body.enabled !== "boolean") {
+        return send(res, 400, { error: "enabled must be a boolean" });
       }
       store.setMockOverride(body.enabled);
       return send(res, 200, { ok: true, isMockEnabled: body.enabled });
     }
 
-    return send(res, 404, { error: 'Not found' });
+    return send(res, 404, { error: "Not found" });
   }
 
   const server = createServer((req, res) => {
@@ -162,9 +164,9 @@ export function startControlServer(opts: ControlServerOptions): ControlServerHan
       // Never log headers/body — only the method, path, and error message.
       // eslint-disable-next-line no-console
       console.error(
-        `[control] ${req.method} ${req.url} failed: ${err instanceof Error ? err.message : 'error'}`
+        `[control] ${req.method} ${req.url} failed: ${err instanceof Error ? err.message : "error"}`,
       );
-      if (!res.headersSent) send(res, 500, { error: 'Internal error' });
+      if (!res.headersSent) send(res, 500, { error: "Internal error" });
     });
   });
 
@@ -172,14 +174,14 @@ export function startControlServer(opts: ControlServerOptions): ControlServerHan
   // asynchronously as an 'error' event; with no listener Node rethrows it as an
   // uncaught exception that kills the WHOLE bot. The control server is optional,
   // so swallow + log instead — the news pipeline must keep running regardless.
-  server.on('error', (err: NodeJS.ErrnoException) => {
+  server.on("error", (err: NodeJS.ErrnoException) => {
     // eslint-disable-next-line no-console
     console.error(
-      `[control] failed to bind 127.0.0.1:${port}: ${err.message}; control server disabled`
+      `[control] failed to bind 127.0.0.1:${port}: ${err.message}; control server disabled`,
     );
   });
 
-  server.listen(port, '127.0.0.1');
+  server.listen(port, "127.0.0.1");
 
   return {
     server,

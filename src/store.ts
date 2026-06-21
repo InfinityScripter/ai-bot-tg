@@ -1,10 +1,10 @@
-import { dirname } from 'node:path';
-import { mkdirSync } from 'node:fs';
+import { dirname } from "node:path";
+import { mkdirSync } from "node:fs";
+import Database from "better-sqlite3";
 
-import Database from 'better-sqlite3';
+import { CONFIG } from "./config.js";
 
-import { CONFIG } from './config.js';
-import type { Candidate, CandidateState, FeedItem, RewriteResult } from './types.js';
+import type { FeedItem, Candidate, RewriteResult, CandidateState } from "./types.js";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS candidates (
@@ -36,10 +36,10 @@ const SCHEMA = `
 `;
 
 /** The single settings row holding the active provider/model override. */
-const MODEL_OVERRIDE_KEY = 'model_override';
+const MODEL_OVERRIDE_KEY = "model_override";
 
 /** The single settings row holding the runtime mock ("без LLM") override. */
-const MOCK_OVERRIDE_KEY = 'mock_override';
+const MOCK_OVERRIDE_KEY = "mock_override";
 
 /** Runtime override of the rewrite provider/model, stored in `settings`. */
 export interface ModelOverride {
@@ -109,16 +109,16 @@ export class CandidateStore {
   private readonly db: Database.Database;
 
   constructor(path: string = CONFIG.SQLITE_PATH) {
-    if (path !== ':memory:') {
+    if (path !== ":memory:") {
       mkdirSync(dirname(path), { recursive: true });
     }
     this.db = new Database(path);
-    this.db.pragma('journal_mode = WAL');
+    this.db.pragma("journal_mode = WAL");
     // busy_timeout: wait (not error) if another connection holds the lock —
     // cheap insurance if a second writer is ever added. synchronous=NORMAL is
     // the WAL-recommended durability/speed trade-off (survives process crash).
-    this.db.pragma('busy_timeout = 5000');
-    this.db.pragma('synchronous = NORMAL');
+    this.db.pragma("busy_timeout = 5000");
+    this.db.pragma("synchronous = NORMAL");
     this.db.exec(SCHEMA);
     // Apply additive migrations; ALTER ADD COLUMN throws if it already exists,
     // which is the "already migrated" case — safe to ignore.
@@ -143,14 +143,16 @@ export class CandidateStore {
   private recoverInFlight(): void {
     // 'rewriting' is safe to retry — no external side effect happened.
     this.db
-      .prepare(`UPDATE candidates SET state = 'collected', updated_at = datetime('now') WHERE state = 'rewriting'`)
+      .prepare(
+        `UPDATE candidates SET state = 'collected', updated_at = datetime('now') WHERE state = 'rewriting'`,
+      )
       .run();
     // 'publishing' MAY have already POSTed to the blog. Do NOT reset to
     // pending_review (that re-offers Publish and can create a duplicate post);
     // move to needs_verification so the owner is warned before re-publishing.
     this.db
       .prepare(
-        `UPDATE candidates SET state = 'needs_verification', updated_at = datetime('now') WHERE state = 'publishing'`
+        `UPDATE candidates SET state = 'needs_verification', updated_at = datetime('now') WHERE state = 'publishing'`,
       )
       .run();
   }
@@ -163,7 +165,7 @@ export class CandidateStore {
     // A pruned-but-seen key lives only in seen_keys; honor it so an old
     // published/skipped article isn't re-collected after its row was deleted.
     const prunedSeen = this.db
-      .prepare('SELECT 1 FROM seen_keys WHERE dedup_key = ?')
+      .prepare("SELECT 1 FROM seen_keys WHERE dedup_key = ?")
       .get(item.dedupKey);
     if (prunedSeen) return null;
 
@@ -171,7 +173,7 @@ export class CandidateStore {
       .prepare(
         `INSERT OR IGNORE INTO candidates
            (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, state)
-         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, 'collected')`
+         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, 'collected')`,
       )
       .run({
         dedupKey: item.dedupKey,
@@ -196,7 +198,7 @@ export class CandidateStore {
       try {
         const parsed = JSON.parse(candidate.imageUrls) as unknown;
         if (Array.isArray(parsed)) {
-          imageUrls = parsed.filter((u): u is string => typeof u === 'string');
+          imageUrls = parsed.filter((u): u is string => typeof u === "string");
         }
       } catch {
         /* corrupt JSON — fall back to [] */
@@ -205,9 +207,9 @@ export class CandidateStore {
     return {
       dedupKey: candidate.dedupKey,
       url: candidate.sourceUrl,
-      title: candidate.sourceTitle ?? '',
-      snippet: candidate.snippet ?? '',
-      feedTitle: candidate.feedTitle ?? '',
+      title: candidate.sourceTitle ?? "",
+      snippet: candidate.snippet ?? "",
+      feedTitle: candidate.feedTitle ?? "",
       imageUrl: candidate.imageUrl,
       imageUrls,
       publishedAt: null, // not persisted — only used pre-insert for ordering
@@ -217,7 +219,7 @@ export class CandidateStore {
   /** Returns all candidates in a given state (e.g. needs_verification on boot). */
   listByState(state: CandidateState): Candidate[] {
     const rows = this.db
-      .prepare('SELECT * FROM candidates WHERE state = ? ORDER BY id')
+      .prepare("SELECT * FROM candidates WHERE state = ? ORDER BY id")
       .all(state) as CandidateRow[];
     return rows.map(mapRow);
   }
@@ -227,7 +229,7 @@ export class CandidateStore {
     const row = this.db
       .prepare(
         `SELECT 1 FROM candidates WHERE dedup_key = ?
-         UNION ALL SELECT 1 FROM seen_keys WHERE dedup_key = ? LIMIT 1`
+         UNION ALL SELECT 1 FROM seen_keys WHERE dedup_key = ? LIMIT 1`,
       )
       .get(dedupKey, dedupKey);
     return row !== undefined;
@@ -251,13 +253,13 @@ export class CandidateStore {
         .prepare(
           `INSERT OR IGNORE INTO seen_keys (dedup_key)
              SELECT dedup_key FROM candidates
-             WHERE state IN ('published', 'skipped') AND updated_at < ?`
+             WHERE state IN ('published', 'skipped') AND updated_at < ?`,
         )
         .run(cutoff);
       const info = this.db
         .prepare(
           `DELETE FROM candidates
-             WHERE state IN ('published', 'skipped') AND updated_at < ?`
+             WHERE state IN ('published', 'skipped') AND updated_at < ?`,
         )
         .run(cutoff);
       return info.changes;
@@ -266,7 +268,7 @@ export class CandidateStore {
   }
 
   get(id: number): Candidate | null {
-    const row = this.db.prepare('SELECT * FROM candidates WHERE id = ?').get(id) as
+    const row = this.db.prepare("SELECT * FROM candidates WHERE id = ?").get(id) as
       | CandidateRow
       | undefined;
     return row ? mapRow(row) : null;
@@ -282,7 +284,7 @@ export class CandidateStore {
     const info = this.db
       .prepare(
         `UPDATE candidates SET state = 'publishing', updated_at = datetime('now')
-         WHERE id = ? AND state IN ('pending_review', 'needs_verification')`
+         WHERE id = ? AND state IN ('pending_review', 'needs_verification')`,
       )
       .run(id);
     return info.changes === 1;
@@ -298,7 +300,7 @@ export class CandidateStore {
     const info = this.db
       .prepare(
         `UPDATE candidates SET state = 'rewriting', error = NULL, updated_at = datetime('now')
-         WHERE id = ? AND state IN ('collected', 'pending_review', 'rewrite_failed')`
+         WHERE id = ? AND state IN ('collected', 'pending_review', 'rewrite_failed')`,
       )
       .run(id);
     return info.changes === 1;
@@ -307,7 +309,9 @@ export class CandidateStore {
   /** Sets the state (and optionally an error message) for a candidate. */
   setState(id: number, state: CandidateState, error: string | null = null): void {
     this.db
-      .prepare(`UPDATE candidates SET state = ?, error = ?, updated_at = datetime('now') WHERE id = ?`)
+      .prepare(
+        `UPDATE candidates SET state = ?, error = ?, updated_at = datetime('now') WHERE id = ?`,
+      )
       .run(state, error, id);
   }
 
@@ -317,7 +321,7 @@ export class CandidateStore {
       .prepare(
         `UPDATE candidates
          SET rewrite_json = ?, state = 'pending_review', error = NULL, updated_at = datetime('now')
-         WHERE id = ?`
+         WHERE id = ?`,
       )
       .run(JSON.stringify(rewrite), id);
   }
@@ -335,7 +339,7 @@ export class CandidateStore {
       .prepare(
         `UPDATE candidates
          SET state = 'published', blog_post_id = ?, error = NULL, updated_at = datetime('now')
-         WHERE id = ?`
+         WHERE id = ?`,
       )
       .run(blogPostId, id);
   }
@@ -357,14 +361,14 @@ export class CandidateStore {
     this.db
       .prepare(
         `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
       )
       .run(key, value);
   }
 
   /** Low-level getter for a settings key, or null if absent. */
   private getRawSetting(key: string): string | null {
-    const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as
       | { value: string }
       | undefined;
     return row?.value ?? null;
@@ -380,7 +384,7 @@ export class CandidateStore {
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as Partial<ModelOverride>;
-      if (typeof parsed.provider === 'string' && typeof parsed.model === 'string') {
+      if (typeof parsed.provider === "string" && typeof parsed.model === "string") {
         return { provider: parsed.provider, model: parsed.model };
       }
       return null;
@@ -396,7 +400,7 @@ export class CandidateStore {
 
   /** Clears the override; the rewriter then uses the env default. */
   clearModelOverride(): void {
-    this.db.prepare('DELETE FROM settings WHERE key = ?').run(MODEL_OVERRIDE_KEY);
+    this.db.prepare("DELETE FROM settings WHERE key = ?").run(MODEL_OVERRIDE_KEY);
   }
 
   /**
@@ -410,7 +414,7 @@ export class CandidateStore {
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as Partial<MockOverride>;
-      if (typeof parsed.enabled === 'boolean') {
+      if (typeof parsed.enabled === "boolean") {
         return { enabled: parsed.enabled };
       }
       return null;
@@ -426,7 +430,7 @@ export class CandidateStore {
 
   /** Clears the mock override; resolution then falls back to env REWRITE_MOCK. */
   clearMockOverride(): void {
-    this.db.prepare('DELETE FROM settings WHERE key = ?').run(MOCK_OVERRIDE_KEY);
+    this.db.prepare("DELETE FROM settings WHERE key = ?").run(MOCK_OVERRIDE_KEY);
   }
 
   close(): void {

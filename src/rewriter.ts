@@ -1,13 +1,14 @@
-import Anthropic from '@anthropic-ai/sdk';
+import Anthropic from "@anthropic-ai/sdk";
 
-import { CONFIG } from './config.js';
-import { PROVIDERS, chatUrl, resolveActiveProvider } from './providers.js';
-import { normalizeTags } from './tags.js';
-import { RewriteSchema } from './types.js';
-import { stripHtml, truncate } from './utils.js';
-import type { ProviderName, ProviderSpec } from './providers.js';
-import type { CandidateStore } from './store.js';
-import type { FeedItem, RewriteResult } from './types.js';
+import { CONFIG } from "./config.js";
+import { normalizeTags } from "./tags.js";
+import { RewriteSchema } from "./types.js";
+import { truncate, stripHtml } from "./utils.js";
+import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
+
+import type { CandidateStore } from "./store.js";
+import type { FeedItem, RewriteResult } from "./types.js";
+import type { ProviderName, ProviderSpec } from "./providers.js";
 
 const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
 
@@ -31,11 +32,11 @@ function mockRewrite(item: FeedItem): RewriteResult {
   // the mock body isn't a flat wall of text either.
   const bodyImages = item.imageUrls.slice(1, 4).map((u) => `![](${u})`);
   const content = [
-    snippet || '_Полный текст доступен по ссылке на источник._',
-    ...(bodyImages.length ? ['', ...bodyImages] : []),
-    '',
-    `Источник: [${item.feedTitle || 'оригинал'}](${item.url})`,
-  ].join('\n');
+    snippet || "_Полный текст доступен по ссылке на источник._",
+    ...(bodyImages.length ? ["", ...bodyImages] : []),
+    "",
+    `Источник: [${item.feedTitle || "оригинал"}](${item.url})`,
+  ].join("\n");
   return {
     title,
     description,
@@ -92,27 +93,27 @@ function buildUserContent(item: FeedItem): string {
   // body candidates. Cap so a gallery-heavy article doesn't bloat the prompt.
   const bodyImages = item.imageUrls.slice(1, 6);
   const imagesBlock = bodyImages.length
-    ? `Картинки для тела (вставляй "![](URL)" по смыслу, только эти URL):\n${bodyImages.join('\n')}`
-    : 'Картинки: нет';
-  return `Источник: ${item.feedTitle || 'неизвестен'}
+    ? `Картинки для тела (вставляй "![](URL)" по смыслу, только эти URL):\n${bodyImages.join("\n")}`
+    : "Картинки: нет";
+  return `Источник: ${item.feedTitle || "неизвестен"}
 Ссылка на оригинал: ${item.url}
 Заголовок: ${item.title}
-Краткое описание: ${item.snippet || '(нет описания)'}
+Краткое описание: ${item.snippet || "(нет описания)"}
 ${imagesBlock}`;
 }
 
 /** Extracts the text from the first text content block of a message response. */
 function extractText(response: Anthropic.Message): string {
   for (const block of response.content) {
-    if (block.type === 'text') return block.text;
+    if (block.type === "text") return block.text;
   }
-  return '';
+  return "";
 }
 
 /** Pulls the first balanced-looking JSON object out of a text blob. */
 function extractJson(text: string): string | null {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) return null;
   return text.slice(start, end + 1);
 }
@@ -124,30 +125,32 @@ function extractJson(text: string): string | null {
  */
 function sanitizeImages(content: string, allowed: string[]): string {
   const allow = new Set(allowed);
-  return content
-    .replace(/!\[[^\]]*\]\(([^)]+)\)/g, (full, url: string) =>
-      allow.has(url.trim()) ? full : ''
-    )
-    // collapse blank-line runs left behind by removed images
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return (
+    content
+      .replace(/!\[[^\]]*\]\(([^)]+)\)/g, (full, url: string) =>
+        allow.has(url.trim()) ? full : "",
+      )
+      // collapse blank-line runs left behind by removed images
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
 }
 
 /** Parses, validates and post-processes a raw JSON string from either provider. */
 function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
   if (!raw) {
-    throw new Error('LLM не вернул JSON в ответе.');
+    throw new Error("LLM не вернул JSON в ответе.");
   }
   let candidate: unknown;
   try {
     candidate = JSON.parse(raw);
   } catch {
-    throw new Error('LLM вернул невалидный JSON.');
+    throw new Error("LLM вернул невалидный JSON.");
   }
   const parsed = RewriteSchema.safeParse(candidate);
   if (!parsed.success) {
     throw new Error(
-      `Ответ LLM не прошёл валидацию: ${parsed.error.issues[0]?.message ?? 'unknown'}`
+      `Ответ LLM не прошёл валидацию: ${parsed.error.issues[0]?.message ?? "unknown"}`,
     );
   }
   // Only allow body images (cover excluded — the page shows it). Defensive
@@ -170,14 +173,14 @@ async function rewriteWithAnthropic(item: FeedItem, model: string): Promise<Rewr
   const response = await client.messages.create({
     model,
     max_tokens: 2048,
-    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: buildUserContent(item) }],
+    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content: buildUserContent(item) }],
   });
 
   // 'refusal' may not be in this SDK version's StopReason union — compare as a
   // widened string so the guard works regardless of SDK version.
-  if ((response.stop_reason as string) === 'refusal') {
-    throw new Error('Claude отказался обрабатывать новость (refusal).');
+  if ((response.stop_reason as string) === "refusal") {
+    throw new Error("Claude отказался обрабатывать новость (refusal).");
   }
   return finalizeRewrite(extractJson(extractText(response)), item);
 }
@@ -195,23 +198,23 @@ interface OpenAIChatResponse {
 async function rewriteWithOpenAICompat(
   item: FeedItem,
   spec: ProviderSpec,
-  model: string
+  model: string,
 ): Promise<RewriteResult> {
   let response: Response;
   try {
     response = await fetch(chatUrl(spec), {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${spec.apiKey()}`,
       },
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: buildUserContent(item) },
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: buildUserContent(item) },
         ],
-        response_format: { type: 'json_object' },
+        response_format: { type: "json_object" },
       }),
     });
   } catch (err) {
@@ -219,12 +222,12 @@ async function rewriteWithOpenAICompat(
   }
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
+    const text = await response.text().catch(() => "");
     throw new Error(`${spec.label} ответил ${response.status}: ${text.slice(0, 200)}`);
   }
 
   const data = (await response.json()) as OpenAIChatResponse;
-  const text = data.choices?.[0]?.message?.content ?? '';
+  const text = data.choices?.[0]?.message?.content ?? "";
   return finalizeRewrite(extractJson(text), item);
 }
 
@@ -244,13 +247,13 @@ export async function rewriteToPost(item: FeedItem, store: CandidateStore): Prom
 async function rewriteWith(
   item: FeedItem,
   provider: ProviderName,
-  model: string
+  model: string,
 ): Promise<RewriteResult> {
-  if (provider === 'mock') {
+  if (provider === "mock") {
     return mockRewrite(item);
   }
   const spec = PROVIDERS[provider];
-  if (spec.kind === 'anthropic') {
+  if (spec.kind === "anthropic") {
     return rewriteWithAnthropic(item, model);
   }
   return rewriteWithOpenAICompat(item, spec, model);

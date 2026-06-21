@@ -1,11 +1,12 @@
-import { CONFIG } from './config.js';
-import type { CandidateStore } from './store.js';
+import { CONFIG } from "./config.js";
+
+import type { CandidateStore } from "./store.js";
 
 /** All rewrite backends the bot can use. */
-export type ProviderName = 'anthropic' | 'gemini' | 'glm' | 'deepseek' | 'mock';
+export type ProviderName = "anthropic" | "gemini" | "glm" | "deepseek" | "mock";
 
 /** How a provider is called. */
-export type ProviderKind = 'anthropic' | 'openai-compat' | 'mock';
+export type ProviderKind = "anthropic" | "openai-compat" | "mock";
 
 /** Static + lazy description of one provider. */
 export interface ProviderSpec {
@@ -29,46 +30,46 @@ export interface ProviderSpec {
  */
 export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
   anthropic: {
-    label: 'Claude',
-    kind: 'anthropic',
+    label: "Claude",
+    kind: "anthropic",
     apiKey: () => CONFIG.ANTHROPIC_API_KEY,
     defaultModel: CONFIG.REWRITE_MODEL,
-    fallbackModels: ['claude-haiku-4-5', 'claude-sonnet-4-6'],
+    fallbackModels: ["claude-haiku-4-5", "claude-sonnet-4-6"],
   },
   gemini: {
-    label: 'Gemini',
-    kind: 'openai-compat',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    label: "Gemini",
+    kind: "openai-compat",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     apiKey: () => CONFIG.GEMINI_API_KEY,
     defaultModel: CONFIG.GEMINI_MODEL,
-    fallbackModels: ['gemini-2.0-flash', 'gemini-2.5-flash'],
+    fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash"],
   },
   glm: {
-    label: 'GLM',
-    kind: 'openai-compat',
+    label: "GLM",
+    kind: "openai-compat",
     // Z.ai's OpenAI-compatible base (paas/v4); chat at {baseUrl}/chat/completions.
-    baseUrl: 'https://api.z.ai/api/paas/v4',
+    baseUrl: "https://api.z.ai/api/paas/v4",
     apiKey: () => CONFIG.GLM_API_KEY,
     defaultModel: CONFIG.GLM_MODEL,
     // The *-flash variants are FREE and verified working, but the live /models
     // list returns only PAID models — so these must be in the fallback to ever
     // appear as buttons. Free ones first.
-    fallbackModels: ['glm-4.7-flash', 'glm-4.5-flash', 'glm-4.6', 'glm-4.5-air'],
+    fallbackModels: ["glm-4.7-flash", "glm-4.5-flash", "glm-4.6", "glm-4.5-air"],
   },
   deepseek: {
-    label: 'DeepSeek',
-    kind: 'openai-compat',
-    baseUrl: 'https://api.deepseek.com',
+    label: "DeepSeek",
+    kind: "openai-compat",
+    baseUrl: "https://api.deepseek.com",
     apiKey: () => CONFIG.DEEPSEEK_API_KEY,
     defaultModel: CONFIG.DEEPSEEK_MODEL,
-    fallbackModels: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat'],
+    fallbackModels: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat"],
   },
   mock: {
-    label: 'Mock (без LLM)',
-    kind: 'mock',
-    apiKey: () => 'mock',
-    defaultModel: 'mock',
-    fallbackModels: ['mock'],
+    label: "Mock (без LLM)",
+    kind: "mock",
+    apiKey: () => "mock",
+    defaultModel: "mock",
+    fallbackModels: ["mock"],
   },
 };
 
@@ -80,39 +81,39 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
  *   tier 'paid'  → 💲 with the $in/$out note
  */
 export interface ModelPrice {
-  tier: 'free' | 'paid';
+  tier: "free" | "paid";
   /** Short note shown next to the model, e.g. "$0.14/$0.28 за 1M". */
   note?: string;
 }
 
 export const MODEL_PRICES: Record<string, ModelPrice> = {
   // GLM (Z.ai) — *-flash are free; others are paid.
-  'glm-4.7-flash': { tier: 'free' },
-  'glm-4.5-flash': { tier: 'free' },
-  'glm-4.6': { tier: 'paid', note: '$0.60/$2.20 за 1M' },
-  'glm-4.7': { tier: 'paid', note: '$0.60/$2.20 за 1M' },
-  'glm-4.5-air': { tier: 'paid', note: 'дёшево' },
-  'glm-5': { tier: 'paid', note: '$1.00/… за 1M' },
+  "glm-4.7-flash": { tier: "free" },
+  "glm-4.5-flash": { tier: "free" },
+  "glm-4.6": { tier: "paid", note: "$0.60/$2.20 за 1M" },
+  "glm-4.7": { tier: "paid", note: "$0.60/$2.20 за 1M" },
+  "glm-4.5-air": { tier: "paid", note: "дёшево" },
+  "glm-5": { tier: "paid", note: "$1.00/… за 1M" },
   // DeepSeek — both V4 tiers are paid but cheap.
-  'deepseek-v4-flash': { tier: 'paid', note: '$0.14/$0.28 за 1M' },
-  'deepseek-v4-pro': { tier: 'paid', note: '$1.74/$3.48 за 1M' },
-  'deepseek-chat': { tier: 'paid', note: '≈ v4-flash' },
+  "deepseek-v4-flash": { tier: "paid", note: "$0.14/$0.28 за 1M" },
+  "deepseek-v4-pro": { tier: "paid", note: "$1.74/$3.48 за 1M" },
+  "deepseek-chat": { tier: "paid", note: "≈ v4-flash" },
   // Claude — paid.
-  'claude-haiku-4-5': { tier: 'paid', note: 'Anthropic, платно' },
-  'claude-sonnet-4-6': { tier: 'paid', note: 'Anthropic, дороже' },
+  "claude-haiku-4-5": { tier: "paid", note: "Anthropic, платно" },
+  "claude-sonnet-4-6": { tier: "paid", note: "Anthropic, дороже" },
   // Gemini — free tier exists but is geo/quota limited from RU.
-  'gemini-2.0-flash': { tier: 'free', note: 'free-tier (гео-лимит из РФ)' },
-  'gemini-2.5-flash': { tier: 'free', note: 'free-tier (гео-лимит из РФ)' },
+  "gemini-2.0-flash": { tier: "free", note: "free-tier (гео-лимит из РФ)" },
+  "gemini-2.5-flash": { tier: "free", note: "free-tier (гео-лимит из РФ)" },
   // Mock — no cost.
-  mock: { tier: 'free' },
+  mock: { tier: "free" },
 };
 
 /** A short price/tier label for a model, or '' if unknown. */
 export function modelPriceLabel(model: string): string {
   const p = MODEL_PRICES[model];
-  if (!p) return '';
-  if (p.tier === 'free') return p.note ? `🆓 ${p.note}` : '🆓';
-  return p.note ? `💲 ${p.note}` : '💲';
+  if (!p) return "";
+  if (p.tier === "free") return p.note ? `🆓 ${p.note}` : "🆓";
+  return p.note ? `💲 ${p.note}` : "💲";
 }
 
 /** All provider names, in registry order. */
@@ -131,7 +132,7 @@ export function isProviderName(value: string): value is ProviderName {
  * stay in PROVIDERS so the Telegram /model path keeps working — only the admin
  * control surface is narrowed.
  */
-export const CONTROL_PROVIDERS = ['glm', 'deepseek', 'mock'] as const;
+export const CONTROL_PROVIDERS = ["glm", "deepseek", "mock"] as const;
 
 /** A provider name the admin panel is allowed to select. */
 export type ControlProviderName = (typeof CONTROL_PROVIDERS)[number];
@@ -148,7 +149,7 @@ export function chatUrl(spec: ProviderSpec): string {
 
 /** The env-configured default provider (mock if forced), with no override. */
 function envDefaultProvider(): ProviderName {
-  if (CONFIG.REWRITE_MOCK) return 'mock';
+  if (CONFIG.REWRITE_MOCK) return "mock";
   return CONFIG.REWRITE_PROVIDER as ProviderName;
 }
 
@@ -168,7 +169,7 @@ export function resolveActiveProvider(store: CandidateStore): {
   const mockDb = store.getMockOverride();
   const forceMock = mockDb ? mockDb.enabled : CONFIG.REWRITE_MOCK;
   if (forceMock) {
-    return { provider: 'mock', model: PROVIDERS.mock.defaultModel };
+    return { provider: "mock", model: PROVIDERS.mock.defaultModel };
   }
   const override = store.getModelOverride();
   if (override) {

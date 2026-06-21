@@ -1,6 +1,6 @@
-import { createBot } from '../bot.js';
-import { runCollection } from '../collector.js';
-import { CandidateStore } from '../store.js';
+import { createBot } from "../bot.js";
+import { CandidateStore } from "../store.js";
+import { runCollection } from "../collector.js";
 
 /**
  * One-shot collection run from the shell (`npm run fetch`), without starting
@@ -15,7 +15,7 @@ async function main() {
 
   const summary = await runCollection(store, sendRawCard);
   // eslint-disable-next-line no-console
-  console.log('[cli] summary:', summary);
+  console.log("[cli] summary:", summary);
 
   store.close();
   process.exit(0);
@@ -23,6 +23,6 @@ async function main() {
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
-  console.error('[cli] fatal:', err);
+  console.error("[cli] fatal:", err);
   process.exit(1);
 });

@@ -1,5 +1,6 @@
-import { CONFIG } from './config.js';
-import type { RelevanceDecision, RelevanceMode } from './relevance.js';
+import { CONFIG } from "./config.js";
+
+import type { RelevanceMode, RelevanceDecision } from "./relevance.js";
 
 /**
  * Mirrors each relevance decision into the backend audit log so the owner can
@@ -18,9 +19,9 @@ import type { RelevanceDecision, RelevanceMode } from './relevance.js';
 
 /** The exact action literals the backend accepts; anything else → 400. */
 export type RelevanceAuditAction =
-  | 'bot.relevance_dropped'
-  | 'bot.relevance_shadow_dropped'
-  | 'bot.relevance_kept';
+  | "bot.relevance_dropped"
+  | "bot.relevance_shadow_dropped"
+  | "bot.relevance_kept";
 
 /** Injectable deps so tests never touch the real network; defaults to global fetch. */
 export interface EmitDeps {
@@ -42,9 +43,12 @@ function truncate(value: string, max: number): string {
  *   - kept === false && mode === 'on'     → 'bot.relevance_dropped'
  * Mode 'off' produces no decisions, so it is never passed here.
  */
-export function relevanceActionFor(decision: RelevanceDecision, mode: RelevanceMode): RelevanceAuditAction {
-  if (decision.kept) return 'bot.relevance_kept';
-  return mode === 'shadow' ? 'bot.relevance_shadow_dropped' : 'bot.relevance_dropped';
+export function relevanceActionFor(
+  decision: RelevanceDecision,
+  mode: RelevanceMode,
+): RelevanceAuditAction {
+  if (decision.kept) return "bot.relevance_kept";
+  return mode === "shadow" ? "bot.relevance_shadow_dropped" : "bot.relevance_dropped";
 }
 
 /**
@@ -57,7 +61,7 @@ export function relevanceActionFor(decision: RelevanceDecision, mode: RelevanceM
  * is always a drop, so it's covered by the kept === false branch.
  */
 function isInteresting(decision: RelevanceDecision): boolean {
-  return decision.kept === false || decision.stage === 'llm' || decision.stage === 'failopen';
+  return decision.kept === false || decision.stage === "llm" || decision.stage === "failopen";
 }
 
 /**
@@ -68,13 +72,13 @@ function isInteresting(decision: RelevanceDecision): boolean {
 export async function emitRelevanceDecision(
   decision: RelevanceDecision,
   mode: RelevanceMode,
-  deps: EmitDeps = {}
+  deps: EmitDeps = {},
 ): Promise<void> {
   const fetchFn = deps.fetchFn ?? fetch;
-  const url = `${CONFIG.BLOG_API_URL.replace(/\/$/, '')}/api/admin/audit/ingest`;
+  const url = `${CONFIG.BLOG_API_URL.replace(/\/$/, "")}/api/admin/audit/ingest`;
   const body = JSON.stringify({
     action: relevanceActionFor(decision, mode),
-    targetType: 'post',
+    targetType: "post",
     targetId: decision.url,
     metadata: {
       title: truncate(decision.title, MAX_TITLE_LEN),
@@ -86,9 +90,9 @@ export async function emitRelevanceDecision(
 
   try {
     const response = await fetchFn(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${CONFIG.BOT_API_TOKEN}`,
       },
       body,
@@ -112,7 +116,7 @@ export async function emitRelevanceDecision(
 export async function emitRelevanceDecisions(
   decisions: RelevanceDecision[],
   mode: RelevanceMode,
-  deps: EmitDeps = {}
+  deps: EmitDeps = {},
 ): Promise<void> {
   const interesting = decisions.filter(isInteresting);
   await Promise.allSettled(interesting.map((d) => emitRelevanceDecision(d, mode, deps)));

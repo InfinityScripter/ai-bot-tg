@@ -1,6 +1,6 @@
-import { Cron } from 'croner';
+import { Cron } from "croner";
 
-import { CONFIG } from './config.js';
+import { CONFIG } from "./config.js";
 
 /**
  * Registers the daily collection job. Returns the Cron handle so the caller can
@@ -18,6 +18,6 @@ export function scheduleDaily(run: () => Promise<void>): Cron {
         console.error(`[scheduler] collection run threw: ${String(err)}`);
       },
     },
-    run
+    run,
   );
 }

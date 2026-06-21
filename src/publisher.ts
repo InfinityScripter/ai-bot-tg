@@ -1,6 +1,7 @@
-import { CONFIG } from './config.js';
-import { pickDefaultCover } from './tags.js';
-import type { BlogPostBody, RewriteResult } from './types.js';
+import { CONFIG } from "./config.js";
+import { pickDefaultCover } from "./tags.js";
+
+import type { BlogPostBody, RewriteResult } from "./types.js";
 
 /**
  * A publish failure that also reports whether the POST MAY have reached the
@@ -11,9 +12,10 @@ import type { BlogPostBody, RewriteResult } from './types.js';
  */
 export class PublishError extends Error {
   readonly maybePosted: boolean;
+
   constructor(message: string, maybePosted: boolean) {
     super(message);
-    this.name = 'PublishError';
+    this.name = "PublishError";
     this.maybePosted = maybePosted;
   }
 }
@@ -36,7 +38,7 @@ export function toBlogPostBody(rewrite: RewriteResult, coverUrl?: string | null)
     metaDescription: rewrite.metaDescription,
     metaKeywords: rewrite.tags,
     coverUrl: coverUrl || pickDefaultCover(rewrite.title),
-    publish: 'published',
+    publish: "published",
   };
 }
 
@@ -53,17 +55,17 @@ export function toBlogPostBody(rewrite: RewriteResult, coverUrl?: string | null)
 export async function publishToBlog(
   rewrite: RewriteResult,
   coverUrl?: string | null,
-  idempotencyKey?: string
+  idempotencyKey?: string,
 ): Promise<string> {
-  const url = `${CONFIG.BLOG_API_URL.replace(/\/$/, '')}/api/post/new`;
+  const url = `${CONFIG.BLOG_API_URL.replace(/\/$/, "")}/api/post/new`;
   let response: Response;
   try {
     response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${CONFIG.BOT_API_TOKEN}`,
-        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
       body: JSON.stringify(toBlogPostBody(rewrite, coverUrl)),
     });
@@ -73,7 +75,7 @@ export async function publishToBlog(
   }
 
   if (response.status !== 201) {
-    const text = await response.text().catch(() => '');
+    const text = await response.text().catch(() => "");
     // A 4xx is a clear client rejection (didn't post); a 5xx may have committed
     // the post before failing — treat as maybe-posted.
     const maybePosted = response.status >= 500;
@@ -86,11 +88,11 @@ export async function publishToBlog(
   try {
     data = (await response.json()) as { post?: { id?: string; _id?: string } };
   } catch {
-    throw new PublishError('Блог вернул 201, но тело ответа нечитаемо.', true);
+    throw new PublishError("Блог вернул 201, но тело ответа нечитаемо.", true);
   }
   const postId = data.post?.id ?? data.post?._id;
   if (!postId) {
-    throw new PublishError('Блог вернул 201 без id поста.', true);
+    throw new PublishError("Блог вернул 201 без id поста.", true);
   }
   return postId;
 }

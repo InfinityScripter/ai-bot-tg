@@ -1,16 +1,16 @@
 /** Query params dropped when canonicalizing a URL for dedup. */
 const TRACKING_PARAMS = [
-  'utm_source',
-  'utm_medium',
-  'utm_campaign',
-  'utm_term',
-  'utm_content',
-  'utm_reader',
-  'fbclid',
-  'gclid',
-  'yclid',
-  'igshid',
-  'ref',
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "utm_reader",
+  "fbclid",
+  "gclid",
+  "yclid",
+  "igshid",
+  "ref",
 ];
 
 /**
@@ -20,13 +20,13 @@ const TRACKING_PARAMS = [
  * use non-URL guids).
  */
 export function canonicalizeUrl(raw: string): string {
-  const value = (raw ?? '').trim();
-  if (!value) return '';
+  const value = (raw ?? "").trim();
+  if (!value) return "";
 
   try {
     const url = new URL(value);
     url.hostname = url.hostname.toLowerCase();
-    url.hash = '';
+    url.hash = "";
     for (const param of TRACKING_PARAMS) {
       url.searchParams.delete(param);
     }
@@ -34,11 +34,11 @@ export function canonicalizeUrl(raw: string): string {
     // strings collapses to one dedup key. URLSearchParams preserves insertion
     // order, so we rebuild it sorted. Empty query drops the dangling '?'.
     const sorted = new URLSearchParams(
-      [...url.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b))
+      [...url.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b)),
     ).toString();
-    url.search = sorted ? `?${sorted}` : '';
+    url.search = sorted ? `?${sorted}` : "";
     let out = url.toString();
-    if (out.endsWith('/')) out = out.slice(0, -1);
+    if (out.endsWith("/")) out = out.slice(0, -1);
     return out.toLowerCase();
   } catch {
     return value.toLowerCase();
@@ -50,14 +50,14 @@ export function canonicalizeUrl(raw: string): string {
  * back to the link. Returns '' when neither is usable (caller should skip).
  */
 export function dedupKeyFor(guid: string | undefined, link: string | undefined): string {
-  return canonicalizeUrl(guid || link || '');
+  return canonicalizeUrl(guid || link || "");
 }
 
 /** Strips HTML tags and collapses whitespace — defensive for feeds that put markup in snippets. */
 export function stripHtml(input: string): string {
-  return (input ?? '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
+  return (input ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -65,7 +65,7 @@ export function stripHtml(input: string): string {
 export function truncate(input: string, max: number): string {
   if (input.length <= max) return input;
   const cut = input.slice(0, max);
-  const lastSpace = cut.lastIndexOf(' ');
+  const lastSpace = cut.lastIndexOf(" ");
   return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim()}…`;
 }
 
@@ -78,5 +78,5 @@ export function truncate(input: string, max: number): string {
  * entity and trigger a "can't parse entities" 400).
  */
 export function escapeMarkdown(input: string): string {
-  return (input ?? '').replace(/\\/g, '\\\\').replace(/([_*[\]`])/g, '\\$1');
+  return (input ?? "").replace(/\\/g, "\\\\").replace(/([_*[\]`])/g, "\\$1");
 }

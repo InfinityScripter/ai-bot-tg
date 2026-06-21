@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 /** A normalized item pulled from an RSS/Atom feed. */
 export interface FeedItem {
@@ -35,21 +35,21 @@ export interface FeedItem {
  *      └──❌──→ skipped                  └──🔄 заново──→ rewriting (overwrites preview)
  */
 export type CandidateState =
-  | 'collected'
-  | 'rewriting'
-  | 'rewrite_failed'
-  | 'pending_review'
-  | 'skipped'
-  | 'publishing'
-  | 'published'
-  | 'publish_failed'
+  | "collected"
+  | "rewriting"
+  | "rewrite_failed"
+  | "pending_review"
+  | "skipped"
+  | "publishing"
+  | "published"
+  | "publish_failed"
   /**
    * A crash/deploy landed mid-publish: the POST may or may not have reached the
    * blog. Recovery puts the row here (NOT back to pending_review) so the owner
    * is warned the post might already be live before re-publishing — avoiding a
    * silent duplicate article.
    */
-  | 'needs_verification';
+  | "needs_verification";
 
 /** A row in the candidates table. */
 export interface Candidate {
@@ -98,5 +98,5 @@ export interface BlogPostBody {
   metaKeywords: string[];
   /** Cover image URL; omitted → backend applies its default cover. */
   coverUrl?: string;
-  publish: 'draft' | 'published';
+  publish: "draft" | "published";
 }

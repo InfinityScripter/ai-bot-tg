@@ -1,11 +1,12 @@
-import { emitRelevanceDecisions } from './audit-emit.js';
-import { CONFIG } from './config.js';
-import { curateForQueue, parseKeywords } from './curate.js';
-import { fetchAllFeeds } from './feeds.js';
-import { filterRelevant } from './relevance.js';
-import type { RelevanceMode } from './relevance.js';
-import type { CandidateStore } from './store.js';
-import type { Candidate } from './types.js';
+import { CONFIG } from "./config.js";
+import { fetchAllFeeds } from "./feeds.js";
+import { filterRelevant } from "./relevance.js";
+import { emitRelevanceDecisions } from "./audit-emit.js";
+import { parseKeywords, curateForQueue } from "./curate.js";
+
+import type { Candidate } from "./types.js";
+import type { CandidateStore } from "./store.js";
+import type { RelevanceMode } from "./relevance.js";
 
 /** Summary of one collection run, returned for logging/visibility. */
 export interface RunSummary {
@@ -44,7 +45,7 @@ const SEND_SPACING_MS = 0;
 export async function runCollection(
   store: CandidateStore,
   sendRawCard: SendRawCard,
-  spacingMs: number = SEND_SPACING_MS
+  spacingMs: number = SEND_SPACING_MS,
 ): Promise<RunSummary> {
   const items = await fetchAllFeeds();
   const include = parseKeywords(CONFIG.FILTER_INCLUDE);
@@ -105,7 +106,7 @@ export async function runCollection(
   console.log(
     `[collector] run done: fetched=${summary.fetched} afterFilter=${summary.afterFilter} ` +
       `afterRelevance=${summary.afterRelevance} droppedRelevance=${summary.droppedRelevance} ` +
-      `fresh=${summary.fresh} sent=${summary.sent} failed=${summary.failed}`
+      `fresh=${summary.fresh} sent=${summary.sent} failed=${summary.failed}`,
   );
 
   // Mirror the relevance decisions into the backend audit log. Mode 'off'
@@ -113,7 +114,7 @@ export async function runCollection(
   // resolved (both read CONFIG.RELEVANCE_MODE). Fire-and-forget and fail-silent:
   // emitRelevanceDecisions never throws, so a backend outage cannot break the run.
   const mode = CONFIG.RELEVANCE_MODE as RelevanceMode;
-  if (CONFIG.RELEVANCE_AUDIT && mode !== 'off' && decisions.length > 0) {
+  if (CONFIG.RELEVANCE_AUDIT && mode !== "off" && decisions.length > 0) {
     await emitRelevanceDecisions(decisions, mode);
   }
 

@@ -1,10 +1,11 @@
-import Anthropic from '@anthropic-ai/sdk';
+import Anthropic from "@anthropic-ai/sdk";
 
-import { CONFIG } from './config.js';
-import { PROVIDERS, chatUrl, resolveActiveProvider } from './providers.js';
-import type { ProviderSpec } from './providers.js';
-import type { CandidateStore } from './store.js';
-import type { FeedItem } from './types.js';
+import { CONFIG } from "./config.js";
+import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
+
+import type { FeedItem } from "./types.js";
+import type { CandidateStore } from "./store.js";
+import type { ProviderSpec } from "./providers.js";
 
 const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
 
@@ -15,26 +16,26 @@ const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
  * here on purpose — those route to the LLM, which knows about the AI carve-out.
  */
 export const OFF_TOPIC_MARKERS: string[] = [
-  'гороскоп',
-  'футбол',
-  'матч',
-  'погода',
-  'шоу-бизнес',
-  'знаменитост',
-  'свадьб',
-  'развод',
-  'диета',
-  'рецепт',
-  'сериал',
-  'спорт',
-  'олимпиад',
-  'эстрад',
-  'певиц',
-  'певец',
-  'актрис',
-  'актёр',
-  'мода',
-  'гламур',
+  "гороскоп",
+  "футбол",
+  "матч",
+  "погода",
+  "шоу-бизнес",
+  "знаменитост",
+  "свадьб",
+  "развод",
+  "диета",
+  "рецепт",
+  "сериал",
+  "спорт",
+  "олимпиад",
+  "эстрад",
+  "певиц",
+  "певец",
+  "актрис",
+  "актёр",
+  "мода",
+  "гламур",
 ];
 
 /**
@@ -43,31 +44,31 @@ export const OFF_TOPIC_MARKERS: string[] = [
  * signals where a classify call would only burn latency/tokens.
  */
 export const ON_TOPIC_MARKERS: string[] = [
-  'ии',
-  'нейросет',
-  'llm',
-  'gpt',
-  'claude',
-  'openai',
-  'anthropic',
-  'машинное обучение',
-  'deep learning',
-  'чип',
-  'процессор',
-  'gpu',
-  'разработ',
-  'opensource',
-  'open source',
-  'алгоритм',
-  'программир',
-  'kubernetes',
-  'linux',
-  'ai',
-  'ml',
-  'модель',
-  'датасет',
-  'трансформер',
-  'агент',
+  "ии",
+  "нейросет",
+  "llm",
+  "gpt",
+  "claude",
+  "openai",
+  "anthropic",
+  "машинное обучение",
+  "deep learning",
+  "чип",
+  "процессор",
+  "gpu",
+  "разработ",
+  "opensource",
+  "open source",
+  "алгоритм",
+  "программир",
+  "kubernetes",
+  "linux",
+  "ai",
+  "ml",
+  "модель",
+  "датасет",
+  "трансформер",
+  "агент",
 ];
 
 /** Lowercased title + first ~300 chars of snippet — the text every stage reads. */
@@ -83,15 +84,15 @@ function hasMarker(item: FeedItem, markers: string[]): boolean {
 
 /** Pulls the first balanced-looking JSON object out of a text blob. */
 function extractJson(text: string): string | null {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) return null;
   return text.slice(start, end + 1);
 }
 
 /** Clamps a parsed score to the valid 0..4 range, or null if not a finite number. */
 function clampScore(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Math.max(0, Math.min(4, Math.round(value)));
 }
 
@@ -115,7 +116,7 @@ const SYSTEM_PROMPT = `Ты — фильтр релевантности для �
 function buildUserContent(item: FeedItem): string {
   const snippet = item.snippet.slice(0, 300);
   return `Заголовок: ${item.title}
-Описание: ${snippet || '(нет описания)'}`;
+Описание: ${snippet || "(нет описания)"}`;
 }
 
 interface ScoreResponse {
@@ -140,9 +141,9 @@ function parseScore(raw: string | null): number | null {
 /** Extracts the text from the first text content block of a message response. */
 function extractText(response: Anthropic.Message): string {
   for (const block of response.content) {
-    if (block.type === 'text') return block.text;
+    if (block.type === "text") return block.text;
   }
-  return '';
+  return "";
 }
 
 /** Classifies via Claude (Anthropic). max_tokens is tiny — only a JSON score. */
@@ -150,8 +151,8 @@ async function classifyWithAnthropic(item: FeedItem, model: string): Promise<num
   const response = await client.messages.create({
     model,
     max_tokens: 120,
-    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: buildUserContent(item) }],
+    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content: buildUserContent(item) }],
   });
   return parseScore(extractJson(extractText(response)));
 }
@@ -160,26 +161,26 @@ async function classifyWithAnthropic(item: FeedItem, model: string): Promise<num
 async function classifyWithOpenAICompat(
   item: FeedItem,
   spec: ProviderSpec,
-  model: string
+  model: string,
 ): Promise<number | null> {
   const response = await fetch(chatUrl(spec), {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       Authorization: `Bearer ${spec.apiKey()}`,
     },
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: buildUserContent(item) },
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: buildUserContent(item) },
       ],
-      response_format: { type: 'json_object' },
+      response_format: { type: "json_object" },
     }),
   });
   if (!response.ok) return null;
   const data = (await response.json()) as OpenAIChatResponse;
-  const text = data.choices?.[0]?.message?.content ?? '';
+  const text = data.choices?.[0]?.message?.content ?? "";
   return parseScore(extractJson(text));
 }
 
@@ -190,13 +191,16 @@ async function classifyWithOpenAICompat(
  * 'mock', any error/timeout, or an unparsable response all return null — the
  * orchestrator treats null as KEEP, so the filter can never swallow the queue.
  */
-export async function classifyRelevance(item: FeedItem, store: CandidateStore): Promise<number | null> {
+export async function classifyRelevance(
+  item: FeedItem,
+  store: CandidateStore,
+): Promise<number | null> {
   const { provider, model } = resolveActiveProvider(store);
-  if (provider === 'mock') return null;
+  if (provider === "mock") return null;
   const usedModel = CONFIG.RELEVANCE_MODEL ?? model;
   const spec = PROVIDERS[provider];
   try {
-    if (spec.kind === 'anthropic') {
+    if (spec.kind === "anthropic") {
       return await classifyWithAnthropic(item, usedModel);
     }
     return await classifyWithOpenAICompat(item, spec, usedModel);
@@ -213,14 +217,14 @@ export interface RelevanceDecision {
   /** What WOULD happen: true = keep, false = drop. */
   kept: boolean;
   /** Which path decided it. */
-  stage: 'blocklist' | 'accept' | 'llm' | 'failopen' | 'shadow';
+  stage: "blocklist" | "accept" | "llm" | "failopen" | "shadow";
   /** The LLM score (0–4), or null when no LLM call was made/usable. */
   score: number | null;
   reason: string;
 }
 
 /** Relevance modes (mirrors RELEVANCE_MODE): off = no-op, shadow = log only. */
-export type RelevanceMode = 'off' | 'shadow' | 'on';
+export type RelevanceMode = "off" | "shadow" | "on";
 
 /** Injected classifier — defaults to the real classifyRelevance; tests pass a stub. */
 type ClassifyFn = (item: FeedItem, store: CandidateStore) => Promise<number | null>;
@@ -239,16 +243,16 @@ async function decide(
   item: FeedItem,
   store: CandidateStore,
   classify: ClassifyFn,
-  threshold: number
+  threshold: number,
 ): Promise<RelevanceDecision> {
   const base = { url: item.url, title: item.title };
   // Stage A — hard blocklist: unambiguously off-topic, drop for free.
   if (hasMarker(item, OFF_TOPIC_MARKERS)) {
-    return { ...base, kept: false, stage: 'blocklist', score: null, reason: 'off-topic marker' };
+    return { ...base, kept: false, stage: "blocklist", score: null, reason: "off-topic marker" };
   }
   // Stage A — on-topic fast-accept: obvious AI/tech, keep without an LLM call.
   if (hasMarker(item, ON_TOPIC_MARKERS)) {
-    return { ...base, kept: true, stage: 'accept', score: null, reason: 'on-topic marker' };
+    return { ...base, kept: true, stage: "accept", score: null, reason: "on-topic marker" };
   }
   // Stage B — single LLM classify. null (mock/error/unparsable) → fail open.
   // Guard the call too: an injected classifier that THROWS must also fail open
@@ -260,18 +264,18 @@ async function decide(
     score = null;
   }
   if (score === null) {
-    return { ...base, kept: true, stage: 'failopen', score: null, reason: 'classify unavailable' };
+    return { ...base, kept: true, stage: "failopen", score: null, reason: "classify unavailable" };
   }
   const kept = score >= threshold;
-  return { ...base, kept, stage: 'llm', score, reason: `score=${score} threshold=${threshold}` };
+  return { ...base, kept, stage: "llm", score, reason: `score=${score} threshold=${threshold}` };
 }
 
 /** Logs one decision. Would-drops in shadow mode are prefixed 'SHADOW-DROP'. */
 function logDecision(d: RelevanceDecision, shadow: boolean): void {
-  const verb = d.kept ? 'KEEP' : shadow ? 'SHADOW-DROP' : 'DROP';
+  const verb = d.kept ? "KEEP" : shadow ? "SHADOW-DROP" : "DROP";
   // eslint-disable-next-line no-console
   console.log(
-    `[relevance] ${verb} score=${d.score ?? '-'} stage=${d.stage} reason=${d.reason} url=${d.url}`
+    `[relevance] ${verb} score=${d.score ?? "-"} stage=${d.stage} reason=${d.reason} url=${d.url}`,
   );
 }
 
@@ -288,18 +292,18 @@ function logDecision(d: RelevanceDecision, shadow: boolean): void {
 export async function filterRelevant(
   items: FeedItem[],
   store: CandidateStore,
-  opts: FilterOptions = {}
+  opts: FilterOptions = {},
 ): Promise<{ kept: FeedItem[]; decisions: RelevanceDecision[] }> {
   const mode = opts.mode ?? (CONFIG.RELEVANCE_MODE as RelevanceMode);
   const threshold = opts.threshold ?? CONFIG.RELEVANCE_THRESHOLD;
   const classify = opts.classify ?? classifyRelevance;
 
   // 'off' — current behavior: no filtering, no decisions, no LLM work.
-  if (mode === 'off') {
+  if (mode === "off") {
     return { kept: items, decisions: [] };
   }
 
-  const shadow = mode === 'shadow';
+  const shadow = mode === "shadow";
   const decisions: RelevanceDecision[] = [];
   for (const item of items) {
     const d = await decide(item, store, classify, threshold);

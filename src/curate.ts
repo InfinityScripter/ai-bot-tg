@@ -1,10 +1,10 @@
-import type { FeedItem } from './types.js';
+import type { FeedItem } from "./types.js";
 
 /** Parses a CSV keyword list into lowercased, trimmed, non-empty terms. */
 export function parseKeywords(csv: string | undefined): string[] {
   if (!csv) return [];
   return csv
-    .split(',')
+    .split(",")
     .map((k) => k.trim().toLowerCase())
     .filter(Boolean);
 }
@@ -38,7 +38,7 @@ export function passesFilters(item: FeedItem, include: string[], exclude: string
 export function curateForQueue(
   items: FeedItem[],
   include: string[],
-  exclude: string[]
+  exclude: string[],
 ): FeedItem[] {
   const kept = items.filter((it) => passesFilters(it, include, exclude));
   // Stable newest-first: nulls last. Array.prototype.sort is stable in modern V8.
