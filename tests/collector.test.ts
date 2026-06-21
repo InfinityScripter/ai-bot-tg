@@ -9,6 +9,17 @@ vi.mock('../src/feeds.js', () => ({ fetchAllFeeds: () => fetchAllFeeds() }));
 const rewriteToPost = vi.fn();
 vi.mock('../src/rewriter.js', () => ({ rewriteToPost: (...a: unknown[]) => rewriteToPost(...a) }));
 
+// Spy on filterRelevant so the collector tests never reach the real classify
+// (which would resolve a provider and hit the network). The default impl just
+// passes everything through, mirroring shadow/off mode (kept === curated). A
+// case can override the mock to assert wiring (e.g. afterRelevance / dropping).
+const filterRelevant = vi.fn(
+  async (items: FeedItem[]) => ({ kept: items, decisions: [] })
+);
+vi.mock('../src/relevance.js', () => ({
+  filterRelevant: (...a: unknown[]) => filterRelevant(...(a as Parameters<typeof filterRelevant>)),
+}));
+
 const { runCollection } = await import('../src/collector.js');
 const { CandidateStore } = await import('../src/store.js');
 
@@ -29,6 +40,9 @@ function feedItem(overrides: Partial<FeedItem> = {}): FeedItem {
 afterEach(() => {
   fetchAllFeeds.mockReset();
   rewriteToPost.mockReset();
+  // Restore the pass-through default so one case's override doesn't leak.
+  filterRelevant.mockReset();
+  filterRelevant.mockImplementation(async (items: FeedItem[]) => ({ kept: items, decisions: [] }));
 });
 
 describe('runCollection — raw cards, no rewrite at collection', () => {
@@ -118,5 +132,70 @@ describe('runCollection — raw cards, no rewrite at collection', () => {
     expect(summary.failed).toBe(1);
     expect(summary.sent).toBe(0);
     store.close();
+  });
+
+  // The two relevance-wiring tests re-import the collector against a freshly
+  // mocked feeds + relevance module (the established self-contained pattern in
+  // this file) so a prior test's vi.resetModules() can't leave a stale binding.
+  it('runs the relevance filter between curate and insert; shadow/off keeps curated', async () => {
+    vi.resetModules();
+    const feeds = await import('../src/feeds.js');
+    vi.spyOn(feeds, 'fetchAllFeeds').mockResolvedValue([
+      feedItem({ dedupKey: 'k1', url: 'https://ex.com/1' }),
+      feedItem({ dedupKey: 'k2', url: 'https://ex.com/2' }),
+    ]);
+    // Pass-through relevance (== shadow/off mode): nothing dropped.
+    const filter = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions: [] }));
+    vi.doMock('../src/relevance.js', () => ({ filterRelevant: filter }));
+    const { runCollection: run } = await import('../src/collector.js');
+    const { CandidateStore: Store } = await import('../src/store.js');
+    const store = new Store(':memory:');
+
+    const summary = await run(store, async () => {}, 0);
+
+    // filterRelevant was invoked once with the curated list.
+    expect(filter).toHaveBeenCalledTimes(1);
+    expect(filter.mock.calls[0]![0]).toHaveLength(2);
+    expect(summary.afterFilter).toBe(2);
+    expect(summary.afterRelevance).toBe(2);
+    expect(summary.droppedRelevance).toBe(0);
+    expect(summary.fresh).toBe(2);
+    store.close();
+    vi.doUnmock('../src/relevance.js');
+    vi.resetModules();
+  });
+
+  it("inserts only the kept set when relevance drops items (mode 'on')", async () => {
+    vi.resetModules();
+    const feeds = await import('../src/feeds.js');
+    vi.spyOn(feeds, 'fetchAllFeeds').mockResolvedValue([
+      feedItem({ dedupKey: 'keep', url: 'https://ex.com/keep' }),
+      feedItem({ dedupKey: 'drop', url: 'https://ex.com/drop' }),
+    ]);
+    // Simulate mode 'on' dropping the second item.
+    const filter = vi.fn(async (items: FeedItem[]) => ({
+      kept: items.filter((i) => i.dedupKey === 'keep'),
+      decisions: [],
+    }));
+    vi.doMock('../src/relevance.js', () => ({ filterRelevant: filter }));
+    const { runCollection: run } = await import('../src/collector.js');
+    const { CandidateStore: Store } = await import('../src/store.js');
+    const store = new Store(':memory:');
+
+    const sent: string[] = [];
+    const summary = await run(
+      store,
+      async (c: { id: number }) => void sent.push(store.get(c.id)!.dedupKey),
+      0
+    );
+
+    expect(summary.afterFilter).toBe(2);
+    expect(summary.afterRelevance).toBe(1);
+    expect(summary.droppedRelevance).toBe(1);
+    expect(summary.fresh).toBe(1);
+    expect(sent).toEqual(['keep']);
+    store.close();
+    vi.doUnmock('../src/relevance.js');
+    vi.resetModules();
   });
 });

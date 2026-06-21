@@ -1,6 +1,7 @@
 import { CONFIG } from './config.js';
 import { curateForQueue, parseKeywords } from './curate.js';
 import { fetchAllFeeds } from './feeds.js';
+import { filterRelevant } from './relevance.js';
 import type { CandidateStore } from './store.js';
 import type { Candidate } from './types.js';
 
@@ -9,6 +10,10 @@ export interface RunSummary {
   fetched: number;
   /** Items remaining after the keyword filter (before dedup/cap). */
   afterFilter: number;
+  /** Items remaining after the topic relevance filter (== afterFilter unless mode='on'). */
+  afterRelevance: number;
+  /** Items the relevance filter actually dropped (only > 0 when mode='on'). */
+  droppedRelevance: number;
   fresh: number;
   /** Raw cards successfully DM'd to the owner. */
   sent: number;
@@ -46,6 +51,8 @@ export async function runCollection(
   const summary: RunSummary = {
     fetched: items.length,
     afterFilter: 0,
+    afterRelevance: 0,
+    droppedRelevance: 0,
     fresh: 0,
     sent: 0,
     failed: 0,
@@ -57,10 +64,16 @@ export async function runCollection(
   const curated = curateForQueue(items, include, exclude);
   summary.afterFilter = curated.length;
 
+  // Topic relevance filter (AI/tech). In off/shadow mode kept === curated, so
+  // nothing is dropped until the owner flips RELEVANCE_MODE=on.
+  const { kept } = await filterRelevant(curated, store);
+  summary.afterRelevance = kept.length;
+  summary.droppedRelevance = curated.length - kept.length;
+
   // Insert fresh (deduped) items, capped per run. The full raw item (snippet,
   // imageUrls) is persisted so the deferred rewrite can run from the row alone.
   const fresh: number[] = [];
-  for (const item of curated) {
+  for (const item of kept) {
     if (fresh.length >= CONFIG.MAX_PER_RUN) break;
     const id = store.insertCollected(item);
     if (id !== null) fresh.push(id);
@@ -89,6 +102,7 @@ export async function runCollection(
   // eslint-disable-next-line no-console
   console.log(
     `[collector] run done: fetched=${summary.fetched} afterFilter=${summary.afterFilter} ` +
+      `afterRelevance=${summary.afterRelevance} droppedRelevance=${summary.droppedRelevance} ` +
       `fresh=${summary.fresh} sent=${summary.sent} failed=${summary.failed}`
   );
   return summary;

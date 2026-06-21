@@ -62,6 +62,19 @@ const EnvSchema = z.object({
   FILTER_INCLUDE: z.string().optional(),
   FILTER_EXCLUDE: z.string().optional(),
   /**
+   * Topic relevance filter (AI/tech). Two-stage: a free keyword fast-path, then
+   * a single cheap LLM classify for ambiguous items. Modes:
+   *   'off'    — no filtering (legacy behavior).
+   *   'shadow' — run + LOG every decision, but DON'T drop (calibration window).
+   *   'on'     — actually drop off-topic items.
+   * Default 'shadow' so deploying this code never silently drops the queue.
+   */
+  RELEVANCE_MODE: z.enum(['off', 'shadow', 'on']).default('shadow'),
+  /** Keep an item when its LLM relevance score is >= this (0–4). Default 2. */
+  RELEVANCE_THRESHOLD: z.coerce.number().int().min(0).max(4).default(2),
+  /** Optional model for the classify call; default = the active rewrite model. */
+  RELEVANCE_MODEL: z.string().optional(),
+  /**
    * When '1'/'true', skip the Claude call and build the post from the feed item
    * directly. Lets the full pipeline (collect → approve → publish) be tested
    * without API credits. NOT for production — output isn't a real rewrite.
