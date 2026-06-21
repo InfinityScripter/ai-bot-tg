@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 import { CONFIG } from './config.js';
 import { PROVIDERS, chatUrl, resolveActiveProvider } from './providers.js';
+import { normalizeTags } from './tags.js';
 import { RewriteSchema } from './types.js';
 import { stripHtml, truncate } from './utils.js';
 import type { ProviderName, ProviderSpec } from './providers.js';
@@ -39,7 +40,8 @@ function mockRewrite(item: FeedItem): RewriteResult {
     title,
     description,
     content,
-    tags: ['новости'],
+    // normalizeTags force-includes 'новости'; the mock has no topical tags to add.
+    tags: normalizeTags([]),
     metaTitle: truncate(item.title, 70),
     metaDescription: truncate(lede, 155),
   };
@@ -68,7 +70,7 @@ const SYSTEM_PROMPT = `Ты — редактор технического нов
   "title": "цепкий, не кликбейтный заголовок, КОРОТКИЙ — до 80 символов, без точки в конце",
   "description": "один абзац-резюме (2–3 предложения)",
   "content": "тело поста в Markdown. НЕ начинай с заголовка/H1 — заголовок уже показан над постом, не дублируй его. В конце строка \\"Источник: <название>\\" со ссылкой на оригинал",
-  "tags": ["2–5 тематических тегов в нижнем регистре"],
+  "tags": ["1–3 тематических тега СТРОГО из этого списка (нижний регистр, ничего другого): технологии, наука, политика, культура, ai, llm, агенты, нейросети, безопасность, разработка, гаджеты, бизнес"],
   "metaTitle": "SEO-заголовок (≈ title)",
   "metaDescription": "SEO-описание (до ~155 символов)"
 }
@@ -142,11 +144,16 @@ function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
   }
   // Only allow body images (cover excluded — the page shows it). Defensive
   // clamp on the title keeps the heading readable even if the hint is ignored.
+  // normalizeTags is the safety net for the tag list — it forces 'новости'
+  // first, drops anything off the whitelist, maps synonyms, and caps at 4, so
+  // the published tags/metaKeywords are always the clean curated set. Applied
+  // here so BOTH providers (Claude and the OpenAI-compatible ones) get it.
   const allowed = item.imageUrls.slice(1);
   return {
     ...parsed.data,
     title: truncate(parsed.data.title, 100),
     content: sanitizeImages(parsed.data.content, allowed),
+    tags: normalizeTags(parsed.data.tags),
   };
 }
 

@@ -1,4 +1,5 @@
 import { CONFIG } from './config.js';
+import { pickDefaultCover } from './tags.js';
 import type { BlogPostBody, RewriteResult } from './types.js';
 
 /**
@@ -19,8 +20,11 @@ export class PublishError extends Error {
 
 /**
  * Builds the blog post body from a rewrite result and an optional cover image
- * URL (taken from the source feed, not the rewrite). Omitting coverUrl lets the
- * backend apply its default cover.
+ * URL (the feed image or scraped og:image). We ALWAYS send a coverUrl now: when
+ * the source had no image we pick a deterministic themed default keyed off the
+ * title, so bot posts never fall back to the backend's generic placeholder (the
+ * "all bot posts look mock" problem). metaKeywords reuse the already-normalized
+ * tags, so they're the clean curated set too.
  */
 export function toBlogPostBody(rewrite: RewriteResult, coverUrl?: string | null): BlogPostBody {
   return {
@@ -31,7 +35,7 @@ export function toBlogPostBody(rewrite: RewriteResult, coverUrl?: string | null)
     metaTitle: rewrite.metaTitle,
     metaDescription: rewrite.metaDescription,
     metaKeywords: rewrite.tags,
-    ...(coverUrl ? { coverUrl } : {}),
+    coverUrl: coverUrl || pickDefaultCover(rewrite.title),
     publish: 'published',
   };
 }

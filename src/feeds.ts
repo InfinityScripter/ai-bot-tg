@@ -108,6 +108,45 @@ function extractImageUrls(item: Parser.Item & RssItem, cover: string | null): st
   return out;
 }
 
+/** Matches a <meta property="og:image"> / name="twitter:image" content URL. */
+const OG_IMAGE_RE =
+  /<meta[^>]+(?:property|name)=["'](?:og:image|og:image:url|twitter:image)["'][^>]+content=["']([^"']+)["']/i;
+/** Same, but with content before the property/name attribute (order varies). */
+const OG_IMAGE_RE_ALT =
+  /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|og:image:url|twitter:image)["']/i;
+
+/**
+ * Fetches an article page and extracts its og:image (or twitter:image) URL —
+ * the fallback used when the feed item itself carries no image. Lightweight: a
+ * single GET with an 8s timeout, reading only the first ~64KB of HTML (the
+ * <head> meta tags live up top) and a regex parse. Tolerant: any failure
+ * (network, non-HTML, no tag) resolves to null so it never aborts a run.
+ */
+export async function fetchOgImage(url: string): Promise<string | null> {
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: 'text/html,application/xhtml+xml', 'User-Agent': 'blog-newsbot/1.0' },
+    });
+    if (!res.ok) return null;
+    const type = res.headers.get('content-type') ?? '';
+    if (type && !type.includes('html')) return null;
+    // og:image lives in <head>; cap the read so a huge page can't stall us.
+    const html = (await res.text()).slice(0, 64_000);
+    const match = OG_IMAGE_RE.exec(html) ?? OG_IMAGE_RE_ALT.exec(html);
+    const found = match?.[1]?.trim();
+    if (found && /^https?:\/\//i.test(found)) return found;
+    return null;
+  } catch {
+    return null; // timeout / network / parse — fall through to a themed default
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /** Maps a single parsed feed into normalized FeedItems, dropping unusable ones. */
 function mapFeed(feed: Parser.Output<RssItem>): FeedItem[] {
   const feedTitle = feed.title ?? '';
@@ -160,5 +199,16 @@ export async function fetchAllFeeds(feeds: string[] = resolveFeeds()): Promise<F
       console.warn(`[feeds] failed to parse ${feeds[idx]}: ${String(result.reason)}`);
     }
   });
+
+  // og:image fallback: for items the feed gave no image, scrape the article's
+  // og:image/twitter:image. Done after mapping so the cheap RSS path is unaffected;
+  // run in parallel (each fetch is independently capped + failure-tolerant).
+  await Promise.all(
+    items.map(async (item) => {
+      if (item.imageUrl) return;
+      item.imageUrl = await fetchOgImage(item.url);
+    })
+  );
+
   return items;
 }

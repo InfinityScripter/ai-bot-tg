@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { DEFAULT_COVERS } from '../src/tags.js';
 import type { RewriteResult } from '../src/types.js';
 
 // Live e2e for the bot's publisher: instead of mocking fetch, it sends a REAL
@@ -78,7 +79,11 @@ describe('E2E: publishToBlog sends the real request over the wire', () => {
     expect(captured!.method).toBe('POST');
     expect(captured!.authorization).toBe('Bearer test-bot-api-token-value');
     expect(captured!.contentType).toBe('application/json');
-    expect(captured!.body).toEqual({
+    // No cover passed → publisher always fills a themed default keyed off title.
+    const body = captured!.body as Record<string, unknown>;
+    expect(DEFAULT_COVERS).toContain(body.coverUrl);
+    const { coverUrl: _coverUrl, ...rest } = body;
+    expect(rest).toEqual({
       title: 'E2E новость',
       description: 'Краткое резюме',
       content: '# Тело\n\nАбзац. Источник: Feed',

@@ -17,9 +17,9 @@ afterEach(() => {
 });
 
 describe('toBlogPostBody', () => {
-  it('maps a rewrite into the publish body with published status (no cover)', () => {
+  it('maps a rewrite into the publish body with published status and a cover', () => {
     const body = toBlogPostBody(REWRITE);
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       title: 'New title',
       description: 'Summary',
       content: 'Body',
@@ -29,16 +29,22 @@ describe('toBlogPostBody', () => {
       metaKeywords: ['t1', 't2'],
       publish: 'published',
     });
-    expect(body).not.toHaveProperty('coverUrl');
+    // We always send a cover now (themed default when the source had none), so
+    // bot posts never fall back to the backend placeholder.
+    expect(typeof body.coverUrl).toBe('string');
+    expect(body.coverUrl).toMatch(/^https?:\/\//);
   });
 
-  it('includes coverUrl when an image is provided', () => {
+  it('includes the provided coverUrl when an image is given', () => {
     const body = toBlogPostBody(REWRITE, 'https://cdn.example.com/p.jpg');
     expect(body.coverUrl).toBe('https://cdn.example.com/p.jpg');
   });
 
-  it('omits coverUrl when image is null', () => {
-    expect(toBlogPostBody(REWRITE, null)).not.toHaveProperty('coverUrl');
+  it('falls back to a deterministic themed default when image is null', () => {
+    const a = toBlogPostBody(REWRITE, null);
+    const b = toBlogPostBody(REWRITE, null);
+    expect(a.coverUrl).toMatch(/^https?:\/\//);
+    expect(a.coverUrl).toBe(b.coverUrl); // same title → same cover
   });
 });
 

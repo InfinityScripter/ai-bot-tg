@@ -31,10 +31,13 @@ const VALID = {
   title: 'Rewritten',
   description: 'Summary',
   content: 'Body',
-  tags: ['a'],
+  tags: ['технологии'],
   metaTitle: 'M',
   metaDescription: 'MD',
 };
+
+// After normalizeTags: 'новости' is force-added first, whitelisted tags kept.
+const VALID_NORMALIZED = { ...VALID, tags: ['новости', 'технологии'] };
 
 /** Wraps a string as a Claude message response with one text block. */
 function textResponse(text: string, stopReason = 'end_turn') {
@@ -46,14 +49,23 @@ afterEach(() => {
 });
 
 describe('rewriteToPost', () => {
-  it('returns the validated object from clean JSON output', async () => {
+  it('returns the validated object with normalized tags from clean JSON output', async () => {
     create.mockResolvedValueOnce(textResponse(JSON.stringify(VALID)));
-    expect(await rewriteToPost(ITEM, STORE)).toEqual(VALID);
+    expect(await rewriteToPost(ITEM, STORE)).toEqual(VALID_NORMALIZED);
   });
 
   it('extracts JSON even with surrounding prose', async () => {
     create.mockResolvedValueOnce(textResponse(`Вот пост:\n${JSON.stringify(VALID)}\nГотово.`));
-    expect(await rewriteToPost(ITEM, STORE)).toEqual(VALID);
+    expect(await rewriteToPost(ITEM, STORE)).toEqual(VALID_NORMALIZED);
+  });
+
+  it('drops junk tags and always puts новости first', async () => {
+    create.mockResolvedValueOnce(
+      textResponse(JSON.stringify({ ...VALID, tags: ['junk', 'ии', 'наука'] }))
+    );
+    const result = await rewriteToPost(ITEM, STORE);
+    // 'junk' dropped, 'ии' → 'ai', 'наука' kept, 'новости' forced first.
+    expect(result.tags).toEqual(['новости', 'ai', 'наука']);
   });
 
   it('throws on a refusal stop_reason', async () => {
@@ -126,7 +138,9 @@ describe.each(OPENAI_COMPAT)(
       const mod = await import('../src/rewriter.js');
       const result = await mod.rewriteToPost(ITEM, STORE);
 
-      expect(result).toEqual(VALID);
+      // tags are normalized on the OpenAI-compat path too (finalizeRewrite runs
+      // for every provider), so 'новости' is force-added first.
+      expect(result).toEqual(VALID_NORMALIZED);
       const call = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
       expect(call[0]).toContain(host);
       expect(call[1].headers.Authorization).toBe('Bearer test-key');
@@ -177,7 +191,8 @@ describe('rewriteToPost (store override)', () => {
     const mod = await import('../src/rewriter.js');
     const result = await mod.rewriteToPost(ITEM, store);
 
-    expect(result).toEqual(VALID);
+    // normalized tags here too (override → glm → openai-compat → finalizeRewrite).
+    expect(result).toEqual(VALID_NORMALIZED);
     const call = fetchMock.mock.calls[0] as [string, { body: string }];
     expect(call[0]).toContain('api.z.ai');
     expect(JSON.parse(call[1].body).model).toBe('glm-4.7-flash');
