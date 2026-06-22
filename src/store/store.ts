@@ -3,9 +3,9 @@ import { mkdirSync } from "node:fs";
 import Database from "better-sqlite3";
 
 import { CONFIG } from "../config.js";
-import { CandidateState } from "../enums.js";
 import * as settings from "./settings.js";
 import * as mutations from "./mutations.js";
+import { CandidateState } from "../enums.js";
 import { SCHEMA, mapRow, MIGRATIONS } from "./schema.js";
 
 import type { FeedItem, Candidate, RewriteResult } from "../types.js";

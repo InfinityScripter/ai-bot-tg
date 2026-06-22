@@ -1,15 +1,15 @@
 import type { Bot, Context } from "grammy";
 
 import { CONFIG } from "../config.js";
-import { escapeMarkdown } from "../utils.js";
 import { renderRaw } from "./render.js";
 import { logEditError } from "./edit.js";
+import { escapeMarkdown } from "../utils.js";
 import { InputKind, CandidateState } from "../enums.js";
 import { rawKeyboard, previewKeyboard } from "./keyboards.js";
 import { fetchArticle, classifyInput, feedItemFromText } from "../feeds/index.js";
 
-import type { CandidateStore } from "../store/index.js";
 import type { FeedItem, Candidate } from "../types.js";
+import type { CandidateStore } from "../store/index.js";
 
 /**
  * Manual-ingest helpers and the startup needs-verification notice. Grouped in

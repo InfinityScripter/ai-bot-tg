@@ -1,8 +1,8 @@
 import { CONFIG } from "../config.js";
-import { pingModel, isMockActive, resolveActiveProvider, PROVIDERS } from "../llm/index.js";
+import { pingModel, PROVIDERS, isMockActive, resolveActiveProvider } from "../llm/index.js";
 
+import type { HealthCheck } from "./types.js";
 import type { CandidateStore } from "../store/index.js";
-import type { HealthCheck, HealthDeps } from "./types.js";
 
 /** Formats a second count as e.g. "2д 3ч 4м" / "5м 12с". */
 export function formatUptime(totalSec: number): string {

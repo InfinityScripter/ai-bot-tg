@@ -1,6 +1,6 @@
 import { createBot } from "../bot.js";
-import { CandidateStore } from "../store/index.js";
 import { runCollection } from "../collector.js";
+import { CandidateStore } from "../store/index.js";
 
 /**
  * One-shot collection run from the shell (`npm run fetch`), without starting

@@ -3,9 +3,7 @@ import type { Context, InlineKeyboard } from "grammy";
 import { CallbackKind } from "../enums.js";
 import { MODEL_CALLBACK } from "../consts.js";
 import { keyboardFrom } from "./keyboards.js";
-import { pingModel, listModels } from "../llm/index.js";
 import { ackSilently, logEditError } from "./edit.js";
-import { PROVIDERS, isMockActive, hasActiveOverride, resolveActiveProvider } from "../llm/index.js";
 import {
   statusText,
   modelButtons,
@@ -13,6 +11,7 @@ import {
   providerButtons,
   mockToggleButton,
 } from "./model.js";
+import { pingModel, PROVIDERS , listModels, isMockActive, hasActiveOverride, resolveActiveProvider } from "../llm/index.js";
 
 import type { CandidateStore } from "../store/index.js";
 

@@ -1,8 +1,8 @@
 import { pingModel } from "../llm/index.js";
-import { checkProvider, checkBlog, processCheck, scheduleCheck } from "./checks.js";
+import { checkBlog, processCheck, checkProvider, scheduleCheck } from "./checks.js";
 
 import type { CandidateStore } from "../store/index.js";
-import type { HealthReport, HealthDeps } from "./types.js";
+import type { HealthDeps, HealthReport } from "./types.js";
 
 /**
  * Collects a full readiness report: process uptime, next cron run, the active

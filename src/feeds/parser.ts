@@ -1,8 +1,9 @@
 import Parser from "rss-parser";
 
 import { CONFIG } from "../config.js";
-import { truncate, stripHtml, dedupKeyFor } from "../utils.js";
 import { IMG_SRC_RE } from "./scraper.js";
+import { truncate, stripHtml, dedupKeyFor } from "../utils.js";
+
 import type { FeedItem } from "../types.js";
 
 /**

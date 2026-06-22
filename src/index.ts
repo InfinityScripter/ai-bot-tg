@@ -1,8 +1,8 @@
 import { CONFIG } from "./config.js";
 import { createBot } from "./bot.js";
-import { CandidateStore } from "./store/index.js";
 import { runCollection } from "./collector.js";
 import { scheduleDaily } from "./scheduler.js";
+import { CandidateStore } from "./store/index.js";
 import { startControlServer } from "./control-server.js";
 
 /**

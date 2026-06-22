@@ -6,8 +6,8 @@ import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
 import { RELEVANCE_SYSTEM_PROMPT as SYSTEM_PROMPT, buildRelevanceUserContent as buildUserContent } from "./prompts.js";
 
 import type { FeedItem } from "../types.js";
-import type { CandidateStore } from "../store/index.js";
 import type { ProviderSpec } from "./providers.js";
+import type { CandidateStore } from "../store/index.js";
 
 const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
 

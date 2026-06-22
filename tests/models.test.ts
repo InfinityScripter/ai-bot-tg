@@ -1,8 +1,7 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
 import { ProviderName } from "../src/enums.js";
-import { PROVIDERS } from "../src/llm/index.js";
-import { pingModel, listModels } from "../src/llm/index.js";
+import { PROVIDERS , pingModel, listModels } from "../src/llm/index.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
