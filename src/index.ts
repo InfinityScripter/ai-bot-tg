@@ -26,7 +26,12 @@ async function main() {
     if (s.fresh === 0) return `Новых новостей нет (получено ${s.fetched}).`;
     return `Готово: новых ${s.fresh}, отправлено ${s.sent}${s.failed ? `, ошибок ${s.failed}` : ""}.`;
   };
-  const { bot, sendRawCard, notifyNeedsVerification, drain } = createBot(store, run);
+  // Declared before createBot so /health can read the next cron run via a lazy
+  // getter; the actual job is assigned below (after the bot/notify wiring exists).
+  let job: ReturnType<typeof scheduleDaily> | null = null;
+  const { bot, sendRawCard, notifyNeedsVerification, drain } = createBot(store, run, {
+    nextRun: () => job?.nextRun() ?? null,
+  });
 
   // Best-effort DM to the owner (used to alert on a failed scheduled run).
   const notifyOwner = async (text: string): Promise<void> => {
@@ -58,7 +63,7 @@ async function main() {
     }
   };
 
-  const job = scheduleDaily(scheduledRun);
+  job = scheduleDaily(scheduledRun);
 
   // The admin control server is started only when a token is configured. Unset
   // = no control server, bot still runs/publishes — so deploying this code
@@ -68,7 +73,7 @@ async function main() {
         port: CONFIG.CONTROL_PORT,
         token: CONFIG.BOT_CONTROL_TOKEN,
         store,
-        nextRun: () => job.nextRun(),
+        nextRun: () => job?.nextRun() ?? null,
       })
     : null;
   // eslint-disable-next-line no-console
@@ -80,7 +85,7 @@ async function main() {
 
   // eslint-disable-next-line no-console
   console.log(
-    `[index] started. Next run: ${job.nextRun()?.toISOString() ?? "n/a"} (${CONFIG.CRON_TZ})`,
+    `[index] started. Next run: ${job?.nextRun()?.toISOString() ?? "n/a"} (${CONFIG.CRON_TZ})`,
   );
 
   let shuttingDown = false;
@@ -91,7 +96,7 @@ async function main() {
     console.log(`[index] ${signal} received, shutting down…`);
     let code = 0;
     try {
-      job.stop();
+      job?.stop();
       if (controlServer) await controlServer.close();
       await bot.stop(); // grammy: stops polling; does not drain handlers
       await drain(); // wait for any in-flight publish to finish its DB writes

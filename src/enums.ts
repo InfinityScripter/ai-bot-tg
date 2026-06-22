@@ -88,6 +88,14 @@ export enum RelevanceAuditAction {
   Kept = "bot.relevance_kept",
 }
 
+/** A command-menu button action (the suffix after the MENU_CALLBACK prefix). */
+export enum MenuAction {
+  Fetch = "fetch",
+  Model = "model",
+  Health = "health",
+  Help = "help",
+}
+
 /** Which stage of the relevance filter produced a decision (diagnostic field). */
 export enum RelevanceStage {
   /** Dropped by an off-topic keyword marker. */

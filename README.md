@@ -93,9 +93,17 @@ npm run fetch    # one-shot collection run from the shell (no polling loop), the
 
 Telegram commands (owner-only):
 
-- `/start` — health check + help
-- `/ping` — `pong`
-- `/fetch` — run a collection cycle now (same as the daily cron)
+- `/start`, `/menu` — show the inline button menu (Собрать новости / Модель /
+  Проверка / Помощь). Buttons run the same action as the matching command.
+- `/help` — list every command and what it does. The native Telegram **Menu**
+  button (registered via `setMyCommands`) shows the same list.
+- `/health` — readiness report in one DM: process uptime, next scheduled run,
+  the active LLM provider (live model ping), the blog API (reachability probe),
+  and the candidate-queue counts. Leads with **✅ Всё ОК** or **⚠️ Есть
+  проблемы**. Use this when the bot seems unresponsive — it tells you which
+  subsystem is down.
+- `/ping` — `pong` (fast liveness check).
+- `/fetch` — run a collection cycle now (same as the daily cron).
 - `/model` — switch the rewrite provider/model at runtime; pings the chosen
   model before saving and persists the choice across restarts (in the SQLite
   ledger). The menu also has a **🧪 Mock** toggle (publish a copy of the source

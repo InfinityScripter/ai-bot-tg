@@ -1,3 +1,5 @@
+import type { Context } from "grammy";
+
 import { Bot, HttpError, GrammyError } from "grammy";
 
 import { CONFIG } from "./config.js";
@@ -5,20 +7,37 @@ import { autoRetry } from "./auto-retry.js";
 import { createIngest } from "./bot-ingest.js";
 import { modelMenu } from "./bot-model-menu.js";
 import { createHandlers } from "./bot-handlers.js";
+import { renderHealth, collectHealth } from "./health.js";
+import {
+  helpText,
+  menuIntro,
+  menuKeyboard,
+  nativeCommands,
+  parseMenuCallback,
+} from "./bot-menu.js";
 
+import type { MenuAction } from "./enums.js";
 import type { CandidateStore } from "./store.js";
 
+/** Extra wiring the entrypoint supplies (kept optional so callers/tests can omit it). */
+export interface BotOptions {
+  /** Next scheduled cron run, for /health. Defaults to "unknown". */
+  nextRun?: () => Date | null;
+}
+
 /**
- * Creates the bot, locked to the owner, with /start, /ping, /model, the
- * rewrite/publish/skip callback handlers, and a `sendRawCard` helper for the
- * collector. `onFetch` is invoked by /fetch (wired by the entrypoint to run a
- * collection cycle).
+ * Creates the bot, locked to the owner, with the command menu (/start, /menu,
+ * /help), /ping, /health, /fetch, /model, the rewrite/publish/skip callback
+ * handlers, and a `sendRawCard` helper for the collector. `onFetch` is invoked
+ * by /fetch (wired by the entrypoint to run a collection cycle).
  */
 export function createBot(
   store: CandidateStore,
   onFetch: () => Promise<string | void> | string | void,
+  options: BotOptions = {},
 ) {
   const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
+  const nextRun = options.nextRun ?? (() => null);
 
   // grammY's canonical rate-limit handling: transparently wait out a 429's
   // retry_after and resubmit (also retries 5xx / network blips with backoff).
@@ -66,14 +85,9 @@ export function createBot(
     await next();
   });
 
-  bot.command("start", (ctx) =>
-    ctx.reply(
-      "Новостной бот на связи. /fetch — собрать новости сейчас. " +
-        "/model — провайдер/модель. /ping — проверка.",
-    ),
-  );
-  bot.command("ping", (ctx) => ctx.reply("pong"));
-  bot.command("fetch", async (ctx) => {
+  // Command actions, defined once and reused by both the slash command and the
+  // matching inline menu button, so a button tap and a typed command never drift.
+  async function runFetch(ctx: Context): Promise<void> {
     await ctx.reply("Запускаю сбор новостей…");
     try {
       const note = await onFetch();
@@ -81,11 +95,38 @@ export function createBot(
     } catch (err) {
       await ctx.reply(`Сбор завершился с ошибкой: ${String(err)}`);
     }
-  });
-  bot.command("model", async (ctx) => {
+  }
+  async function runModel(ctx: Context): Promise<void> {
     const { text, keyboard } = modelMenu(store);
     await ctx.reply(text, { reply_markup: keyboard });
-  });
+  }
+  async function runHealth(ctx: Context): Promise<void> {
+    await ctx.reply("🩺 Проверяю…");
+    const report = await collectHealth(store, { nextRun });
+    await ctx.reply(renderHealth(report), { parse_mode: "Markdown" });
+  }
+  async function runHelp(ctx: Context): Promise<void> {
+    await ctx.reply(helpText(), { parse_mode: "Markdown" });
+  }
+  async function runMenu(ctx: Context): Promise<void> {
+    await ctx.reply(menuIntro(), { reply_markup: menuKeyboard() });
+  }
+
+  bot.command("start", runMenu);
+  bot.command("menu", runMenu);
+  bot.command("help", runHelp);
+  bot.command("health", runHealth);
+  bot.command("ping", (ctx) => ctx.reply("pong"));
+  bot.command("fetch", runFetch);
+  bot.command("model", runModel);
+
+  // Dispatch table from a menu button's MenuAction to its command action.
+  const MENU_ACTIONS: Record<MenuAction, (ctx: Context) => Promise<void>> = {
+    fetch: runFetch,
+    model: runModel,
+    health: runHealth,
+    help: runHelp,
+  };
 
   // Manual ingest: the owner DMs the bot a URL or free text, and the bot turns
   // it into a candidate that flows through the SAME rewrite → preview → publish
@@ -94,17 +135,32 @@ export function createBot(
   bot.on("message:text", async (ctx) => {
     const raw = ctx.message.text;
     // Defensive: an unknown "/command" reaches here (no matching bot.command).
-    // Don't treat it as article text — guide instead of ingesting "/foo".
+    // Don't treat it as article text — point at /help instead of ingesting "/foo".
     if (raw.startsWith("/")) {
-      await ctx.reply(
-        "Неизвестная команда. /fetch — собрать новости, /model — модель, /ping — проверка.",
-      );
+      await ctx.reply("Неизвестная команда. /help — список команд.");
       return;
     }
     await ingestMessage(ctx, raw);
   });
 
-  bot.on("callback_query:data", onCallback);
+  // Menu-button taps run the same action as the command; anything else falls
+  // through to the candidate-card callback router.
+  bot.on("callback_query:data", async (ctx) => {
+    const action = parseMenuCallback(ctx.callbackQuery.data ?? "");
+    if (action) {
+      await ctx.answerCallbackQuery().catch(() => {});
+      await MENU_ACTIONS[action](ctx);
+      return;
+    }
+    await onCallback(ctx);
+  });
+
+  // Register the native Telegram command list (the blue "Menu" button) once on
+  // startup. Best-effort — a failure here never blocks polling.
+  void bot.api
+    .setMyCommands(nativeCommands())
+    // eslint-disable-next-line no-console
+    .catch((err) => console.warn(`[bot] setMyCommands failed: ${String(err)}`));
 
   return { bot, sendRawCard, notifyNeedsVerification, drain };
 }

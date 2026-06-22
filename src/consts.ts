@@ -35,3 +35,10 @@ export const CARD_CALLBACK = {
   SKIP: "skip_",
   REWRITE: "rewrite_",
 } as const;
+
+/**
+ * Callback-data prefix for the command-menu buttons (/start, /menu). Followed by
+ * a MenuAction value, e.g. `menu_fetch`. The handler routes the tap to the same
+ * code path as the corresponding slash command.
+ */
+export const MENU_CALLBACK = "menu_";

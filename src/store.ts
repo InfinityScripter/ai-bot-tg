@@ -127,6 +127,16 @@ export class CandidateStore {
     return rows.map(mapRow);
   }
 
+  /** Candidate count per state (one GROUP BY) — for the /health queue summary. */
+  countsByState(): Record<string, number> {
+    const rows = this.db
+      .prepare("SELECT state, COUNT(*) AS n FROM candidates GROUP BY state")
+      .all() as { state: string; n: number }[];
+    const out: Record<string, number> = {};
+    for (const { state, n } of rows) out[state] = n;
+    return out;
+  }
+
   /** True if this dedup key is known — a live candidate or a pruned seen key. */
   isSeen(dedupKey: string): boolean {
     const row = this.db
