@@ -2,7 +2,7 @@ import { InlineKeyboard } from "grammy";
 
 import { CARD_CALLBACK } from "../consts.js";
 
-import type { ButtonSpec } from "./model.js";
+import type { ButtonSpec } from "./modelPick.js";
 
 /** Keyboard for a RAW card: rewrite (with the active model) or skip. */
 export function rawKeyboard(candidateId: number): InlineKeyboard {

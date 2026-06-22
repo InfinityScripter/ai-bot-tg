@@ -1,7 +1,7 @@
 import Parser from "rss-parser";
 
 import { CONFIG } from "../config.js";
-import { IMG_SRC_RE } from "./scraper.js";
+import { IMG_SRC_RE } from "./scrapeOgImage.js";
 import { truncate, stripHtml, dedupKeyFor } from "../utils.js";
 
 import type { FeedItem } from "../types.js";

@@ -1,6 +1,6 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
-import { autoRetry } from "../src/auto-retry.js";
+import { autoRetry } from "../src/bot/auto-retry.js";
 
 // The transformer calls setTimeout for backoff/retry-after; fake timers keep the
 // test instant while still asserting the retry happened.

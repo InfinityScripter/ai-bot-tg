@@ -1,6 +1,6 @@
 import { it, expect, describe } from "vitest";
 
-import { parseKeywords, passesFilters, curateForQueue } from "../src/curate.js";
+import { parseKeywords, passesFilters, curateForQueue } from "../src/feeds/curateQueue.js";
 
 import type { FeedItem } from "../src/types.js";
 

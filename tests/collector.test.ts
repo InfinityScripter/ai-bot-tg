@@ -4,17 +4,20 @@ import type { FeedItem } from "../src/types.js";
 
 // Control the feeds; the rewriter must NOT be called at collection time.
 const fetchAllFeeds = vi.fn<() => Promise<FeedItem[]>>();
-vi.mock("../src/feeds/index.js", () => ({ fetchAllFeeds: () => fetchAllFeeds() }));
+vi.mock("../src/feeds/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/feeds/index.js")>();
+  return { ...actual, fetchAllFeeds: () => fetchAllFeeds() };
+});
 
 const rewriteToPost = vi.fn();
-vi.mock("../src/llm/rewriter.js", () => ({ rewriteToPost: (...a: unknown[]) => rewriteToPost(...a) }));
+vi.mock("../src/llm/rewriteToPost.js", () => ({ rewriteToPost: (...a: unknown[]) => rewriteToPost(...a) }));
 
 // Spy on filterRelevant so the collector tests never reach the real classify
 // (which would resolve a provider and hit the network). The default impl just
 // passes everything through, mirroring shadow/off mode (kept === curated). A
 // case can override the mock to assert wiring (e.g. afterRelevance / dropping).
 const filterRelevant = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions: [] }));
-vi.mock("../src/llm/relevance.js", () => ({
+vi.mock("../src/llm/filterRelevant.js", () => ({
   filterRelevant: (...a: unknown[]) => filterRelevant(...(a as Parameters<typeof filterRelevant>)),
 }));
 
@@ -27,7 +30,7 @@ vi.mock("../src/audit-emit.js", () => ({
 }));
 
 
-const { runCollection } = await import("../src/collector.js");
+const { runCollection } = await import("../src/server/runCollection.js");
 const { CandidateStore } = await import("../src/store/index.js");
 
 function feedItem(overrides: Partial<FeedItem> = {}): FeedItem {
@@ -120,7 +123,8 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     const feeds = await import("../src/feeds/index.js");
     // re-mock the freshly imported feeds module
     vi.spyOn(feeds, "fetchAllFeeds").mockResolvedValue([feedItem({ title: "Unrelated news" })]);
-    const { runCollection: run } = await import("../src/collector.js");
+    const { runCollection: run } = await import("../src/server/runCollection.js");
+
     const { CandidateStore: Store } = await import("../src/store/index.js");
     const store = new Store(":memory:");
 
@@ -163,8 +167,9 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     ]);
     // Pass-through relevance (== shadow/off mode): nothing dropped.
     const filter = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions: [] }));
-    vi.doMock("../src/llm/relevance.js", () => ({ filterRelevant: filter }));
-    const { runCollection: run } = await import("../src/collector.js");
+    vi.doMock("../src/llm/filterRelevant.js", () => ({ filterRelevant: filter }));
+    const { runCollection: run } = await import("../src/server/runCollection.js");
+
     const { CandidateStore: Store } = await import("../src/store/index.js");
     const store = new Store(":memory:");
 
@@ -178,7 +183,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     expect(summary.droppedRelevance).toBe(0);
     expect(summary.fresh).toBe(2);
     store.close();
-    vi.doUnmock("../src/llm/relevance.js");
+    vi.doUnmock("../src/llm/filterRelevant.js");
     vi.resetModules();
   });
 
@@ -194,8 +199,9 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
       kept: items.filter((i) => i.dedupKey === "keep"),
       decisions: [],
     }));
-    vi.doMock("../src/llm/relevance.js", () => ({ filterRelevant: filter }));
-    const { runCollection: run } = await import("../src/collector.js");
+    vi.doMock("../src/llm/filterRelevant.js", () => ({ filterRelevant: filter }));
+    const { runCollection: run } = await import("../src/server/runCollection.js");
+
     const { CandidateStore: Store } = await import("../src/store/index.js");
     const store = new Store(":memory:");
 
@@ -212,7 +218,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     expect(summary.fresh).toBe(1);
     expect(sent).toEqual(["keep"]);
     store.close();
-    vi.doUnmock("../src/llm/relevance.js");
+    vi.doUnmock("../src/llm/filterRelevant.js");
     vi.resetModules();
   });
 
@@ -225,11 +231,12 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
       { url: "https://ex.com/1", title: "T", kept: false, stage: "llm", score: 0, reason: "r" },
     ];
     const filter = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions }));
-    vi.doMock("../src/llm/relevance.js", () => ({ filterRelevant: filter }));
+    vi.doMock("../src/llm/filterRelevant.js", () => ({ filterRelevant: filter }));
     const emit = vi.fn(async (_decisions: unknown, _mode: string) => {});
     vi.doMock("../src/audit-emit.js", () => ({ emitRelevanceDecisions: emit }));
     // Default RELEVANCE_MODE in the test env is 'shadow' (not 'off'), so emit fires.
-    const { runCollection: run } = await import("../src/collector.js");
+    const { runCollection: run } = await import("../src/server/runCollection.js");
+
     const { CandidateStore: Store } = await import("../src/store/index.js");
     const store = new Store(":memory:");
 
@@ -239,7 +246,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     expect(emit.mock.calls[0]![0]).toEqual(decisions);
     expect(emit.mock.calls[0]![1]).toBe("shadow");
     store.close();
-    vi.doUnmock("../src/llm/relevance.js");
+    vi.doUnmock("../src/llm/filterRelevant.js");
     vi.doUnmock("../src/audit-emit.js");
     vi.resetModules();
   });

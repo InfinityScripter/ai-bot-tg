@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import http from "node:http";
 import { it, vi, expect, afterAll, describe, beforeAll } from "vitest";
 
-import { DEFAULT_COVERS } from "../src/tags.js";
+import { DEFAULT_COVERS } from "../src/blog/normalizeTags.js";
 
 import type { RewriteResult } from "../src/types.js";
 
@@ -71,7 +71,7 @@ describe("E2E: publishToBlog sends the real request over the wire", () => {
     // Point the publisher at our live server (BOT_API_TOKEN comes from setup.ts).
     vi.stubEnv("BLOG_API_URL", `http://127.0.0.1:${port}`);
     vi.resetModules();
-    const { publishToBlog } = await import("../src/publisher.js");
+    const { publishToBlog } = await import("../src/blog/publishPost.js");
 
     const id = await publishToBlog(REWRITE);
     expect(id).toBe("e2e-post-1");

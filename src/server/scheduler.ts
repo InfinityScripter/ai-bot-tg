@@ -1,6 +1,6 @@
 import { Cron } from "croner";
 
-import { CONFIG } from "./config.js";
+import { CONFIG } from "../config.js";
 
 /**
  * Registers the daily collection job. Returns the Cron handle so the caller can

@@ -1,16 +1,16 @@
 import { CONFIG } from "../config.js";
+import { classifyRelevance } from "./classifyRelevance.js";
 import { RelevanceMode, RelevanceStage } from "../enums.js";
-import { classifyRelevance } from "./relevance-classify.js";
-import { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevance-markers.js";
+import { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevanceMarkers.js";
 
 import type { FeedItem } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
 
-// Re-exported so "./relevance.js" stays the stable import path for the markers,
+export { classifyRelevance } from "./classifyRelevance.js";
+// Re-exported so "./filterRelevant.js" stays the stable import path for the markers,
 // the classifier, and the RelevanceMode enum after the module split.
 export { RelevanceMode, RelevanceStage } from "../enums.js";
-export { classifyRelevance } from "./relevance-classify.js";
-export { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevance-markers.js";
+export { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevanceMarkers.js";
 
 /** Lowercased title + first ~300 chars of snippet — the text every stage reads. */
 function haystack(item: FeedItem): string {

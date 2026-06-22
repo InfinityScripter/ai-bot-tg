@@ -2,7 +2,7 @@ import { it, vi, expect, describe, afterEach } from "vitest";
 
 // Mock the rewriter so the bot's 🔄 handler is driven without a real LLM call.
 const rewriteToPost = vi.fn();
-vi.mock("../src/llm/rewriter.js", () => ({
+vi.mock("../src/llm/rewriteToPost.js", () => ({
   rewriteToPost: (...a: unknown[]) => rewriteToPost(...a),
 }));
 

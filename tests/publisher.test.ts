@@ -1,7 +1,7 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
 import { PublishStatus } from "../src/enums.js";
-import { publishToBlog, toBlogPostBody } from "../src/publisher.js";
+import { publishToBlog, toBlogPostBody } from "../src/blog/publishPost.js";
 
 import type { RewriteResult } from "../src/types.js";
 
@@ -97,7 +97,7 @@ describe("publishToBlog", () => {
       "fetch",
       vi.fn(async () => new Response("bad", { status: 400 })),
     );
-    const { PublishError } = await import("../src/publisher.js");
+    const { PublishError } = await import("../src/blog/publishPost.js");
     await expect(publishToBlog(REWRITE)).rejects.toMatchObject({
       name: "PublishError",
       maybePosted: false,

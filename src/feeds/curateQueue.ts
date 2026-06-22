@@ -1,4 +1,4 @@
-import type { FeedItem } from "./types.js";
+import type { FeedItem } from "../types.js";
 
 /** Parses a CSV keyword list into lowercased, trimmed, non-empty terms. */
 export function parseKeywords(csv: string | undefined): string[] {

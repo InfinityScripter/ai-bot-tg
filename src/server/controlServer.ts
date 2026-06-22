@@ -8,9 +8,9 @@ import { pingModel, PROVIDERS ,
   CONTROL_PROVIDERS,
   isControlProvider,
   resolveActiveProvider,
-} from "./llm/index.js";
+} from "../llm/index.js";
 
-import type { CandidateStore } from "./store/index.js";
+import type { CandidateStore } from "../store/index.js";
 
 export interface ControlServerOptions {
   port: number;

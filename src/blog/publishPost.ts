@@ -1,8 +1,8 @@
-import { CONFIG } from "./config.js";
-import { PublishStatus } from "./enums.js";
-import { pickDefaultCover } from "./tags.js";
+import { CONFIG } from "../config.js";
+import { PublishStatus } from "../enums.js";
+import { pickDefaultCover } from "./normalizeTags.js";
 
-import type { BlogPostBody, RewriteResult } from "./types.js";
+import type { BlogPostBody, RewriteResult } from "../types.js";
 
 /**
  * A publish failure that also reports whether the POST MAY have reached the

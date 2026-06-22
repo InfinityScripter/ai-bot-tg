@@ -6,7 +6,7 @@ import {
   TAG_WHITELIST,
   DEFAULT_COVERS,
   pickDefaultCover,
-} from "../src/tags.js";
+} from "../src/blog/normalizeTags.js";
 
 describe("normalizeTags", () => {
   it("always returns новости first, even from an empty list", () => {

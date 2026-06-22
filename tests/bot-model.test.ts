@@ -10,7 +10,7 @@ import {
   encodeProvider,
   providerButtons,
   mockToggleButton,
-} from "../src/bot/model.js";
+} from "../src/bot/modelPick.js";
 
 describe("callback data round-trip", () => {
   it("encodes and parses a provider pick", () => {

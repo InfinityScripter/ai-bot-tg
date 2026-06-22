@@ -1,9 +1,8 @@
 import { CONFIG } from "./config.js";
 import { createBot } from "./bot.js";
-import { runCollection } from "./collector.js";
-import { scheduleDaily } from "./scheduler.js";
 import { CandidateStore } from "./store/index.js";
-import { startControlServer } from "./control-server.js";
+import { NOTIFY_LABELS, COLLECTION_LABELS } from "./labels.js";
+import { runCollection, scheduleDaily, startControlServer } from "./server/index.js";
 
 /**
  * Entrypoint. Wires the store, bot, collector, and scheduler together, then
@@ -21,10 +20,10 @@ async function main() {
   const run = async (): Promise<string> => {
     const s = await runCollection(store, (candidate) => sendRawCard(candidate));
     if (s.filterActive && s.fetched > 0 && s.afterFilter === 0) {
-      return `⚠️ Фильтр отсёк все ${s.fetched} новостей — проверьте FILTER_INCLUDE/FILTER_EXCLUDE.`;
+      return COLLECTION_LABELS.filterBlocked(s.fetched);
     }
-    if (s.fresh === 0) return `Новых новостей нет (получено ${s.fetched}).`;
-    return `Готово: новых ${s.fresh}, отправлено ${s.sent}${s.failed ? `, ошибок ${s.failed}` : ""}.`;
+    if (s.fresh === 0) return COLLECTION_LABELS.noNews(s.fetched);
+    return COLLECTION_LABELS.done(s.fresh, s.sent, s.failed);
   };
   // Declared before createBot so /health can read the next cron run via a lazy
   // getter; the actual job is assigned below (after the bot/notify wiring exists).
@@ -59,7 +58,7 @@ async function main() {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(`[index] scheduled run failed: ${String(err)}`);
-      await notifyOwner(`⚠️ Ежедневный сбор новостей упал с ошибкой:\n${String(err)}`);
+      await notifyOwner(NOTIFY_LABELS.scheduledRunFailed(err));
     }
   };
 

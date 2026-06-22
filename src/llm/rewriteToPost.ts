@@ -1,8 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import { CONFIG } from "../config.js";
-import { normalizeTags } from "../tags.js";
 import { RewriteSchema } from "../types.js";
+import { normalizeTags } from "../blog/index.js";
 import { truncate, stripHtml } from "../utils.js";
 import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
 import { ProviderKind, ProviderName as ProviderNameEnum } from "../enums.js";

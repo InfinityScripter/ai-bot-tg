@@ -1,5 +1,5 @@
-import { fetchOgImage } from "./scraper.js";
-import { mapFeed, rssParser, resolveFeeds } from "./parser.js";
+import { fetchOgImage } from "./scrapeOgImage.js";
+import { mapFeed, rssParser, resolveFeeds } from "./parseFeed.js";
 
 import type { FeedItem } from "../types.js";
 

@@ -1,5 +1,5 @@
 import { pingModel } from "../llm/index.js";
-import { checkBlog, processCheck, checkProvider, scheduleCheck } from "./checks.js";
+import { checkBlog, processCheck, checkProvider, scheduleCheck } from "./probeChecks.js";
 
 import type { CandidateStore } from "../store/index.js";
 import type { HealthDeps, HealthReport } from "./types.js";

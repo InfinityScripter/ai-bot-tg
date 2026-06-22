@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { it, expect, describe, afterEach, beforeEach } from "vitest";
 
 import { CandidateStore } from "../src/store/index.js";
-import { startControlServer } from "../src/control-server.js";
+import { startControlServer } from "../src/server/controlServer.js";
 
 const TOKEN = "test-control-token-0123456789";
 

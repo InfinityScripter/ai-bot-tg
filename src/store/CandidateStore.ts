@@ -3,17 +3,17 @@ import { mkdirSync } from "node:fs";
 import Database from "better-sqlite3";
 
 import { CONFIG } from "../config.js";
-import * as settings from "./settings.js";
-import * as mutations from "./mutations.js";
 import { CandidateState } from "../enums.js";
-import { SCHEMA, mapRow, MIGRATIONS } from "./schema.js";
+import * as settings from "./storeSettings.js";
+import * as mutations from "./candidateMutations.js";
+import { SCHEMA, mapRow, MIGRATIONS } from "./candidateSchema.js";
 
 import type { FeedItem, Candidate, RewriteResult } from "../types.js";
-import type { CandidateRow, MockOverride, ModelOverride } from "./schema.js";
+import type { CandidateRow, MockOverride, ModelOverride } from "./candidateSchema.js";
 
 // Re-exported so existing importers can keep importing these settings shapes
-// from "./store.js" alongside the CandidateStore that produces them.
-export type { MockOverride, ModelOverride } from "./schema.js";
+// from "./CandidateStore.js" alongside the CandidateStore that produces them.
+export type { MockOverride, ModelOverride } from "./candidateSchema.js";
 
 /**
  * The candidate store. One SQLite file doubles as the dedup ledger and the
