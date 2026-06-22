@@ -73,9 +73,14 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     baseUrl: "https://openrouter.ai/api/v1",
     apiKey: () => CONFIG.OPENROUTER_API_KEY,
     defaultModel: CONFIG.OPENROUTER_MODEL,
-    // Namespaced ids (provider/model). All three verified live on /models. The
-    // free GLM flash variant first, then cheap fallbacks.
-    fallbackModels: ["z-ai/glm-4.7-flash", "deepseek/deepseek-chat", "google/gemini-2.5-flash"],
+    // Namespaced ids, live-tested for actual rewrite output (not just a 200):
+    //   deepseek-chat / gemini-2.5-flash → clean text, finish_reason "stop".
+    //   z-ai/glm-4.7-flash → a REASONING model: puts thoughts in `reasoning`,
+    //     leaves `content` null until it stops — breaks the rewriter. Excluded.
+    //   qwen :free → constant upstream 429s; unreliable. Excluded from default.
+    // deepseek-chat is cheap ($0.20/$0.80 за 1M) — ~$4/yr at 15/run, inside the
+    // $5 free-tier credit, so it runs without topping up.
+    fallbackModels: ["deepseek/deepseek-chat", "google/gemini-2.5-flash"],
   },
   [ProviderName.Mock]: {
     label: "Mock (без LLM)",
@@ -117,10 +122,10 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   // Gemini — free tier exists but is geo/quota limited from RU.
   "gemini-2.5-flash": { tier: "free", note: "free-tier (гео-лимит из РФ)" },
   "gemini-2.5-flash-lite": { tier: "free", note: "free-tier (гео-лимит из РФ)" },
-  // OpenRouter (namespaced ids). glm flash free; others cheap-paid.
-  "z-ai/glm-4.7-flash": { tier: "free", note: "через OpenRouter" },
-  "deepseek/deepseek-chat": { tier: "paid", note: "≈ дёшево, через OpenRouter" },
-  "google/gemini-2.5-flash": { tier: "free", note: "через OpenRouter" },
+  // OpenRouter (namespaced ids). Live-tested for clean rewrite output.
+  "deepseek/deepseek-chat": { tier: "paid", note: "OpenRouter $0.20/$0.80 за 1M" },
+  "google/gemini-2.5-flash": { tier: "paid", note: "OpenRouter, дёшево" },
+  "qwen/qwen3-next-80b-a3b-instruct:free": { tier: "free", note: "OpenRouter $0 (нестабильно, 429)" },
   // Mock — no cost.
   mock: { tier: "free" },
 };

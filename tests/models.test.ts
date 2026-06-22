@@ -91,7 +91,8 @@ describe("listModels", () => {
     vi.stubGlobal("fetch", fetchMock);
     const models = await listModels(ProviderName.OpenRouter);
     expect(models).toEqual(PROVIDERS.openrouter.fallbackModels);
-    expect(models).toContain("z-ai/glm-4.7-flash");
+    // deepseek-chat (clean rewrite output, fits the free credit) leads the list.
+    expect(models[0]).toBe("deepseek/deepseek-chat");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -108,7 +109,7 @@ describe("listModels", () => {
       }),
     );
     const models = await list(ProviderName.OpenRouter);
-    expect(models).toContain("z-ai/glm-4.7-flash"); // fallback, first
+    expect(models[0]).toBe("deepseek/deepseek-chat"); // fallback, first
     expect(models).toContain("anthropic/claude-haiku-4-5"); // live, after
   });
 

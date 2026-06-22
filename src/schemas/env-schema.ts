@@ -65,8 +65,10 @@ export const EnvSchema = z
     /** OpenRouter API key — required when REWRITE_PROVIDER=openrouter. One key
      * proxies many upstream models, sidestepping per-provider geo blocks. */
     OPENROUTER_API_KEY: z.string().optional(),
-    /** OpenRouter model (namespaced, e.g. z-ai/glm-4.7-flash — free). */
-    OPENROUTER_MODEL: z.string().default("z-ai/glm-4.7-flash"),
+    /** OpenRouter model (namespaced). deepseek-chat: cheap, clean rewrite output,
+     * fits the $5 free-tier credit. (GLM-flash there is a reasoning model →
+     * empty content; qwen :free is 429-prone — both avoided as the default.) */
+    OPENROUTER_MODEL: z.string().default("deepseek/deepseek-chat"),
     /** Max candidates surfaced per run, to cap Claude spend on a noisy day. */
     MAX_PER_RUN: z.coerce.number().int().positive().default(15),
     /**
