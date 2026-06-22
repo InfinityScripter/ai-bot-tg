@@ -8,7 +8,7 @@ import {
   menuKeyboard,
   nativeCommands,
   parseMenuCallback,
-} from "../src/bot-menu.js";
+} from "../src/bot/menu.js";
 
 describe("helpText", () => {
   it("lists every command with its description", () => {

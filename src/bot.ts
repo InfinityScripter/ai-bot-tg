@@ -4,9 +4,9 @@ import { Bot, HttpError, GrammyError } from "grammy";
 
 import { CONFIG } from "./config.js";
 import { autoRetry } from "./auto-retry.js";
-import { createIngest } from "./bot-ingest.js";
-import { modelMenu } from "./bot-model-menu.js";
-import { createHandlers } from "./bot-handlers.js";
+import { createIngest } from "./bot/ingest.js";
+import { modelMenu } from "./bot/model-menu.js";
+import { createHandlers } from "./bot/handlers.js";
 import { renderHealth, collectHealth } from "./health/index.js";
 import {
   helpText,
@@ -14,7 +14,7 @@ import {
   menuKeyboard,
   nativeCommands,
   parseMenuCallback,
-} from "./bot-menu.js";
+} from "./bot/menu.js";
 
 import type { MenuAction } from "./enums.js";
 import type { CandidateStore } from "./store/index.js";

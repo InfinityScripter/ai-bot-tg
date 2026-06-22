@@ -1,6 +1,6 @@
-import { truncate, escapeMarkdown } from "./utils.js";
+import { truncate, escapeMarkdown } from "../utils.js";
 
-import type { Candidate, RewriteResult } from "./types.js";
+import type { Candidate, RewriteResult } from "../types.js";
 
 /**
  * Renders the RAW card (the source as collected, before any rewrite). All

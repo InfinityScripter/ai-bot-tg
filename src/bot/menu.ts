@@ -1,7 +1,7 @@
 import { InlineKeyboard } from "grammy";
 
-import { MenuAction } from "./enums.js";
-import { MENU_CALLBACK } from "./consts.js";
+import { MenuAction } from "../enums.js";
+import { MENU_CALLBACK } from "../consts.js";
 
 /** One bot command: its slash name, the human title, and a one-line description. */
 export interface CommandSpec {

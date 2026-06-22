@@ -1,20 +1,20 @@
 import type { Context, InlineKeyboard } from "grammy";
 
-import { CallbackKind } from "./enums.js";
-import { MODEL_CALLBACK } from "./consts.js";
-import { keyboardFrom } from "./bot-keyboards.js";
-import { pingModel, listModels } from "./llm/index.js";
-import { ackSilently, logEditError } from "./bot-edit.js";
-import { PROVIDERS, isMockActive, hasActiveOverride, resolveActiveProvider } from "./llm/index.js";
+import { CallbackKind } from "../enums.js";
+import { MODEL_CALLBACK } from "../consts.js";
+import { keyboardFrom } from "./keyboards.js";
+import { pingModel, listModels } from "../llm/index.js";
+import { ackSilently, logEditError } from "./edit.js";
+import { PROVIDERS, isMockActive, hasActiveOverride, resolveActiveProvider } from "../llm/index.js";
 import {
   statusText,
   modelButtons,
   parseCallback,
   providerButtons,
   mockToggleButton,
-} from "./bot-model.js";
+} from "./model.js";
 
-import type { CandidateStore } from "./store/index.js";
+import type { CandidateStore } from "../store/index.js";
 
 /** The /model status text + provider keyboard for the given store state. */
 export function modelMenu(store: CandidateStore): { text: string; keyboard: InlineKeyboard } {
