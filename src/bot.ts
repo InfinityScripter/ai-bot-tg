@@ -7,7 +7,7 @@ import { autoRetry } from "./auto-retry.js";
 import { createIngest } from "./bot-ingest.js";
 import { modelMenu } from "./bot-model-menu.js";
 import { createHandlers } from "./bot-handlers.js";
-import { renderHealth, collectHealth } from "./health.js";
+import { renderHealth, collectHealth } from "./health/index.js";
 import {
   helpText,
   menuIntro,

@@ -2,7 +2,7 @@ import { it, vi, expect, describe } from "vitest";
 
 import { CandidateState } from "../src/enums.js";
 import { CandidateStore } from "../src/store/index.js";
-import { renderHealth, collectHealth } from "../src/health.js";
+import { renderHealth, collectHealth } from "../src/health/index.js";
 
 /** A store with a couple of candidates so the queue summary has content. */
 function seededStore(): CandidateStore {
