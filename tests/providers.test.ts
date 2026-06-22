@@ -143,19 +143,20 @@ describe("hasActiveOverride", () => {
 });
 
 describe("control provider whitelist", () => {
-  it("exposes only glm, deepseek, mock", async () => {
+  it("exposes only glm, deepseek, openrouter", async () => {
     const { CONTROL_PROVIDERS } = await importProviders();
     expect([...CONTROL_PROVIDERS]).toEqual([
       ProviderName.Glm,
       ProviderName.DeepSeek,
-      ProviderName.Mock,
+      ProviderName.OpenRouter,
     ]);
   });
 
-  it("accepts whitelisted, rejects others", async () => {
+  it("accepts whitelisted, rejects others (mock excluded — it has its own toggle)", async () => {
     const { isControlProvider } = await importProviders();
     expect(isControlProvider(ProviderName.Glm)).toBe(true);
-    expect(isControlProvider(ProviderName.Mock)).toBe(true);
+    expect(isControlProvider(ProviderName.OpenRouter)).toBe(true);
+    expect(isControlProvider(ProviderName.Mock)).toBe(false);
     expect(isControlProvider(ProviderName.Anthropic)).toBe(false);
     expect(isControlProvider(ProviderName.Gemini)).toBe(false);
     expect(isControlProvider("nonsense")).toBe(false);

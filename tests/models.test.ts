@@ -86,6 +86,32 @@ describe("listModels", () => {
     expect(await listModels(ProviderName.Mock)).toEqual(PROVIDERS.mock.fallbackModels);
   });
 
+  it("returns the OpenRouter static list when the key is missing (namespaced ids)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const models = await listModels(ProviderName.OpenRouter);
+    expect(models).toEqual(PROVIDERS.openrouter.fallbackModels);
+    expect(models).toContain("z-ai/glm-4.7-flash");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("merges live OpenRouter ids after the fallback", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "k");
+    vi.resetModules();
+    const { listModels: list } = await import("../src/llm/index.js");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [{ id: "anthropic/claude-haiku-4-5" }] }),
+      }),
+    );
+    const models = await list(ProviderName.OpenRouter);
+    expect(models).toContain("z-ai/glm-4.7-flash"); // fallback, first
+    expect(models).toContain("anthropic/claude-haiku-4-5"); // live, after
+  });
+
   it("caps a huge live list so the keyboard stays renderable", async () => {
     vi.stubEnv("GLM_API_KEY", "k");
     vi.resetModules();

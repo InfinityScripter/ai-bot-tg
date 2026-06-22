@@ -42,17 +42,18 @@ export const EnvSchema = z
      *   'gemini'    — Google Gemini (needs GEMINI_API_KEY; free tier is geo/quota limited)
      *   'glm'       — Zhipu Z.ai GLM (needs GLM_API_KEY; GLM-4.7-Flash is free)
      *   'deepseek'  — DeepSeek (needs DEEPSEEK_API_KEY; V4 Flash is very cheap)
+     *   'openrouter'— OpenRouter (needs OPENROUTER_API_KEY; one key, many models)
      *   'mock'      — no LLM, build the post from the feed item directly
      * REWRITE_MOCK=1 still forces 'mock' regardless of this, for back-compat.
-     * gemini/glm/deepseek all use the same OpenAI-compatible code path.
+     * gemini/glm/deepseek/openrouter all use the same OpenAI-compatible code path.
      */
     REWRITE_PROVIDER: z.nativeEnum(ProviderName).default(ProviderName.Anthropic),
     /** Claude model for the rewrite. Haiku is plenty for this task. */
     REWRITE_MODEL: z.string().default("claude-haiku-4-5"),
     /** Google AI Studio API key — required when REWRITE_PROVIDER=gemini. */
     GEMINI_API_KEY: z.string().optional(),
-    /** Gemini model. */
-    GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+    /** Gemini model. 2.0-flash is retired; 2.5-flash is the current free-tier floor. */
+    GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
     /** Z.ai (Zhipu) API key — required when REWRITE_PROVIDER=glm. */
     GLM_API_KEY: z.string().optional(),
     /** GLM model. The Flash variant is free for all Z.ai accounts. */
@@ -61,6 +62,11 @@ export const EnvSchema = z
     DEEPSEEK_API_KEY: z.string().optional(),
     /** DeepSeek model. V4 Flash is the cheap frontier-class option. */
     DEEPSEEK_MODEL: z.string().default("deepseek-v4-flash"),
+    /** OpenRouter API key — required when REWRITE_PROVIDER=openrouter. One key
+     * proxies many upstream models, sidestepping per-provider geo blocks. */
+    OPENROUTER_API_KEY: z.string().optional(),
+    /** OpenRouter model (namespaced, e.g. z-ai/glm-4.7-flash — free). */
+    OPENROUTER_MODEL: z.string().default("z-ai/glm-4.7-flash"),
     /** Max candidates surfaced per run, to cap Claude spend on a noisy day. */
     MAX_PER_RUN: z.coerce.number().int().positive().default(15),
     /**
@@ -115,6 +121,7 @@ export const EnvSchema = z
       [ProviderName.Gemini]: "GEMINI_API_KEY",
       [ProviderName.Glm]: "GLM_API_KEY",
       [ProviderName.DeepSeek]: "DEEPSEEK_API_KEY",
+      [ProviderName.OpenRouter]: "OPENROUTER_API_KEY",
     } as const;
     const keyName = REQUIRED_KEY[cfg.REWRITE_PROVIDER as keyof typeof REQUIRED_KEY];
     if (keyName && !cfg[keyName]) {

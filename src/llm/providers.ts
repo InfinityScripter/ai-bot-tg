@@ -41,7 +41,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     apiKey: () => CONFIG.GEMINI_API_KEY,
     defaultModel: CONFIG.GEMINI_MODEL,
-    fallbackModels: ["gemini-2.0-flash", "gemini-2.5-flash"],
+    // gemini-2.0-flash is no longer served; 2.5-flash is the current free-tier floor.
+    fallbackModels: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
   },
   [ProviderName.Glm]: {
     label: "GLM",
@@ -62,6 +63,19 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     apiKey: () => CONFIG.DEEPSEEK_API_KEY,
     defaultModel: CONFIG.DEEPSEEK_MODEL,
     fallbackModels: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat"],
+  },
+  [ProviderName.OpenRouter]: {
+    label: "OpenRouter",
+    kind: ProviderKind.OpenAICompat,
+    // OpenRouter's OpenAI-compatible base; chat at {baseUrl}/chat/completions,
+    // models at {baseUrl}/models. One key proxies many upstreams, so a single
+    // working endpoint dodges per-provider geo/network blocks (e.g. api.z.ai).
+    baseUrl: "https://openrouter.ai/api/v1",
+    apiKey: () => CONFIG.OPENROUTER_API_KEY,
+    defaultModel: CONFIG.OPENROUTER_MODEL,
+    // Namespaced ids (provider/model). All three verified live on /models. The
+    // free GLM flash variant first, then cheap fallbacks.
+    fallbackModels: ["z-ai/glm-4.7-flash", "deepseek/deepseek-chat", "google/gemini-2.5-flash"],
   },
   [ProviderName.Mock]: {
     label: "Mock (без LLM)",
@@ -101,8 +115,12 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   "claude-haiku-4-5": { tier: "paid", note: "Anthropic, платно" },
   "claude-sonnet-4-6": { tier: "paid", note: "Anthropic, дороже" },
   // Gemini — free tier exists but is geo/quota limited from RU.
-  "gemini-2.0-flash": { tier: "free", note: "free-tier (гео-лимит из РФ)" },
   "gemini-2.5-flash": { tier: "free", note: "free-tier (гео-лимит из РФ)" },
+  "gemini-2.5-flash-lite": { tier: "free", note: "free-tier (гео-лимит из РФ)" },
+  // OpenRouter (namespaced ids). glm flash free; others cheap-paid.
+  "z-ai/glm-4.7-flash": { tier: "free", note: "через OpenRouter" },
+  "deepseek/deepseek-chat": { tier: "paid", note: "≈ дёшево, через OpenRouter" },
+  "google/gemini-2.5-flash": { tier: "free", note: "через OpenRouter" },
   // Mock — no cost.
   mock: { tier: "free" },
 };
@@ -126,15 +144,16 @@ export function isProviderName(value: string): value is ProviderName {
 }
 
 /**
- * Providers the admin panel may control in V1. anthropic/gemini are excluded
- * (gemini is geo-limited from RU; anthropic's ping is key-presence-only). They
- * stay in PROVIDERS so the Telegram /model path keeps working — only the admin
- * control surface is narrowed.
+ * Providers the admin panel's "Провайдер" dropdown may select. anthropic/gemini
+ * are excluded (gemini is geo-limited from RU; anthropic's ping is
+ * key-presence-only); mock is excluded because the panel has a dedicated mock
+ * TOGGLE — listing it as a provider too was redundant. All stay in PROVIDERS so
+ * the Telegram /model path keeps working — only the admin dropdown is narrowed.
  */
 export const CONTROL_PROVIDERS = [
   ProviderName.Glm,
   ProviderName.DeepSeek,
-  ProviderName.Mock,
+  ProviderName.OpenRouter,
 ] as const;
 
 /** A provider name the admin panel is allowed to select. */

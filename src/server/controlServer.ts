@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { type Server, createServer, type ServerResponse, type IncomingMessage } from "node:http";
 
+import { probeAllModels } from "../health/index.js";
 import { pingModel, PROVIDERS ,
   listModels,
   MODEL_PRICES,
@@ -18,6 +19,10 @@ export interface ControlServerOptions {
   store: CandidateStore;
   /** Next scheduled run, or null. Kept for future use; not in the V1 status body. */
   nextRun: () => Date | null;
+  /** Model ping, injectable for tests; defaults to the real pingModel. */
+  pingFn?: typeof pingModel;
+  /** Full-matrix model health, injectable for tests; defaults to probeAllModels. */
+  probeModelsFn?: typeof probeAllModels;
 }
 
 export interface ControlServerHandle {
@@ -88,6 +93,8 @@ function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
  */
 export function startControlServer(opts: ControlServerOptions): ControlServerHandle {
   const { port, token, store } = opts;
+  const pingFn = opts.pingFn ?? pingModel;
+  const probeModelsFn = opts.probeModelsFn ?? probeAllModels;
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const auth = req.headers.authorization;
@@ -127,6 +134,14 @@ export function startControlServer(opts: ControlServerOptions): ControlServerHan
       return send(res, 200, { provider, models });
     }
 
+    if (method === "GET" && path === "/control/models/health") {
+      // Pings the default model of every admin-controllable provider so the panel
+      // can show which actually work. Slow (one ping per provider) — the panel
+      // refreshes it on demand, not on a poll.
+      const report = await probeModelsFn();
+      return send(res, 200, report);
+    }
+
     if (method === "POST" && path === "/control/model") {
       const body = await readJson(req);
       const provider = typeof body.provider === "string" ? body.provider : "";
@@ -134,7 +149,7 @@ export function startControlServer(opts: ControlServerOptions): ControlServerHan
       if (!isControlProvider(provider) || !model) {
         return send(res, 400, { error: "Unknown provider or empty model" });
       }
-      const ping = await pingModel(provider, model);
+      const ping = await pingFn(provider, model);
       if (!ping.ok) {
         return send(res, 400, { error: ping.error });
       }

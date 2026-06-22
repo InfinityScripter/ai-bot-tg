@@ -41,6 +41,8 @@ export enum ProviderName {
   Gemini = "gemini",
   Glm = "glm",
   DeepSeek = "deepseek",
+  /** OpenRouter — one key/endpoint that proxies many models (z-ai/*, deepseek/*, …). */
+  OpenRouter = "openrouter",
   Mock = "mock",
 }
 
