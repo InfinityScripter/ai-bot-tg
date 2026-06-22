@@ -7,14 +7,14 @@ const fetchAllFeeds = vi.fn<() => Promise<FeedItem[]>>();
 vi.mock("../src/feeds/index.js", () => ({ fetchAllFeeds: () => fetchAllFeeds() }));
 
 const rewriteToPost = vi.fn();
-vi.mock("../src/rewriter.js", () => ({ rewriteToPost: (...a: unknown[]) => rewriteToPost(...a) }));
+vi.mock("../src/llm/rewriter.js", () => ({ rewriteToPost: (...a: unknown[]) => rewriteToPost(...a) }));
 
 // Spy on filterRelevant so the collector tests never reach the real classify
 // (which would resolve a provider and hit the network). The default impl just
 // passes everything through, mirroring shadow/off mode (kept === curated). A
 // case can override the mock to assert wiring (e.g. afterRelevance / dropping).
 const filterRelevant = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions: [] }));
-vi.mock("../src/relevance.js", () => ({
+vi.mock("../src/llm/relevance.js", () => ({
   filterRelevant: (...a: unknown[]) => filterRelevant(...(a as Parameters<typeof filterRelevant>)),
 }));
 
@@ -25,6 +25,7 @@ vi.mock("../src/audit-emit.js", () => ({
   emitRelevanceDecisions: (...a: unknown[]) =>
     emitRelevanceDecisions(...(a as Parameters<typeof emitRelevanceDecisions>)),
 }));
+
 
 const { runCollection } = await import("../src/collector.js");
 const { CandidateStore } = await import("../src/store/index.js");
@@ -162,7 +163,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     ]);
     // Pass-through relevance (== shadow/off mode): nothing dropped.
     const filter = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions: [] }));
-    vi.doMock("../src/relevance.js", () => ({ filterRelevant: filter }));
+    vi.doMock("../src/llm/relevance.js", () => ({ filterRelevant: filter }));
     const { runCollection: run } = await import("../src/collector.js");
     const { CandidateStore: Store } = await import("../src/store/index.js");
     const store = new Store(":memory:");
@@ -177,7 +178,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     expect(summary.droppedRelevance).toBe(0);
     expect(summary.fresh).toBe(2);
     store.close();
-    vi.doUnmock("../src/relevance.js");
+    vi.doUnmock("../src/llm/relevance.js");
     vi.resetModules();
   });
 
@@ -193,7 +194,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
       kept: items.filter((i) => i.dedupKey === "keep"),
       decisions: [],
     }));
-    vi.doMock("../src/relevance.js", () => ({ filterRelevant: filter }));
+    vi.doMock("../src/llm/relevance.js", () => ({ filterRelevant: filter }));
     const { runCollection: run } = await import("../src/collector.js");
     const { CandidateStore: Store } = await import("../src/store/index.js");
     const store = new Store(":memory:");
@@ -211,7 +212,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     expect(summary.fresh).toBe(1);
     expect(sent).toEqual(["keep"]);
     store.close();
-    vi.doUnmock("../src/relevance.js");
+    vi.doUnmock("../src/llm/relevance.js");
     vi.resetModules();
   });
 
@@ -224,7 +225,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
       { url: "https://ex.com/1", title: "T", kept: false, stage: "llm", score: 0, reason: "r" },
     ];
     const filter = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions }));
-    vi.doMock("../src/relevance.js", () => ({ filterRelevant: filter }));
+    vi.doMock("../src/llm/relevance.js", () => ({ filterRelevant: filter }));
     const emit = vi.fn(async (_decisions: unknown, _mode: string) => {});
     vi.doMock("../src/audit-emit.js", () => ({ emitRelevanceDecisions: emit }));
     // Default RELEVANCE_MODE in the test env is 'shadow' (not 'off'), so emit fires.
@@ -238,7 +239,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     expect(emit.mock.calls[0]![0]).toEqual(decisions);
     expect(emit.mock.calls[0]![1]).toBe("shadow");
     store.close();
-    vi.doUnmock("../src/relevance.js");
+    vi.doUnmock("../src/llm/relevance.js");
     vi.doUnmock("../src/audit-emit.js");
     vi.resetModules();
   });
