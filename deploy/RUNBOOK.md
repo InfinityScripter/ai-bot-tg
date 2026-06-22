@@ -75,7 +75,14 @@ choices, so you don't re-derive them:
   deploy dir. `git reset --hard origin/main` updates tracked files only and
   leaves both untouched.
 - **No build step.** The bot runs TypeScript directly with `tsx`
-  (`node --import tsx src/index.ts`), so CI is just `npm ci` + restart.
+  (`node --import tsx src/index.ts`), so CI is just install + restart.
+- **Runtime-only install (`npm ci --omit=dev`).** With no build/lint/test on the
+  VDS, the box needs only the `dependencies` + `tsx` — not the dev toolchain
+  (eslint/prettier/vitest/typescript, ~230 extra packages). `tsx` is therefore a
+  **dependency**, not a devDependency. Installing the full tree on the small VDS
+  triggered npm's `Exit handler never called!` OOM-adjacent teardown error;
+  `--omit=dev` cuts the install from ~322 to ~92 packages. Lint/test still run on
+  the GitHub-hosted runner, not the VDS.
 - **Secret validation step** fails fast with a readable message if a secret is
   missing — that's what told us `VDS_SSH_PRIVATE_KEY` wasn't set.
 
@@ -143,7 +150,7 @@ ssh -p 3333 root@185.237.219.151
 mkdir -p /opt/blog-app/<service>
 cd /opt/blog-app/<service>
 git clone https://github.com/<owner>/<repo>.git .     # HTTPS works once repo is public
-npm ci
+npm ci --omit=dev --no-audit --no-fund                 # runtime-only (deps + tsx); no dev toolchain on the VDS
 mkdir -p data                                          # for SQLite, if used
 ```
 
@@ -217,7 +224,7 @@ git revert <bad-sha> && git push origin main
 
 # emergency, straight on the box (reconcile main after):
 cd /opt/blog-app/ai-bot-tg
-git reset --hard <last-good-sha> && npm ci && systemctl restart blog-newsbot
+git reset --hard <last-good-sha> && npm ci --omit=dev --no-audit --no-fund && systemctl restart blog-newsbot
 ```
 
 SQLite ledger survives both. See [DEPLOY.md](DEPLOY.md) §7.

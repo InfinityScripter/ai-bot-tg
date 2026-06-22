@@ -37,6 +37,12 @@ jobs:
             cd /opt/blog-app/ai-bot-tg
             git fetch --all
             git reset --hard origin/main
-            npm ci
+            # Runtime-only install: the bot runs via tsx (no build step on the VDS),
+            # so it needs ONLY the dependencies + tsx — NOT the dev toolchain
+            # (eslint/prettier/vitest/typescript, ~230 extra packages). Installing
+            # the full tree on the small VDS triggered npm's "Exit handler never
+            # called!" OOM-adjacent teardown error. --omit=dev cuts the install to
+            # ~92 packages (lint/test still run on the GitHub-hosted runner).
+            npm ci --omit=dev --no-audit --no-fund
             systemctl restart blog-newsbot
             systemctl status blog-newsbot --no-pager

@@ -7,7 +7,7 @@ talk to the backend at `http://localhost:7272` when co-located.
 > **First deploy is manual** (steps 2–4 below: clone, env, systemd unit). After
 > that, a push to `main` auto-deploys via GitHub Actions
 > (`.github/workflows/bot-cicd.yml`): it SSHes in, `git reset --hard origin/main`,
-> `npm ci`, and `systemctl restart blog-newsbot`. It is a **git-pull** deploy (not
+> `npm ci --omit=dev`, and `systemctl restart blog-newsbot`. It is a **git-pull** deploy (not
 > scp like the backend) so it never touches the env file or the SQLite ledger.
 > See [CI auto-deploy](#7-ci-auto-deploy--rollback) for the required repo secrets
 > and how to roll back.
@@ -46,7 +46,7 @@ sudo mkdir -p /opt/blog-app/ai-bot-tg
 sudo chown www-data:www-data /opt/blog-app/ai-bot-tg
 cd /opt/blog-app/ai-bot-tg
 sudo -u www-data git clone git@github.com:InfinityScripter/ai-bot-tg.git .
-sudo -u www-data npm ci            # or: npm install --omit=dev if you build first
+sudo -u www-data npm ci --omit=dev --no-audit --no-fund   # runtime-only (deps + tsx); bot runs via tsx, no build
 ```
 
 Node 18+ is required (croner). Check: `node -v`.
@@ -142,7 +142,7 @@ For a hotfix straight on the box:
 ```bash
 cd /opt/blog-app/ai-bot-tg
 git pull
-npm ci                           # if deps changed
+npm ci --omit=dev --no-audit --no-fund   # runtime-only; if deps changed
 systemctl restart blog-newsbot
 ```
 
@@ -158,8 +158,8 @@ use `/model` → "↩️ Сбросить на env".
 ## 7. CI auto-deploy + rollback
 
 A push to `main` triggers `.github/workflows/bot-cicd.yml`, which SSHes into the
-VDS and runs: `git reset --hard origin/main` → `npm ci` → `systemctl restart
-blog-newsbot`. It is a **git-pull** deploy, so it never overwrites
+VDS and runs: `git reset --hard origin/main` → `npm ci --omit=dev` → `systemctl
+restart blog-newsbot`. It is a **git-pull** deploy, so it never overwrites
 `.env.production` or `data/candidates.db`.
 
 **Required GitHub repo secrets** (Settings → Secrets and variables → Actions).
@@ -193,7 +193,7 @@ Or, for an immediate fix straight on the box (then reconcile `main` after):
 ```bash
 cd /opt/blog-app/ai-bot-tg
 git reset --hard <last-good-sha>
-npm ci
+npm ci --omit=dev --no-audit --no-fund
 systemctl restart blog-newsbot
 ```
 
