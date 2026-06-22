@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { InputKind } from "./enums.js";
 import { truncate, stripHtml, canonicalizeUrl } from "./utils.js";
-import { IMG_SRC_RE, OG_IMAGE_RE, OG_IMAGE_RE_ALT } from "./feeds.js";
+import { IMG_SRC_RE, OG_IMAGE_RE, OG_IMAGE_RE_ALT } from "./feeds/scraper.js";
 
 import type { FeedItem } from "./types.js";
 

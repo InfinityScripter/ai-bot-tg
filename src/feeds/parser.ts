@@ -1,9 +1,9 @@
 import Parser from "rss-parser";
 
-import { CONFIG } from "./config.js";
-import { truncate, stripHtml, dedupKeyFor } from "./utils.js";
-
-import type { FeedItem } from "./types.js";
+import { CONFIG } from "../config.js";
+import { truncate, stripHtml, dedupKeyFor } from "../utils.js";
+import { IMG_SRC_RE } from "./scraper.js";
+import type { FeedItem } from "../types.js";
 
 /**
  * Default general-news RSS feeds. Override at runtime with the RSS_FEEDS env
@@ -40,7 +40,7 @@ export function resolveFeeds(): string[] {
 // One parser instance, reused across feeds. 10s timeout so a slow feed doesn't
 // stall the whole daily run. Custom fields capture the common image carriers
 // (RSS enclosure, Media RSS content/thumbnail) so we can use a real cover.
-const parser: Parser<Record<string, unknown>, RssItem> = new Parser({
+export const rssParser: Parser<Record<string, unknown>, RssItem> = new Parser({
   timeout: 10_000,
   customFields: {
     item: [
@@ -79,11 +79,6 @@ function extractImageUrl(item: Parser.Item & RssItem): string | null {
   return null;
 }
 
-// Matches src="..." / src='...' inside an <img …> tag. Capture group 1 is the
-// URL. Global so we can sweep every image in the article body. Exported so the
-// manual-ingest article scraper can sweep a page's <img> tags the same way.
-export const IMG_SRC_RE = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
-
 /**
  * Collects every usable image URL for an item: the cover first, then every
  * <img> embedded in the article body (<content:encoded>), de-duplicated and
@@ -110,47 +105,8 @@ function extractImageUrls(item: Parser.Item & RssItem, cover: string | null): st
   return out;
 }
 
-/** Matches a <meta property="og:image"> / name="twitter:image" content URL. */
-export const OG_IMAGE_RE =
-  /<meta[^>]+(?:property|name)=["'](?:og:image|og:image:url|twitter:image)["'][^>]+content=["']([^"']+)["']/i;
-/** Same, but with content before the property/name attribute (order varies). */
-export const OG_IMAGE_RE_ALT =
-  /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|og:image:url|twitter:image)["']/i;
-
-/**
- * Fetches an article page and extracts its og:image (or twitter:image) URL —
- * the fallback used when the feed item itself carries no image. Lightweight: a
- * single GET with an 8s timeout, reading only the first ~64KB of HTML (the
- * <head> meta tags live up top) and a regex parse. Tolerant: any failure
- * (network, non-HTML, no tag) resolves to null so it never aborts a run.
- */
-export async function fetchOgImage(url: string): Promise<string | null> {
-  if (!url || !/^https?:\/\//i.test(url)) return null;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8_000);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "blog-newsbot/1.0" },
-    });
-    if (!res.ok) return null;
-    const type = res.headers.get("content-type") ?? "";
-    if (type && !type.includes("html")) return null;
-    // og:image lives in <head>; cap the read so a huge page can't stall us.
-    const html = (await res.text()).slice(0, 64_000);
-    const match = OG_IMAGE_RE.exec(html) ?? OG_IMAGE_RE_ALT.exec(html);
-    const found = match?.[1]?.trim();
-    if (found && /^https?:\/\//i.test(found)) return found;
-    return null;
-  } catch {
-    return null; // timeout / network / parse — fall through to a themed default
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 /** Maps a single parsed feed into normalized FeedItems, dropping unusable ones. */
-function mapFeed(feed: Parser.Output<RssItem>): FeedItem[] {
+export function mapFeed(feed: Parser.Output<RssItem>): FeedItem[] {
   const feedTitle = feed.title ?? "";
   const items: FeedItem[] = [];
   for (const item of feed.items) {
@@ -181,36 +137,5 @@ function mapFeed(feed: Parser.Output<RssItem>): FeedItem[] {
       imageUrls: extractImageUrls(item, imageUrl),
     });
   }
-  return items;
-}
-
-/**
- * Fetches every configured feed and returns the combined, normalized items.
- * Each feed is isolated in its own try/catch — a malformed or unreachable feed
- * is logged and skipped, never aborting the batch.
- */
-export async function fetchAllFeeds(feeds: string[] = resolveFeeds()): Promise<FeedItem[]> {
-  const results = await Promise.allSettled(feeds.map((url) => parser.parseURL(url)));
-
-  const items: FeedItem[] = [];
-  results.forEach((result, idx) => {
-    if (result.status === "fulfilled") {
-      items.push(...mapFeed(result.value));
-    } else {
-      // eslint-disable-next-line no-console
-      console.warn(`[feeds] failed to parse ${feeds[idx]}: ${String(result.reason)}`);
-    }
-  });
-
-  // og:image fallback: for items the feed gave no image, scrape the article's
-  // og:image/twitter:image. Done after mapping so the cheap RSS path is unaffected;
-  // run in parallel (each fetch is independently capped + failure-tolerant).
-  await Promise.all(
-    items.map(async (item) => {
-      if (item.imageUrl) return;
-      item.imageUrl = await fetchOgImage(item.url);
-    }),
-  );
-
   return items;
 }

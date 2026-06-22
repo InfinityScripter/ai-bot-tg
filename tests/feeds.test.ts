@@ -10,7 +10,7 @@ vi.mock("rss-parser", () => ({
 }));
 
 // Import AFTER the mock is registered.
-const { fetchAllFeeds } = await import("../src/feeds.js");
+const { fetchAllFeeds } = await import("../src/feeds/index.js");
 
 afterEach(() => {
   parseURL.mockReset();

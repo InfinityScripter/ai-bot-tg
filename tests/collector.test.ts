@@ -4,7 +4,7 @@ import type { FeedItem } from "../src/types.js";
 
 // Control the feeds; the rewriter must NOT be called at collection time.
 const fetchAllFeeds = vi.fn<() => Promise<FeedItem[]>>();
-vi.mock("../src/feeds.js", () => ({ fetchAllFeeds: () => fetchAllFeeds() }));
+vi.mock("../src/feeds/index.js", () => ({ fetchAllFeeds: () => fetchAllFeeds() }));
 
 const rewriteToPost = vi.fn();
 vi.mock("../src/rewriter.js", () => ({ rewriteToPost: (...a: unknown[]) => rewriteToPost(...a) }));
@@ -116,7 +116,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
   it("reports afterFilter=0 + filterActive when an include filter hides everything", async () => {
     vi.stubEnv("FILTER_INCLUDE", "zzz-no-match");
     vi.resetModules();
-    const feeds = await import("../src/feeds.js");
+    const feeds = await import("../src/feeds/index.js");
     // re-mock the freshly imported feeds module
     vi.spyOn(feeds, "fetchAllFeeds").mockResolvedValue([feedItem({ title: "Unrelated news" })]);
     const { runCollection: run } = await import("../src/collector.js");
@@ -155,7 +155,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
   // this file) so a prior test's vi.resetModules() can't leave a stale binding.
   it("runs the relevance filter between curate and insert; shadow/off keeps curated", async () => {
     vi.resetModules();
-    const feeds = await import("../src/feeds.js");
+    const feeds = await import("../src/feeds/index.js");
     vi.spyOn(feeds, "fetchAllFeeds").mockResolvedValue([
       feedItem({ dedupKey: "k1", url: "https://ex.com/1" }),
       feedItem({ dedupKey: "k2", url: "https://ex.com/2" }),
@@ -183,7 +183,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
 
   it("inserts only the kept set when relevance drops items (mode 'on')", async () => {
     vi.resetModules();
-    const feeds = await import("../src/feeds.js");
+    const feeds = await import("../src/feeds/index.js");
     vi.spyOn(feeds, "fetchAllFeeds").mockResolvedValue([
       feedItem({ dedupKey: "keep", url: "https://ex.com/keep" }),
       feedItem({ dedupKey: "drop", url: "https://ex.com/drop" }),
@@ -217,7 +217,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
 
   it("forwards the relevance decisions to the audit emitter (mode shadow, non-empty)", async () => {
     vi.resetModules();
-    const feeds = await import("../src/feeds.js");
+    const feeds = await import("../src/feeds/index.js");
     vi.spyOn(feeds, "fetchAllFeeds").mockResolvedValue([feedItem({ url: "https://ex.com/1" })]);
 
     const decisions = [

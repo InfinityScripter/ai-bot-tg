@@ -1,6 +1,6 @@
 import { CONFIG } from "./config.js";
 import { RelevanceMode } from "./enums.js";
-import { fetchAllFeeds } from "./feeds.js";
+import { fetchAllFeeds } from "./feeds/index.js";
 import { filterRelevant } from "./relevance.js";
 import { emitRelevanceDecisions } from "./audit-emit.js";
 import { parseKeywords, curateForQueue } from "./curate.js";
