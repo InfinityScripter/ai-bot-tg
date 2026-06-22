@@ -1,7 +1,7 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
 import { InputKind } from "../src/enums.js";
-import { fetchArticle, classifyInput, feedItemFromText } from "../src/ingest.js";
+import { fetchArticle, classifyInput, feedItemFromText } from "../src/feeds/index.js";
 
 afterEach(() => {
   vi.restoreAllMocks();

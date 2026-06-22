@@ -9,8 +9,8 @@ vi.mock("../src/rewriter.js", () => ({
 // Mock only fetchArticle (the URL scraper) so the manual-ingest URL path is
 // driven without a network call. classifyInput/feedItemFromText stay real.
 const fetchArticle = vi.fn();
-vi.mock("../src/ingest.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/ingest.js")>();
+vi.mock("../src/feeds/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/feeds/index.js")>();
   return { ...actual, fetchArticle: (...a: unknown[]) => fetchArticle(...a) };
 });
 

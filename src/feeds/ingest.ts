@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 
-import { InputKind } from "./enums.js";
-import { truncate, stripHtml, canonicalizeUrl } from "./utils.js";
-import { IMG_SRC_RE, OG_IMAGE_RE, OG_IMAGE_RE_ALT } from "./feeds/scraper.js";
+import { InputKind } from "../enums.js";
+import { truncate, stripHtml, canonicalizeUrl } from "../utils.js";
+import { IMG_SRC_RE, OG_IMAGE_RE, OG_IMAGE_RE_ALT } from "./scraper.js";
 
-import type { FeedItem } from "./types.js";
+import type { FeedItem } from "../types.js";
 
 /** The result of classifying an owner-sent message. */
 export type ClassifiedInput =

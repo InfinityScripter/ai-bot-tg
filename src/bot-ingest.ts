@@ -6,7 +6,7 @@ import { renderRaw } from "./bot-render.js";
 import { logEditError } from "./bot-edit.js";
 import { InputKind, CandidateState } from "./enums.js";
 import { rawKeyboard, previewKeyboard } from "./bot-keyboards.js";
-import { fetchArticle, classifyInput, feedItemFromText } from "./ingest.js";
+import { fetchArticle, classifyInput, feedItemFromText } from "./feeds/index.js";
 
 import type { CandidateStore } from "./store/index.js";
 import type { FeedItem, Candidate } from "./types.js";
