@@ -15,7 +15,7 @@ vi.mock("../src/ingest.js", async (importOriginal) => {
 });
 
 const { createBot } = await import("../src/bot.js");
-const { CandidateStore } = await import("../src/store.js");
+const { CandidateStore } = await import("../src/store/index.js");
 import type { Update } from "grammy/types";
 
 import { CandidateState } from "../src/enums.js";

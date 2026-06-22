@@ -14,7 +14,7 @@ import {
   mockToggleButton,
 } from "./bot-model.js";
 
-import type { CandidateStore } from "./store.js";
+import type { CandidateStore } from "./store/index.js";
 
 /** The /model status text + provider keyboard for the given store state. */
 export function modelMenu(store: CandidateStore): { text: string; keyboard: InlineKeyboard } {

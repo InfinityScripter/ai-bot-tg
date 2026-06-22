@@ -1,6 +1,6 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
-import { CandidateStore } from "../src/store.js";
+import { CandidateStore } from "../src/store/index.js";
 import { RelevanceMode, RelevanceStage } from "../src/enums.js";
 import {
   filterRelevant,

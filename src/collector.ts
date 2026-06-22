@@ -6,7 +6,7 @@ import { emitRelevanceDecisions } from "./audit-emit.js";
 import { parseKeywords, curateForQueue } from "./curate.js";
 
 import type { Candidate } from "./types.js";
-import type { CandidateStore } from "./store.js";
+import type { CandidateStore } from "./store/index.js";
 
 /** Summary of one collection run, returned for logging/visibility. */
 export interface RunSummary {

@@ -9,7 +9,7 @@ vi.mock("../src/models.js", async (importOriginal) => {
 });
 
 const { createBot } = await import("../src/bot.js");
-const { CandidateStore } = await import("../src/store.js");
+const { CandidateStore } = await import("../src/store/index.js");
 const { MENU_CALLBACK } = await import("../src/consts.js");
 const { MenuAction } = await import("../src/enums.js");
 import type { Update } from "grammy/types";

@@ -2,7 +2,7 @@ import { rmSync } from "node:fs";
 import { it, expect, describe, afterEach, beforeEach } from "vitest";
 
 import { CandidateState } from "../src/enums.js";
-import { CandidateStore } from "../src/store.js";
+import { CandidateStore } from "../src/store/index.js";
 
 import type { FeedItem, RewriteResult } from "../src/types.js";
 

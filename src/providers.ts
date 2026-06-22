@@ -1,7 +1,7 @@
 import { CONFIG } from "./config.js";
 import { ProviderKind, ProviderName } from "./enums.js";
 
-import type { CandidateStore } from "./store.js";
+import type { CandidateStore } from "./store/index.js";
 
 // Re-exported so existing importers can keep importing these domain enums from
 // "./providers.js" alongside the registry and helpers that use them.

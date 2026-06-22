@@ -27,7 +27,7 @@ vi.mock("../src/audit-emit.js", () => ({
 }));
 
 const { runCollection } = await import("../src/collector.js");
-const { CandidateStore } = await import("../src/store.js");
+const { CandidateStore } = await import("../src/store/index.js");
 
 function feedItem(overrides: Partial<FeedItem> = {}): FeedItem {
   return {
@@ -120,7 +120,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     // re-mock the freshly imported feeds module
     vi.spyOn(feeds, "fetchAllFeeds").mockResolvedValue([feedItem({ title: "Unrelated news" })]);
     const { runCollection: run } = await import("../src/collector.js");
-    const { CandidateStore: Store } = await import("../src/store.js");
+    const { CandidateStore: Store } = await import("../src/store/index.js");
     const store = new Store(":memory:");
 
     const sent: number[] = [];
@@ -164,7 +164,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     const filter = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions: [] }));
     vi.doMock("../src/relevance.js", () => ({ filterRelevant: filter }));
     const { runCollection: run } = await import("../src/collector.js");
-    const { CandidateStore: Store } = await import("../src/store.js");
+    const { CandidateStore: Store } = await import("../src/store/index.js");
     const store = new Store(":memory:");
 
     const summary = await run(store, async () => {}, 0);
@@ -195,7 +195,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     }));
     vi.doMock("../src/relevance.js", () => ({ filterRelevant: filter }));
     const { runCollection: run } = await import("../src/collector.js");
-    const { CandidateStore: Store } = await import("../src/store.js");
+    const { CandidateStore: Store } = await import("../src/store/index.js");
     const store = new Store(":memory:");
 
     const sent: string[] = [];
@@ -229,7 +229,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     vi.doMock("../src/audit-emit.js", () => ({ emitRelevanceDecisions: emit }));
     // Default RELEVANCE_MODE in the test env is 'shadow' (not 'off'), so emit fires.
     const { runCollection: run } = await import("../src/collector.js");
-    const { CandidateStore: Store } = await import("../src/store.js");
+    const { CandidateStore: Store } = await import("../src/store/index.js");
     const store = new Store(":memory:");
 
     await run(store, async () => {}, 0);

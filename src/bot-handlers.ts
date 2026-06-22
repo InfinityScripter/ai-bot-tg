@@ -14,7 +14,7 @@ import { renderPreview, isModelNotFound, renderRewriting } from "./bot-render.js
 import { PROVIDERS, hasActiveOverride, resolveActiveProvider } from "./providers.js";
 
 import type { Candidate } from "./types.js";
-import type { CandidateStore } from "./store.js";
+import type { CandidateStore } from "./store/index.js";
 
 /**
  * Builds the inline-callback router and candidate-card action handlers, sharing

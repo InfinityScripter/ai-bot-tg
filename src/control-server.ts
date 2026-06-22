@@ -11,7 +11,7 @@ import {
   resolveActiveProvider,
 } from "./providers.js";
 
-import type { CandidateStore } from "./store.js";
+import type { CandidateStore } from "./store/index.js";
 
 export interface ControlServerOptions {
   port: number;

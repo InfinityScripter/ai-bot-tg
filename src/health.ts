@@ -4,7 +4,7 @@ import { CandidateState } from "./enums.js";
 import { escapeMarkdown } from "./utils.js";
 import { PROVIDERS, isMockActive, resolveActiveProvider } from "./providers.js";
 
-import type { CandidateStore } from "./store.js";
+import type { CandidateStore } from "./store/index.js";
 
 /** One probed subsystem: ok/!ok plus a short human detail. */
 export interface HealthCheck {

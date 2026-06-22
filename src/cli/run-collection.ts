@@ -1,5 +1,5 @@
 import { createBot } from "../bot.js";
-import { CandidateStore } from "../store.js";
+import { CandidateStore } from "../store/index.js";
 import { runCollection } from "../collector.js";
 
 /**

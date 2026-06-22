@@ -7,9 +7,9 @@
 
 import type Database from "better-sqlite3";
 
-import { CandidateState } from "./enums.js";
+import { CandidateState } from "../enums.js";
 
-import type { RewriteResult } from "./types.js";
+import type { RewriteResult } from "../types.js";
 
 /**
  * Resets rows stuck in a transient in-flight state back to a retryable one. A

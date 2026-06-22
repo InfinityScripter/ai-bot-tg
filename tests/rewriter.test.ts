@@ -10,7 +10,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 
 const { rewriteToPost } = await import("../src/rewriter.js");
 import { ProviderName } from "../src/enums.js";
-import { CandidateStore } from "../src/store.js";
+import { CandidateStore } from "../src/store/index.js";
 
 import type { FeedItem } from "../src/types.js";
 
@@ -196,7 +196,7 @@ describe("rewriteToPost (store override)", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const storeMod = await import("../src/store.js");
+    const storeMod = await import("../src/store/index.js");
     const store = new storeMod.CandidateStore(":memory:");
     store.setModelOverride(ProviderName.Glm, "glm-4.7-flash");
 

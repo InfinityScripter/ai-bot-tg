@@ -7,7 +7,7 @@ import { truncate, stripHtml } from "./utils.js";
 import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
 import { ProviderKind, ProviderName as ProviderNameEnum } from "./enums.js";
 
-import type { CandidateStore } from "./store.js";
+import type { CandidateStore } from "./store/index.js";
 import type { FeedItem, RewriteResult } from "./types.js";
 import type { ProviderName, ProviderSpec } from "./providers.js";
 

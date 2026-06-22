@@ -2,18 +2,18 @@ import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import Database from "better-sqlite3";
 
-import { CONFIG } from "./config.js";
-import { CandidateState } from "./enums.js";
-import * as settings from "./store-settings.js";
-import * as mutations from "./store-mutations.js";
-import { SCHEMA, mapRow, MIGRATIONS } from "./store-schema.js";
+import { CONFIG } from "../config.js";
+import { CandidateState } from "../enums.js";
+import * as settings from "./settings.js";
+import * as mutations from "./mutations.js";
+import { SCHEMA, mapRow, MIGRATIONS } from "./schema.js";
 
-import type { FeedItem, Candidate, RewriteResult } from "./types.js";
-import type { CandidateRow, MockOverride, ModelOverride } from "./store-schema.js";
+import type { FeedItem, Candidate, RewriteResult } from "../types.js";
+import type { CandidateRow, MockOverride, ModelOverride } from "./schema.js";
 
 // Re-exported so existing importers can keep importing these settings shapes
 // from "./store.js" alongside the CandidateStore that produces them.
-export type { MockOverride, ModelOverride } from "./store-schema.js";
+export type { MockOverride, ModelOverride } from "./schema.js";
 
 /**
  * The candidate store. One SQLite file doubles as the dedup ledger and the

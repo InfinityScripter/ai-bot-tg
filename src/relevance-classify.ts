@@ -5,7 +5,7 @@ import { ProviderKind, ProviderName } from "./enums.js";
 import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
 
 import type { FeedItem } from "./types.js";
-import type { CandidateStore } from "./store.js";
+import type { CandidateStore } from "./store/index.js";
 import type { ProviderSpec } from "./providers.js";
 
 const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });

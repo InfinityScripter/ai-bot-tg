@@ -4,7 +4,7 @@ import { classifyRelevance } from "./relevance-classify.js";
 import { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevance-markers.js";
 
 import type { FeedItem } from "./types.js";
-import type { CandidateStore } from "./store.js";
+import type { CandidateStore } from "./store/index.js";
 
 // Re-exported so "./relevance.js" stays the stable import path for the markers,
 // the classifier, and the RelevanceMode enum after the module split.

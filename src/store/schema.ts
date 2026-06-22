@@ -5,9 +5,9 @@
  * class stays focused on behaviour, not DDL.
  */
 
-import { CandidateState } from "./enums.js";
+import { CandidateState } from "../enums.js";
 
-import type { Candidate } from "./types.js";
+import type { Candidate } from "../types.js";
 
 export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS candidates (

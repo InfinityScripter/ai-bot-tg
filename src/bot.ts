@@ -17,7 +17,7 @@ import {
 } from "./bot-menu.js";
 
 import type { MenuAction } from "./enums.js";
-import type { CandidateStore } from "./store.js";
+import type { CandidateStore } from "./store/index.js";
 
 /** Extra wiring the entrypoint supplies (kept optional so callers/tests can omit it). */
 export interface BotOptions {

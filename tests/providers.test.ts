@@ -1,6 +1,6 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
-import { CandidateStore } from "../src/store.js";
+import { CandidateStore } from "../src/store/index.js";
 import { ProviderKind, ProviderName } from "../src/enums.js";
 
 // CONFIG is parsed from process.env at import time, so cases that depend on
