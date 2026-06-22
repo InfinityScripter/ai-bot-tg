@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { type Server, createServer, type ServerResponse, type IncomingMessage } from "node:http";
 
-import { pingModel, listModels } from "./models.js";
+import { pingModel, listModels } from "./llm/index.js";
 import {
   PROVIDERS,
   MODEL_PRICES,
@@ -9,7 +9,7 @@ import {
   CONTROL_PROVIDERS,
   isControlProvider,
   resolveActiveProvider,
-} from "./providers.js";
+} from "./llm/index.js";
 
 import type { CandidateStore } from "./store/index.js";
 

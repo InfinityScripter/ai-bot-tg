@@ -7,7 +7,7 @@ import {
   emitRelevanceDecisions,
 } from "../src/audit-emit.js";
 
-import type { RelevanceDecision } from "../src/relevance.js";
+import type { RelevanceDecision } from "../src/llm/index.js";
 
 function decision(overrides: Partial<RelevanceDecision> = {}): RelevanceDecision {
   return {

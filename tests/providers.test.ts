@@ -6,7 +6,7 @@ import { ProviderKind, ProviderName } from "../src/enums.js";
 // CONFIG is parsed from process.env at import time, so cases that depend on
 // REWRITE_PROVIDER / REWRITE_MOCK stub the env then re-import the module.
 async function importProviders() {
-  return import("../src/providers.js");
+  return import("../src/llm/index.js");
 }
 
 afterEach(() => {

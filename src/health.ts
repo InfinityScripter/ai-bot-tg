@@ -1,8 +1,8 @@
 import { CONFIG } from "./config.js";
-import { pingModel } from "./models.js";
+import { pingModel } from "./llm/index.js";
 import { CandidateState } from "./enums.js";
 import { escapeMarkdown } from "./utils.js";
-import { PROVIDERS, isMockActive, resolveActiveProvider } from "./providers.js";
+import { PROVIDERS, isMockActive, resolveActiveProvider } from "./llm/index.js";
 
 import type { CandidateStore } from "./store/index.js";
 

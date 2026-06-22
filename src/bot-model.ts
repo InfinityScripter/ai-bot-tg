@@ -1,8 +1,8 @@
 import { CallbackKind, ProviderKind } from "./enums.js";
 import { MODEL_CALLBACK, MODEL_CALLBACK_SEP } from "./consts.js";
-import { PROVIDERS, providerNames, isProviderName, modelPriceLabel } from "./providers.js";
+import { PROVIDERS, providerNames, isProviderName, modelPriceLabel } from "./llm/index.js";
 
-import type { ProviderName } from "./providers.js";
+import type { ProviderName } from "./llm/index.js";
 
 /**
  * Pure helpers for the /model command — callback-data encode/decode, button

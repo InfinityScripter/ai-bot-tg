@@ -8,7 +8,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
   },
 }));
 
-const { rewriteToPost } = await import("../src/rewriter.js");
+const { rewriteToPost } = await import("../src/llm/index.js");
 import { ProviderName } from "../src/enums.js";
 import { CandidateStore } from "../src/store/index.js";
 
@@ -147,7 +147,7 @@ describe.each(OPENAI_COMPAT)(
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      const mod = await import("../src/rewriter.js");
+      const mod = await import("../src/llm/index.js");
       const result = await mod.rewriteToPost(ITEM, STORE);
 
       // tags are normalized on the OpenAI-compat path too (finalizeRewrite runs
@@ -172,7 +172,7 @@ describe.each(OPENAI_COMPAT)(
         vi.fn().mockResolvedValue({ ok: false, status: 429, text: async () => "rate limited" }),
       );
 
-      const mod = await import("../src/rewriter.js");
+      const mod = await import("../src/llm/index.js");
       await expect(mod.rewriteToPost(ITEM, STORE)).rejects.toThrow(
         new RegExp(`${label} ответил 429`),
       );
@@ -200,7 +200,7 @@ describe("rewriteToPost (store override)", () => {
     const store = new storeMod.CandidateStore(":memory:");
     store.setModelOverride(ProviderName.Glm, "glm-4.7-flash");
 
-    const mod = await import("../src/rewriter.js");
+    const mod = await import("../src/llm/index.js");
     const result = await mod.rewriteToPost(ITEM, store);
 
     // normalized tags here too (override → glm → openai-compat → finalizeRewrite).
@@ -220,7 +220,7 @@ describe("rewriteToPost (REWRITE_MOCK)", () => {
   it("mock body does not start with a markdown heading and clamps the title", async () => {
     vi.stubEnv("REWRITE_MOCK", "1");
     vi.resetModules();
-    const mod = await import("../src/rewriter.js");
+    const mod = await import("../src/llm/index.js");
     const longTitleItem = { ...ITEM, title: "Б".repeat(250), snippet: "Тело новости." };
 
     const result = await mod.rewriteToPost(longTitleItem, STORE);

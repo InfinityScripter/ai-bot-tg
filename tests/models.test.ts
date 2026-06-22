@@ -1,8 +1,8 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
 import { ProviderName } from "../src/enums.js";
-import { PROVIDERS } from "../src/providers.js";
-import { pingModel, listModels } from "../src/models.js";
+import { PROVIDERS } from "../src/llm/index.js";
+import { pingModel, listModels } from "../src/llm/index.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -14,7 +14,7 @@ describe("listModels", () => {
   it("returns model ids from the /models API when it succeeds (openai-compat)", async () => {
     vi.stubEnv("GLM_API_KEY", "k");
     vi.resetModules();
-    const { listModels: list } = await import("../src/models.js");
+    const { listModels: list } = await import("../src/llm/index.js");
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -37,7 +37,7 @@ describe("listModels", () => {
   it("falls back to the static list on a non-OK response", async () => {
     vi.stubEnv("GLM_API_KEY", "k");
     vi.resetModules();
-    const { listModels: list } = await import("../src/models.js");
+    const { listModels: list } = await import("../src/llm/index.js");
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
     const models = await list(ProviderName.Glm);
@@ -47,7 +47,7 @@ describe("listModels", () => {
   it("falls back when the API returns an empty list", async () => {
     vi.stubEnv("DEEPSEEK_API_KEY", "k");
     vi.resetModules();
-    const { listModels: list } = await import("../src/models.js");
+    const { listModels: list } = await import("../src/llm/index.js");
 
     vi.stubGlobal(
       "fetch",
@@ -60,7 +60,7 @@ describe("listModels", () => {
   it("falls back on a network error", async () => {
     vi.stubEnv("GLM_API_KEY", "k");
     vi.resetModules();
-    const { listModels: list } = await import("../src/models.js");
+    const { listModels: list } = await import("../src/llm/index.js");
 
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
     expect(await list(ProviderName.Glm)).toEqual(PROVIDERS.glm.fallbackModels);
@@ -90,7 +90,7 @@ describe("listModels", () => {
   it("caps a huge live list so the keyboard stays renderable", async () => {
     vi.stubEnv("GLM_API_KEY", "k");
     vi.resetModules();
-    const { listModels: list } = await import("../src/models.js");
+    const { listModels: list } = await import("../src/llm/index.js");
 
     const many = Array.from({ length: 200 }, (_, i) => ({ id: `m-${i}` }));
     vi.stubGlobal(
@@ -106,7 +106,7 @@ describe("pingModel", () => {
   it("returns ok on a 2xx chat response (openai-compat)", async () => {
     vi.stubEnv("GLM_API_KEY", "k");
     vi.resetModules();
-    const { pingModel: ping } = await import("../src/models.js");
+    const { pingModel: ping } = await import("../src/llm/index.js");
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -124,7 +124,7 @@ describe("pingModel", () => {
   it("returns a labeled error on a non-OK chat response", async () => {
     vi.stubEnv("GLM_API_KEY", "k");
     vi.resetModules();
-    const { pingModel: ping } = await import("../src/models.js");
+    const { pingModel: ping } = await import("../src/llm/index.js");
 
     vi.stubGlobal(
       "fetch",
@@ -164,7 +164,7 @@ describe("pingModel", () => {
   it("rejects a 2xx whose body lacks the chat shape (misrouted gateway)", async () => {
     vi.stubEnv("GLM_API_KEY", "k");
     vi.resetModules();
-    const { pingModel: ping } = await import("../src/models.js");
+    const { pingModel: ping } = await import("../src/llm/index.js");
 
     vi.stubGlobal(
       "fetch",
@@ -178,7 +178,7 @@ describe("pingModel", () => {
   it("reports a timeout distinctly", async () => {
     vi.stubEnv("GLM_API_KEY", "k");
     vi.resetModules();
-    const { pingModel: ping } = await import("../src/models.js");
+    const { pingModel: ping } = await import("../src/llm/index.js");
 
     const timeoutErr = Object.assign(new Error("aborted"), { name: "TimeoutError" });
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(timeoutErr));

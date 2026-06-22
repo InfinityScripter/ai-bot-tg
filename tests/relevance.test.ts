@@ -7,7 +7,7 @@ import {
   ON_TOPIC_MARKERS,
   OFF_TOPIC_MARKERS,
   classifyRelevance,
-} from "../src/relevance.js";
+} from "../src/llm/index.js";
 
 import type { FeedItem } from "../src/types.js";
 

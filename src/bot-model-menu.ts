@@ -3,9 +3,9 @@ import type { Context, InlineKeyboard } from "grammy";
 import { CallbackKind } from "./enums.js";
 import { MODEL_CALLBACK } from "./consts.js";
 import { keyboardFrom } from "./bot-keyboards.js";
-import { pingModel, listModels } from "./models.js";
+import { pingModel, listModels } from "./llm/index.js";
 import { ackSilently, logEditError } from "./bot-edit.js";
-import { PROVIDERS, isMockActive, hasActiveOverride, resolveActiveProvider } from "./providers.js";
+import { PROVIDERS, isMockActive, hasActiveOverride, resolveActiveProvider } from "./llm/index.js";
 import {
   statusText,
   modelButtons,

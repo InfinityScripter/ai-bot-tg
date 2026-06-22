@@ -1,11 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-import { CONFIG } from "./config.js";
-import { ProviderKind, ProviderName } from "./enums.js";
+import { CONFIG } from "../config.js";
+import { ProviderKind, ProviderName } from "../enums.js";
 import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
+import { RELEVANCE_SYSTEM_PROMPT as SYSTEM_PROMPT, buildRelevanceUserContent as buildUserContent } from "./prompts.js";
 
-import type { FeedItem } from "./types.js";
-import type { CandidateStore } from "./store/index.js";
+import type { FeedItem } from "../types.js";
+import type { CandidateStore } from "../store/index.js";
 import type { ProviderSpec } from "./providers.js";
 
 const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
@@ -22,29 +23,6 @@ function extractJson(text: string): string | null {
 function clampScore(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Math.max(0, Math.min(4, Math.round(value)));
-}
-
-// Constant system prompt → eligible for prompt caching across the daily batch.
-// Carries the explicit carve-out so AI policy / AI business / AI labor stories
-// (which surface as "политика"/"бизнес") are scored ON-topic, not dropped.
-const SYSTEM_PROMPT = `Ты — фильтр релевантности для блога об ИИ и технологиях.
-Тематика блога: искусственный интеллект, машинное обучение, нейросети, языковые
-модели, чипы и железо, разработка ПО, opensource, кибербезопасность, гаджеты.
-ВАЖНО: политика вокруг ИИ, бизнес и инвестиции в ИИ, влияние ИИ на рынок труда —
-это ON-topic (релевантно), даже если выглядит как «политика» или «бизнес».
-
-Оцени, насколько новость подходит блогу, по шкале 0–4:
-  0 — совсем не по теме (спорт, шоу-бизнес, погода, светская хроника);
-  4 — прямо про ИИ/технологии.
-
-Верни СТРОГО валидный JSON-объект и ничего кроме него:
-{"score":<0-4>,"topic":"<2-4 слова>","reason":"<кратко>"}`;
-
-/** Builds the per-item user message: title + first ~300 chars of snippet. */
-function buildUserContent(item: FeedItem): string {
-  const snippet = item.snippet.slice(0, 300);
-  return `Заголовок: ${item.title}
-Описание: ${snippet || "(нет описания)"}`;
 }
 
 interface ScoreResponse {

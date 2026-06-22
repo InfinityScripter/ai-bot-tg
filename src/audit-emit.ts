@@ -1,7 +1,7 @@
 import { CONFIG } from "./config.js";
 import { RelevanceMode, RelevanceStage, RelevanceAuditAction } from "./enums.js";
 
-import type { RelevanceDecision } from "./relevance.js";
+import type { RelevanceDecision } from "./llm/index.js";
 
 // Re-exported so "./audit-emit.js" stays the stable import path for the action
 // enum after it moved into enums.ts (preserves the original public API).

@@ -3,8 +3,8 @@ import { it, vi, expect, describe, afterEach, beforeEach } from "vitest";
 // Mock the model-ping (the only network the /health LLM probe does) so the e2e
 // run is deterministic and offline. classify/rewrite are not exercised here.
 const pingModel = vi.fn(async (_provider: unknown, _model: unknown) => ({ ok: true as const }));
-vi.mock("../src/models.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/models.js")>();
+vi.mock("../src/llm/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/llm/index.js")>();
   return { ...actual, pingModel };
 });
 

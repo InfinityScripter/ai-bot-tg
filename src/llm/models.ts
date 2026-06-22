@@ -1,4 +1,4 @@
-import { ProviderKind } from "./enums.js";
+import { ProviderKind } from "../enums.js";
 import { PROVIDERS } from "./providers.js";
 
 import type { ProviderName, ProviderSpec } from "./providers.js";

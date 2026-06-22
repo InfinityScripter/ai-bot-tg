@@ -4,14 +4,14 @@ import { CONFIG } from "./config.js";
 import { escapeMarkdown } from "./utils.js";
 import { CARD_CALLBACK } from "./consts.js";
 import { CandidateState } from "./enums.js";
-import { rewriteToPost } from "./rewriter.js";
+import { rewriteToPost } from "./llm/index.js";
 import { parseCallback } from "./bot-model.js";
 import { ackSilently, logEditError } from "./bot-edit.js";
 import { handleModelCallback } from "./bot-model-menu.js";
 import { PublishError, publishToBlog } from "./publisher.js";
 import { rawKeyboard, previewKeyboard } from "./bot-keyboards.js";
 import { renderPreview, isModelNotFound, renderRewriting } from "./bot-render.js";
-import { PROVIDERS, hasActiveOverride, resolveActiveProvider } from "./providers.js";
+import { PROVIDERS, hasActiveOverride, resolveActiveProvider } from "./llm/index.js";
 
 import type { Candidate } from "./types.js";
 import type { CandidateStore } from "./store/index.js";

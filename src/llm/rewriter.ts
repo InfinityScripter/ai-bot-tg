@@ -1,14 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-import { CONFIG } from "./config.js";
-import { normalizeTags } from "./tags.js";
-import { RewriteSchema } from "./types.js";
-import { truncate, stripHtml } from "./utils.js";
+import { CONFIG } from "../config.js";
+import { normalizeTags } from "../tags.js";
+import { RewriteSchema } from "../types.js";
+import { truncate, stripHtml } from "../utils.js";
 import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
-import { ProviderKind, ProviderName as ProviderNameEnum } from "./enums.js";
+import { ProviderKind, ProviderName as ProviderNameEnum } from "../enums.js";
+import { REWRITE_SYSTEM_PROMPT as SYSTEM_PROMPT, buildRewriteUserContent as buildUserContent } from "./prompts.js";
 
-import type { CandidateStore } from "./store/index.js";
-import type { FeedItem, RewriteResult } from "./types.js";
+import type { CandidateStore } from "../store/index.js";
+import type { FeedItem, RewriteResult } from "../types.js";
 import type { ProviderName, ProviderSpec } from "./providers.js";
 
 const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
@@ -47,60 +48,6 @@ function mockRewrite(item: FeedItem): RewriteResult {
     metaTitle: truncate(item.title, 70),
     metaDescription: truncate(lede, 155),
   };
-}
-
-// Constant system prompt → eligible for prompt caching across the daily batch.
-// We instruct strict JSON and validate with zod on our side (defensive parse),
-// which is portable across providers and robust to stray prose.
-const SYSTEM_PROMPT = `Ты — редактор технического новостного блога. По заголовку,
-краткому описанию и (если есть) списку картинок напиши ОРИГИНАЛЬНЫЙ пост на
-русском языке: своими словами, без копирования формулировок источника.
-Нейтральный журналистский тон.
-
-Тело поста должно быть НЕ плоской стеной текста, а живым и структурированным:
-- разбивай на короткие абзацы (между абзацами — пустая строка);
-- где уместно, добавляй подзаголовки уровня "##" (на ОТДЕЛЬНОЙ строке,
-  с пустой строкой до и после; "##" + пробел + текст, например "## Итоги");
-- используй маркированные списки: каждый пункт с НОВОЙ строки, "- " в начале;
-- выделяй ключевые термины **жирным**;
-- ссылки оформляй ТОЛЬКО валидным Markdown: "[текст](URL)" — текст и URL
-  слитно, без пробела между "]" и "(". НЕ пиши URL отдельно в скобках после
-  текста (НЕЛЬЗЯ "Хабр (https://...)"), НЕ оставляй "[текст]" без "(URL)";
-- при наличии — вставляй картинки строкой "![](URL)" из переданного списка,
-  по одной между смысловыми блоками. Используй ТОЛЬКО URL из списка, дословно,
-  НЕ выдумывай свои. НЕ вставляй первую картинку (она уже показана как обложка).
-  Если список картинок пуст — не вставляй ни одной.
-
-ВАЖНО про Markdown-синтаксис: "##", "-", "**" работают только как разметка
-в начале строки / парами. Пиши ЧИСТЫЙ Markdown — НЕ экранируй эти символы
-обратным слэшем и не вставляй HTML-теги.
-
-Верни СТРОГО валидный JSON-объект (и ничего кроме него) со следующими полями:
-{
-  "title": "цепкий, не кликбейтный заголовок, КОРОТКИЙ — до 80 символов, без точки в конце",
-  "description": "один абзац-резюме (2–3 предложения)",
-  "content": "тело поста в Markdown. НЕ начинай с заголовка/H1 — заголовок уже показан над постом, не дублируй его. ПОСЛЕДНЯЯ строка ровно в формате \\"Источник: [название](URL)\\" — название источника как текст ссылки, оригинальный URL в круглых скобках сразу за \\"]\\", без пробела (например \\"Источник: [Хабр](https://habr.com/...)\\")",
-  "tags": ["1–3 тематических тега СТРОГО из этого списка (нижний регистр, ничего другого): технологии, наука, политика, культура, ai, llm, агенты, нейросети, безопасность, разработка, гаджеты, бизнес"],
-  "metaTitle": "SEO-заголовок (≈ title)",
-  "metaDescription": "SEO-описание (до ~155 символов)"
-}
-
-Не выдумывай факты, которых нет во входных данных. Если данных мало — пиши
-короче, но без домыслов. Никакого текста до или после JSON.`;
-
-/** Builds the per-item user message shared by both LLM providers. */
-function buildUserContent(item: FeedItem): string {
-  // Skip the cover (index 0) — it's rendered by the page; offer the rest as
-  // body candidates. Cap so a gallery-heavy article doesn't bloat the prompt.
-  const bodyImages = item.imageUrls.slice(1, 6);
-  const imagesBlock = bodyImages.length
-    ? `Картинки для тела (вставляй "![](URL)" по смыслу, только эти URL):\n${bodyImages.join("\n")}`
-    : "Картинки: нет";
-  return `Источник: ${item.feedTitle || "неизвестен"}
-Ссылка на оригинал: ${item.url}
-Заголовок: ${item.title}
-Краткое описание: ${item.snippet || "(нет описания)"}
-${imagesBlock}`;
 }
 
 /** Extracts the text from the first text content block of a message response. */
