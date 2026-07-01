@@ -4,9 +4,13 @@ import { CONFIG } from "../config.js";
 import { RewriteSchema } from "../types.js";
 import { normalizeTags } from "../blog/index.js";
 import { truncate, stripHtml } from "../utils.js";
+import { ensureSourceLine } from "./ensure-source-line.js";
 import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
 import { ProviderKind, ProviderName as ProviderNameEnum } from "../enums.js";
-import { REWRITE_SYSTEM_PROMPT as SYSTEM_PROMPT, buildRewriteUserContent as buildUserContent } from "./prompts.js";
+import {
+  REWRITE_SYSTEM_PROMPT as SYSTEM_PROMPT,
+  buildRewriteUserContent as buildUserContent,
+} from "./prompts.js";
 
 import type { CandidateStore } from "../store/index.js";
 import type { FeedItem, RewriteResult } from "../types.js";
@@ -108,10 +112,17 @@ function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
   // the published tags/metaKeywords are always the clean curated set. Applied
   // here so BOTH providers (Claude and the OpenAI-compatible ones) get it.
   const allowed = item.imageUrls.slice(1);
+  // Run source-line self-heal AFTER sanitizeImages so both provider paths land a
+  // clean canonical `Источник:` line once (the mock path builds its own).
+  const content = ensureSourceLine(
+    sanitizeImages(parsed.data.content, allowed),
+    item.feedTitle,
+    item.url,
+  );
   return {
     ...parsed.data,
     title: truncate(parsed.data.title, 100),
-    content: sanitizeImages(parsed.data.content, allowed),
+    content,
     tags: normalizeTags(parsed.data.tags),
   };
 }
@@ -120,7 +131,8 @@ function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
 async function rewriteWithAnthropic(item: FeedItem, model: string): Promise<RewriteResult> {
   const response = await client.messages.create({
     model,
-    max_tokens: 2048,
+    max_tokens: CONFIG.REWRITE_MAX_TOKENS,
+    temperature: CONFIG.REWRITE_TEMPERATURE,
     system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: buildUserContent(item) }],
   });
@@ -163,6 +175,8 @@ async function rewriteWithOpenAICompat(
           { role: "user", content: buildUserContent(item) },
         ],
         response_format: { type: "json_object" },
+        max_tokens: CONFIG.REWRITE_MAX_TOKENS,
+        temperature: CONFIG.REWRITE_TEMPERATURE,
       }),
     });
   } catch (err) {

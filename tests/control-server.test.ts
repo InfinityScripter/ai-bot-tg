@@ -11,9 +11,7 @@ const TOKEN = "test-control-token-0123456789";
 // network in tests (the real providers are OpenAI-compat and would fetch).
 const okPing = async () => ({ ok: true as const });
 
-async function makeServer(
-  overrides: Partial<Parameters<typeof startControlServer>[0]> = {},
-) {
+async function makeServer(overrides: Partial<Parameters<typeof startControlServer>[0]> = {}) {
   const store = new CandidateStore(":memory:");
   const handle = startControlServer({
     port: 0,

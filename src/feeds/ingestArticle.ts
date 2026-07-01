@@ -131,7 +131,7 @@ function extractImages(html: string, cover: string | null): string[] {
  * rest. The LLM rewrite tolerates the residual noise; the cap keeps the prompt
  * bounded.
  */
-function extractBody(html: string): string {
+export function extractBody(html: string): string {
   const cleaned = html
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
@@ -145,7 +145,7 @@ function extractBody(html: string): string {
  * a huge page never buffers unbounded. Falls back to a plain (already-bounded by
  * the caller's slice) `res.text()` when the body isn't a readable stream.
  */
-async function readCapped(res: Response, maxBytes: number): Promise<string> {
+export async function readCapped(res: Response, maxBytes: number): Promise<string> {
   const reader = res.body?.getReader?.();
   if (!reader) return (await res.text()).slice(0, maxBytes);
   const decoder = new TextDecoder("utf-8");

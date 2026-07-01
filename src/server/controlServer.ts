@@ -2,7 +2,9 @@ import { timingSafeEqual } from "node:crypto";
 import { type Server, createServer, type ServerResponse, type IncomingMessage } from "node:http";
 
 import { probeAllModels } from "../health/index.js";
-import { pingModel, PROVIDERS ,
+import {
+  pingModel,
+  PROVIDERS,
   listModels,
   MODEL_PRICES,
   isMockActive,

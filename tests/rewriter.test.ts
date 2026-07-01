@@ -39,7 +39,13 @@ const VALID = {
 };
 
 // After normalizeTags: 'новости' is force-added first, whitelisted tags kept.
-const VALID_NORMALIZED = { ...VALID, tags: ["новости", "технологии"] };
+// finalizeRewrite also self-heals the source line onto the LLM-path content, so
+// the expected body is "Body" + the canonical `Источник:` line for ITEM.
+const VALID_NORMALIZED = {
+  ...VALID,
+  tags: ["новости", "технологии"],
+  content: `Body\n\nИсточник: [${ITEM.feedTitle}](${ITEM.url})`,
+};
 
 /** Wraps a string as a Claude message response with one text block. */
 function textResponse(text: string, stopReason = "end_turn") {
@@ -156,6 +162,31 @@ describe.each(OPENAI_COMPAT)(
       const call = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
       expect(call[0]).toContain(host);
       expect(call[1].headers.Authorization).toBe("Bearer test-key");
+
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+
+    it("passes the configured temperature and max_tokens to the provider call", async () => {
+      vi.stubEnv("REWRITE_PROVIDER", provider);
+      vi.stubEnv(keyEnv, "test-key");
+      vi.resetModules();
+
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify(VALID) } }] }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const cfgMod = await import("../src/config.js");
+      const mod = await import("../src/llm/index.js");
+      await mod.rewriteToPost(ITEM, STORE);
+
+      const call = fetchMock.mock.calls[0] as [string, { body: string }];
+      const sent = JSON.parse(call[1].body) as { temperature: number; max_tokens: number };
+      expect(sent.temperature).toBe(cfgMod.CONFIG.REWRITE_TEMPERATURE);
+      expect(sent.max_tokens).toBe(cfgMod.CONFIG.REWRITE_MAX_TOKENS);
 
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();

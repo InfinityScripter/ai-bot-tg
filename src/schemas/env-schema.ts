@@ -50,6 +50,14 @@ export const EnvSchema = z
     REWRITE_PROVIDER: z.nativeEnum(ProviderName).default(ProviderName.Anthropic),
     /** Claude model for the rewrite. Haiku is plenty for this task. */
     REWRITE_MODEL: z.string().default("claude-haiku-4-5"),
+    /**
+     * Sampling temperature for the rewrite. 0–1 so ONE value is valid for both
+     * Anthropic (0–1) and the OpenAI-compatible providers (0–2). Default 0.6 —
+     * enough variation for an "original" rewrite without drifting off-source.
+     */
+    REWRITE_TEMPERATURE: z.coerce.number().min(0).max(1).default(0.6),
+    /** Max output tokens for the rewrite. 4096 fits a full structured post. */
+    REWRITE_MAX_TOKENS: z.coerce.number().int().positive().default(4096),
     /** Google AI Studio API key — required when REWRITE_PROVIDER=gemini. */
     GEMINI_API_KEY: z.string().optional(),
     /** Gemini model. 2.0-flash is retired; 2.5-flash is the current free-tier floor. */

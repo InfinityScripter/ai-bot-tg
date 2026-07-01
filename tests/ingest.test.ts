@@ -1,7 +1,15 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
 import { InputKind } from "../src/enums.js";
-import { fetchArticle, classifyInput, feedItemFromText } from "../src/feeds/index.js";
+import {
+  fetchArticle,
+  classifyInput,
+  enrichItemBody,
+  fetchArticleBody,
+  feedItemFromText,
+} from "../src/feeds/index.js";
+
+import type { FeedItem } from "../src/types.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -179,5 +187,114 @@ describe("fetchArticle", () => {
       }),
     );
     await expect(fetchArticle("https://ex.com/down")).rejects.toThrow(/Не удалось загрузить/i);
+  });
+});
+
+/**
+ * Mirrors the handleRewrite enrichment rule: when a stored snippet is short,
+ * the scraped body replaces it if longer; a scrape failure keeps the snippet.
+ */
+async function enrichSnippet(url: string, snippet: string): Promise<string> {
+  try {
+    const body = await fetchArticleBody(url);
+    return body.length > snippet.length ? body : snippet;
+  } catch {
+    return snippet;
+  }
+}
+
+describe("fetchArticleBody (rewrite enrichment)", () => {
+  it("returns only the body text, stripped of chrome", async () => {
+    const html = `<html><head><title>t</title></head><body>
+      <nav>menu junk</nav>
+      <article><p>Полное тело статьи с деталями.</p></article>
+      <script>var x = 1;</script></body></html>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => htmlResponse(html)),
+    );
+    const body = await fetchArticleBody("https://ex.com/a");
+    expect(body).toContain("Полное тело статьи с деталями.");
+    expect(body).not.toContain("menu junk"); // nav dropped
+    expect(body).not.toContain("var x = 1"); // script dropped
+  });
+
+  it("a longer scraped body replaces a short stored snippet", async () => {
+    const longBody = "Развёрнутое тело статьи. ".repeat(30);
+    const html = `<html><head><title>t</title></head><body><article><p>${longBody}</p></article></body></html>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => htmlResponse(html)),
+    );
+    const shortSnippet = "Короткий заголовок";
+    const result = await enrichSnippet("https://ex.com/long", shortSnippet);
+    expect(result.length).toBeGreaterThan(shortSnippet.length);
+    expect(result).toContain("Развёрнутое тело статьи.");
+  });
+
+  it("falls back to the stored snippet when the fetch throws", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+    );
+    const stored = "Сохранённый сниппет из фида";
+    const result = await enrichSnippet("https://ex.com/down", stored);
+    expect(result).toBe(stored);
+  });
+});
+
+/** A base feed item with the given url/snippet and empty media. */
+function feedItem(url: string, snippet: string): FeedItem {
+  return {
+    dedupKey: "k",
+    url,
+    title: "T",
+    snippet,
+    feedTitle: "Feed",
+    imageUrl: null,
+    imageUrls: [],
+    publishedAt: null,
+  };
+}
+
+describe("enrichItemBody", () => {
+  it("does NOT re-fetch when the stored snippet is already long (>= 500)", async () => {
+    const fetchMock = vi.fn(async () => htmlResponse("<html></html>"));
+    vi.stubGlobal("fetch", fetchMock);
+    const longSnippet = "я".repeat(500); // at the skip threshold
+    const item = feedItem("https://ex.com/long", longSnippet);
+
+    const out = await enrichItemBody(item);
+
+    expect(out).toBe(item); // unchanged, returned as-is
+    expect(fetchMock).not.toHaveBeenCalled(); // scrape skipped
+  });
+
+  it("does NOT fetch for a non-http url even with a short snippet", async () => {
+    const fetchMock = vi.fn(async () => htmlResponse("<html></html>"));
+    vi.stubGlobal("fetch", fetchMock);
+    const item = feedItem("", "короткий сниппет");
+
+    const out = await enrichItemBody(item);
+
+    expect(out).toBe(item);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("scrapes and replaces a short snippet with a longer body", async () => {
+    const longBody = "Развёрнутое тело статьи. ".repeat(30);
+    const html = `<html><head><title>t</title></head><body><article><p>${longBody}</p></article></body></html>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => htmlResponse(html)),
+    );
+    const item = feedItem("https://ex.com/short", "Короткий заголовок");
+
+    const out = await enrichItemBody(item);
+
+    expect(out.snippet.length).toBeGreaterThan(item.snippet.length);
+    expect(out.snippet).toContain("Развёрнутое тело статьи.");
   });
 });

@@ -15,6 +15,9 @@ import type { FeedItem } from "../types.js";
 // real article BODY text (not headline-only), measured live with rss-parser;
 // bodyLen noted below is from the first item on a sample fetch. Habr exposes
 // its body in <content:encoded>, which mapFeed reads.
+//
+// NOTE: the RSS_FEEDS env var (see .env.example) REPLACES this whole list —
+// it's all-or-nothing, not additive; set it to override every default at once.
 export const DEFAULT_FEEDS: string[] = [
   // dev / IT
   "https://habr.com/ru/rss/best/daily/?fl=ru", // лучшее на Habr за день, body ~1860
@@ -25,7 +28,13 @@ export const DEFAULT_FEEDS: string[] = [
   // AI / ML
   "https://habr.com/ru/rss/hubs/machine_learning/articles/?fl=ru", // ML, body ~1650
   "https://habr.com/ru/rss/hubs/artificial_intelligence/articles/?fl=ru", // ИИ, body ~210
-  // 'https://dev.to/feed',     // en tech, content ~3000 — раскомментируй для англо-IT
+  // EN AI-frontier — all live-verified parseable via rss-parser (see task run).
+  "http://export.arxiv.org/rss/cs.AI", // arXiv cs.AI abstracts, body ~1660
+  "http://export.arxiv.org/rss/cs.CL", // arXiv cs.CL (NLP/LLM) abstracts, body ~1610
+  "https://deepmind.google/blog/rss.xml", // Google DeepMind blog, headline-led
+  "https://simonwillison.net/atom/everything/", // Simon Willison — LLM/AI eng, Atom
+  "https://hnrss.org/newest?q=AI+OR+LLM", // Hacker News newest matching AI/LLM, body ~400
+  // OpenAI news RSS dropped: served gzip that rss-parser can't decode (parse error).
 ];
 
 /** Resolves the active feed list: RSS_FEEDS override, else the defaults. */

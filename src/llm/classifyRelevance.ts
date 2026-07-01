@@ -3,7 +3,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { CONFIG } from "../config.js";
 import { ProviderKind, ProviderName } from "../enums.js";
 import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
-import { RELEVANCE_SYSTEM_PROMPT as SYSTEM_PROMPT, buildRelevanceUserContent as buildUserContent } from "./prompts.js";
+import {
+  RELEVANCE_SYSTEM_PROMPT as SYSTEM_PROMPT,
+  buildRelevanceUserContent as buildUserContent,
+} from "./prompts.js";
 
 import type { FeedItem } from "../types.js";
 import type { ProviderSpec } from "./providers.js";
