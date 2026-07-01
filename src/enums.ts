@@ -83,6 +83,17 @@ export enum InputKind {
   Empty = "empty",
 }
 
+/**
+ * What a collected candidate is. Persisted verbatim in the `kind` column and
+ * used to discriminate the pipeline: a 'news' candidate is rewritten into a blog
+ * post and published to /api/post/new; a 'release' candidate is extracted into a
+ * structured ModelRelease and published to /api/changelog/new. Default 'news'.
+ */
+export enum CandidateKind {
+  News = "news",
+  Release = "release",
+}
+
 /** The audit action mirrored into the backend log for a relevance decision. */
 export enum RelevanceAuditAction {
   Dropped = "bot.relevance_dropped",

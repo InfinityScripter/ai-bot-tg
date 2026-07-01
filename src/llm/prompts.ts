@@ -66,3 +66,42 @@ export function buildRelevanceUserContent(item: FeedItem): string {
   return `Заголовок: ${item.title}
 Описание: ${snippet || "(нет описания)"}`;
 }
+
+/**
+ * System prompt for the AI-model RELEASE extractor. This is a DATA-EXTRACTION
+ * task (not the RU rewrite): pull structured facts about a newly released model
+ * out of the source. The hard rule is anti-hallucination — return null for any
+ * price/context/date the source does not state, NEVER guess a number, because the
+ * owner reviews the card and a fabricated price would slip into the changelog.
+ */
+export const EXTRACT_RELEASE_SYSTEM_PROMPT = `You extract structured facts about a newly released AI model
+from a news source. Read the title, snippet and source link, then return the
+release as a strict JSON object — and NOTHING else.
+
+CRITICAL anti-hallucination rule: return null for any numeric or date field you
+cannot VERIFY directly from the provided source. NEVER guess, estimate, or infer
+a price, context window, or release date. A wrong number is far worse than null —
+null means "unknown", which is correct when the source is silent.
+
+Return STRICTLY a valid JSON object (and nothing else) with these fields:
+{
+  "vendor": "the company/lab that released it (e.g. OpenAI, Anthropic, Google DeepMind)",
+  "model": "the model family/name (e.g. GPT, Claude, Gemini)",
+  "version": "the specific version/variant (e.g. 5, 4.5 Sonnet, 2.5 Flash)",
+  "releasedAt": "the release date as an ISO string (YYYY-MM-DD) IF the source states it, else use today's date only if the source says it launched today, otherwise a best ISO the source supports",
+  "sourceUrl": "the original article URL, copied verbatim",
+  "contextTokens": <context window in tokens as a number, or null if not stated>,
+  "priceIn": <input price in USD per 1M tokens as a number, or null if not stated>,
+  "priceOut": <output price in USD per 1M tokens as a number, or null if not stated>,
+  "changes": ["short bullet strings of the notable changes/features stated in the source; [] if none"],
+  "sourceName": "the human-readable source name (e.g. TechCrunch), or null"
+}
+
+Do not invent facts absent from the input. No text before or after the JSON.`;
+
+export function buildReleaseUserContent(item: FeedItem): string {
+  return `Source: ${item.feedTitle || "unknown"}
+Original link: ${item.url}
+Title: ${item.title}
+Snippet: ${item.snippet || "(no description)"}`;
+}

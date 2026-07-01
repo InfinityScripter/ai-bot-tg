@@ -5,7 +5,7 @@
  * class stays focused on behaviour, not DDL.
  */
 
-import { CandidateState } from "../enums.js";
+import { CandidateKind, CandidateState } from "../enums.js";
 
 import type { Candidate } from "../types.js";
 
@@ -19,6 +19,7 @@ export const SCHEMA = `
     image_url     TEXT,
     snippet       TEXT,
     image_urls    TEXT,
+    kind          TEXT NOT NULL DEFAULT 'news',
     state         TEXT NOT NULL,
     rewrite_json  TEXT,
     tg_message_id INTEGER,
@@ -45,6 +46,10 @@ export const MIGRATIONS = [
   `ALTER TABLE candidates ADD COLUMN image_url TEXT`,
   `ALTER TABLE candidates ADD COLUMN snippet TEXT`,
   `ALTER TABLE candidates ADD COLUMN image_urls TEXT`,
+  // 'release' candidates reuse the same table + rewrite_json column, discriminated
+  // by kind. NOT NULL DEFAULT 'news' back-fills every existing row in one statement
+  // (SQLite-safe on ADD COLUMN); no second migration or column needed.
+  `ALTER TABLE candidates ADD COLUMN kind TEXT NOT NULL DEFAULT 'news'`,
 ];
 // The UNIQUE constraint on dedup_key already creates an index — no separate
 // CREATE INDEX needed.
@@ -75,6 +80,7 @@ export interface CandidateRow {
   image_url: string | null;
   snippet: string | null;
   image_urls: string | null;
+  kind: string;
   state: string;
   rewrite_json: string | null;
   tg_message_id: number | null;
@@ -82,6 +88,11 @@ export interface CandidateRow {
   error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Narrows a stored `kind` string to the enum; anything unexpected → News. */
+function toKind(value: string): CandidateKind {
+  return value === CandidateKind.Release ? CandidateKind.Release : CandidateKind.News;
 }
 
 export function mapRow(row: CandidateRow): Candidate {
@@ -94,6 +105,7 @@ export function mapRow(row: CandidateRow): Candidate {
     imageUrl: row.image_url,
     snippet: row.snippet,
     imageUrls: row.image_urls,
+    kind: toKind(row.kind),
     state: row.state as CandidateState,
     rewriteJson: row.rewrite_json,
     tgMessageId: row.tg_message_id,

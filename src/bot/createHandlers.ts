@@ -5,18 +5,14 @@ import { escapeMarkdown } from "../utils.js";
 import { CARD_CALLBACK } from "../consts.js";
 import { CandidateState } from "../enums.js";
 import { parseCallback } from "./modelPick.js";
+import { PublishError } from "../blog/index.js";
 import { enrichItemBody } from "../feeds/index.js";
 import { handleModelCallback } from "./modelMenu.js";
 import { ackSilently, logEditError } from "./edit.js";
 import { rawKeyboard, previewKeyboard } from "./keyboards.js";
-import { PublishError, publishToBlog } from "../blog/index.js";
-import { renderPreview, isModelNotFound, renderRewriting } from "./render.js";
-import {
-  PROVIDERS,
-  rewriteToPost,
-  hasActiveOverride,
-  resolveActiveProvider,
-} from "../llm/index.js";
+import { isModelNotFound, renderRewriting } from "./render.js";
+import { runExtraction, loadExtraction } from "./candidateActions.js";
+import { PROVIDERS, hasActiveOverride, resolveActiveProvider } from "../llm/index.js";
 
 import type { Candidate } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
@@ -104,24 +100,24 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
       await ackSilently(ctx, { text: "Публикую…" });
       await ctx.editMessageReplyMarkup().catch(logEditError("publish clear markup"));
 
-      const rewrite = store.getRewrite(candidate);
-      if (!rewrite) {
-        // No saved rewrite (corrupt/missing JSON) — send back to rewrite_failed
+      const extracted = loadExtraction(store, candidate);
+      if (!extracted) {
+        // No saved extraction (corrupt/missing JSON) — send back to rewrite_failed
         // with a usable retry keyboard rather than a dead, button-less card.
-        store.setState(id, CandidateState.RewriteFailed, "Нет сохранённого rewrite.");
+        store.setState(id, CandidateState.RewriteFailed, "Нет сохранённых данных.");
         await ctx
           .editMessageText("⚠️ Нет данных для публикации — переработайте заново.", {
             reply_markup: rawKeyboard(id),
           })
-          .catch(logEditError("publish missing-rewrite text"));
+          .catch(logEditError("publish missing-extraction text"));
         return;
       }
 
       try {
-        const postId = await publishToBlog(rewrite, candidate.imageUrl, candidate.dedupKey);
+        const postId = await extracted.publish();
         store.setPublished(id, postId);
         await ctx
-          .editMessageText(`✅ Опубликовано: *${escapeMarkdown(rewrite.title)}*`, {
+          .editMessageText(`✅ Опубликовано: *${escapeMarkdown(extracted.title)}*`, {
             parse_mode: "Markdown",
           })
           .catch(logEditError("publish success text"));
@@ -186,17 +182,11 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
         // The feed often ships only a headline-length snippet; enrichItemBody
         // scrapes the full article body when the snippet is short, falling back
         // to the stored snippet on any scrape failure (never aborts the rewrite).
+        // runExtraction branches on the candidate's kind: a news item is
+        // rewritten to a post, a release item is extracted to a ModelRelease.
         const item = await enrichItemBody(store.getFeedItem(candidate));
-        const rewrite = await rewriteToPost(item, store);
-        store.attachRewrite(id, rewrite); // → pending_review
-        const updated = store.get(id) ?? candidate;
-        await editOrResend(
-          ctx,
-          id,
-          renderPreview(updated, rewrite, modelLabel),
-          previewKeyboard(id),
-          "rewrite preview",
-        );
+        const preview = await runExtraction(store, id, item, candidate, modelLabel);
+        await editOrResend(ctx, id, preview, previewKeyboard(id), "rewrite preview");
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         store.setState(id, CandidateState.RewriteFailed, message);
