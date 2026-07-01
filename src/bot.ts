@@ -6,6 +6,7 @@ import { CONFIG } from "./config.js";
 import { modelMenu } from "./bot/modelMenu.js";
 import { autoRetry } from "./bot/auto-retry.js";
 import { createIngest } from "./bot/createIngest.js";
+import { createDigestFlow } from "./bot/digestFlow.js";
 import { createHandlers } from "./bot/createHandlers.js";
 import { renderHealth, collectHealth } from "./health/index.js";
 import {
@@ -46,6 +47,8 @@ export function createBot(
 
   const { onCallback, drain } = createHandlers(store, bot);
   const { ingestMessage, sendRawCard, notifyNeedsVerification } = createIngest(store, bot);
+  const { runDigest, onDigestCallback, isDigestCallback, isAwaitingVerdict, submitVerdict } =
+    createDigestFlow(bot, store);
 
   // Global error boundary: grammy rethrows an uncaught handler error out of the
   // polling loop, which exits the process (systemd then restart-loops). This
@@ -119,6 +122,7 @@ export function createBot(
   bot.command("ping", (ctx) => ctx.reply("pong"));
   bot.command("fetch", runFetch);
   bot.command("model", runModel);
+  bot.command("digest", runDigest);
 
   // Dispatch table from a menu button's MenuAction to its command action.
   const MENU_ACTIONS: Record<MenuAction, (ctx: Context) => Promise<void>> = {
@@ -140,16 +144,30 @@ export function createBot(
       await ctx.reply("Неизвестная команда. /help — список команд.");
       return;
     }
+    // If the digest flow is waiting for the verdict, this text fills the
+    // {{ВЕРДИКТ}} slot instead of becoming a candidate. Routed BEFORE ingest.
+    if (isAwaitingVerdict()) {
+      await submitVerdict(ctx, raw);
+      return;
+    }
     await ingestMessage(ctx, raw);
   });
 
   // Menu-button taps run the same action as the command; anything else falls
   // through to the candidate-card callback router.
   bot.on("callback_query:data", async (ctx) => {
-    const action = parseMenuCallback(ctx.callbackQuery.data ?? "");
+    const data = ctx.callbackQuery.data ?? "";
+    const action = parseMenuCallback(data);
     if (action) {
       await ctx.answerCallbackQuery().catch(() => {});
       await MENU_ACTIONS[action](ctx);
+      return;
+    }
+    // Digest callbacks are routed before the candidate-card router — they don't
+    // touch a candidate, and their `digest_*` data would otherwise fall through
+    // to onCallback and be silently acked.
+    if (isDigestCallback(data)) {
+      await onDigestCallback(ctx);
       return;
     }
     await onCallback(ctx);
