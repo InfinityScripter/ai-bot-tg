@@ -1,4 +1,5 @@
 import type { FeedItem } from "../types.js";
+import type { RecentPost } from "../blog/fetchRecentPosts.js";
 
 export const REWRITE_SYSTEM_PROMPT = `Ты — редактор технического новостного блога. По заголовку,
 краткому описанию и (если есть) списку картинок напиши ОРИГИНАЛЬНЫЙ пост на
@@ -104,4 +105,41 @@ export function buildReleaseUserContent(item: FeedItem): string {
 Original link: ${item.url}
 Title: ${item.title}
 Snippet: ${item.snippet || "(no description)"}`;
+}
+
+/**
+ * System prompt for the weekly email DIGEST. Given the week's posts (title +
+ * description), the model writes a short RU digest email as JSON `{subject,html}`.
+ * The hard rule is the `{{ВЕРДИКТ}}` slot: the model must leave that literal
+ * placeholder near the end untouched, so the owner can paste a personal verdict
+ * before sending (the whole point of the human-in-the-loop digest). The html is
+ * plain email HTML (h2/p/ul/li/a) with no external CSS, since Gmail strips it.
+ */
+export const DIGEST_SYSTEM_PROMPT = `Ты — редактор еженедельного AI-дайджеста для email-рассылки блога о честных
+разборах AI. По списку постов за неделю (заголовок + краткое описание) собери
+короткое письмо-дайджест на русском языке:
+- тёплое вступление на 1–2 предложения;
+- затем список постов: у каждого заголовок и ОДНА строка сути;
+- в самом конце, ОТДЕЛЬНОЙ строкой, оставь ДОСЛОВНО плейсхолдер {{ВЕРДИКТ}} —
+  это место для личного разбора владельца, НЕ заполняй и НЕ переписывай его.
+
+Верни СТРОГО валидный JSON-объект (и ничего кроме него):
+{
+  "subject": "тема письма, до 120 символов, без кавычек по краям",
+  "html": "тело письма как простой email-HTML: только теги h2, p, ul, li, a, strong. Без <html>/<head>/<body>, без style-атрибутов и внешнего CSS. Ссылки на посты — обычными <a href>. Плейсхолдер {{ВЕРДИКТ}} оставь как есть внутри <p> в конце."
+}
+
+Не выдумывай посты, которых нет во входных данных. Никакого текста до или после JSON.`;
+
+/**
+ * Builds the user message for the digest: a numbered list of the week's posts,
+ * title + one-line description each. Kept plain (no HTML) — the model turns it
+ * into the email HTML per the system prompt.
+ */
+export function buildDigestUserContent(posts: RecentPost[]): string {
+  const lines = posts.map((post, index) => {
+    const desc = (post.description ?? "").trim();
+    return `${index + 1}. ${post.title}${desc ? ` — ${desc}` : ""}`;
+  });
+  return `Посты за неделю (${posts.length}):\n${lines.join("\n")}`;
 }

@@ -1,4 +1,6 @@
+export { buildDigest } from "./buildDigest.js";
 export { rewriteToPost } from "./rewriteToPost.js";
+export type { DigestDraft } from "./buildDigest.js";
 export type { PingResult } from "./modelRegistry.js";
 export { filterRelevant } from "./filterRelevant.js";
 export { extractRelease } from "./extract-release.js";

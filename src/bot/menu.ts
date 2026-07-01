@@ -40,6 +40,11 @@ export const COMMANDS: CommandSpec[] = [
     description: "выбрать провайдер/модель для рерайта, вкл/выкл mock",
   },
   {
+    command: "digest",
+    buttonTitle: undefined,
+    description: "собрать и отправить еженедельный email-дайджест подписчикам",
+  },
+  {
     command: "health",
     buttonTitle: "🩺 Проверка",
     action: MenuAction.Health,

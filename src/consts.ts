@@ -42,3 +42,21 @@ export const CARD_CALLBACK = {
  * code path as the corresponding slash command.
  */
 export const MENU_CALLBACK = "menu_";
+
+/**
+ * Callback-data values for the /digest review keyboard. Each is a complete,
+ * distinct token (no id suffix — there is a single module-scoped pending digest,
+ * one owner at a time), so a startsWith/equality check routes the tap. Prefixed
+ * `digest_` so they never collide with CARD_CALLBACK (approve_/skip_/rewrite_),
+ * MODEL_CALLBACK (m*), or MENU_CALLBACK (menu_).
+ *   digest_send    → send the pending digest to all confirmed subscribers
+ *   digest_rebuild → re-fetch + re-build the digest (overwrites the pending one)
+ *   digest_verdict → prompt the owner for the verdict that fills the {{ВЕРДИКТ}} slot
+ *   digest_cancel  → clear the pending digest, do nothing
+ */
+export const DIGEST_CALLBACK = {
+  SEND: "digest_send",
+  REBUILD: "digest_rebuild",
+  VERDICT: "digest_verdict",
+  CANCEL: "digest_cancel",
+} as const;
