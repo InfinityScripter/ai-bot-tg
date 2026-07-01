@@ -1,10 +1,10 @@
 import { rmSync } from "node:fs";
 import { it, expect, describe, afterEach, beforeEach } from "vitest";
 
-import { CandidateState } from "../src/enums.js";
 import { CandidateStore } from "../src/store/index.js";
+import { CandidateKind, CandidateState } from "../src/enums.js";
 
-import type { FeedItem, RewriteResult } from "../src/types.js";
+import type { FeedItem, ReleaseResult, RewriteResult } from "../src/types.js";
 
 function item(overrides: Partial<FeedItem> = {}): FeedItem {
   return {
@@ -118,6 +118,41 @@ describe("CandidateStore", () => {
       const id = store.insertCollected(item({ imageUrls: [] }))!;
       const rebuilt = store.getFeedItem(store.get(id)!);
       expect(rebuilt.imageUrls).toEqual([]);
+    });
+  });
+
+  describe("candidate kind (news vs release)", () => {
+    it("defaults an inserted item to kind='news' when unset", () => {
+      const id = store.insertCollected(item())!;
+      expect(store.get(id)?.kind).toBe(CandidateKind.News);
+    });
+
+    it("persists kind='release' and round-trips it through get + getFeedItem", () => {
+      const id = store.insertCollected(item({ kind: CandidateKind.Release }))!;
+      const c = store.get(id)!;
+      expect(c.kind).toBe(CandidateKind.Release);
+      // getFeedItem carries the kind so a re-extract stays on the release path.
+      expect(store.getFeedItem(c).kind).toBe(CandidateKind.Release);
+    });
+
+    it("attachRelease stores a release readable via getRelease and moves to pending_review", () => {
+      const release: ReleaseResult = {
+        vendor: "OpenAI",
+        model: "GPT",
+        version: "5",
+        releasedAt: "2026-06-01",
+        sourceUrl: "https://example.com/a",
+        contextTokens: null,
+        priceIn: null,
+        priceOut: null,
+        changes: [],
+        sourceName: null,
+      };
+      const id = store.insertCollected(item({ kind: CandidateKind.Release }))!;
+      store.attachRelease(id, release);
+      const c = store.get(id)!;
+      expect(c.state).toBe(CandidateState.PendingReview);
+      expect(store.getRelease(c)).toEqual(release);
     });
   });
 

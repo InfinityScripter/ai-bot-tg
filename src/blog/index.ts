@@ -1,3 +1,4 @@
+export { toReleaseBody, publishRelease } from "./publishRelease.js";
 export { PublishError, publishToBlog, toBlogPostBody } from "./publishPost.js";
 export {
   NEWS_TAG,

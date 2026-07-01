@@ -1,13 +1,18 @@
-import { PublishStatus, CandidateState } from "./enums.js";
-
-// Re-exported so existing importers of these domain enums can keep importing
-// them from "./types.js" alongside the interfaces that use them.
-export { PublishStatus, CandidateState } from "./enums.js";
+import { PublishStatus, CandidateKind, CandidateState } from "./enums.js";
 
 // The rewrite zod schema + its inferred type live in src/schemas/ (validation
 // separated by entity). Re-exported here so "./types.js" stays the one type hub.
 export { RewriteSchema } from "./schemas/rewrite-schema.js";
+
+// The release zod schema + its inferred type live alongside the rewrite one in
+// src/schemas/. Re-exported here so "./types.js" stays the one type hub.
+export { ReleaseSchema } from "./schemas/release-schema.js";
 export type { RewriteResult } from "./schemas/rewrite-schema.js";
+
+export type { ReleaseResult } from "./schemas/release-schema.js";
+// Re-exported so existing importers of these domain enums can keep importing
+// them from "./types.js" alongside the interfaces that use them.
+export { PublishStatus, CandidateKind, CandidateState } from "./enums.js";
 
 /** A normalized item pulled from an RSS/Atom feed. */
 export interface FeedItem {
@@ -32,6 +37,13 @@ export interface FeedItem {
    * the feed omits it. Used to order the review queue newest-first.
    */
   publishedAt: number | null;
+  /**
+   * What this item is: 'news' (default) → rewritten to a blog post; 'release' →
+   * extracted into a structured ModelRelease. Decided by runCollection from the
+   * release markers BEFORE insert. Optional here so existing feed producers that
+   * don't set it default to 'news' at insert time.
+   */
+  kind?: CandidateKind;
 }
 
 /** A row in the candidates table. */
@@ -46,7 +58,18 @@ export interface Candidate {
   snippet: string | null;
   /** JSON string[] of image URLs (cover first); null on pre-migration rows. */
   imageUrls: string | null;
+  /**
+   * What the candidate is — discriminates the rewrite/publish pipeline. Persisted
+   * in the `kind` column; back-filled to 'news' on pre-migration rows via the
+   * column DEFAULT.
+   */
+  kind: CandidateKind;
   state: CandidateState;
+  /**
+   * The stored extracted entity, JSON-encoded: a RewriteResult for kind='news'
+   * or a ReleaseResult for kind='release' (discriminated by `kind` — the two
+   * share this one column so the publish/claim lifecycle stays shared).
+   */
   rewriteJson: string | null;
   tgMessageId: number | null;
   blogPostId: string | null;
@@ -67,4 +90,26 @@ export interface BlogPostBody {
   /** Cover image URL; omitted → backend applies its default cover. */
   coverUrl?: string;
   publish: PublishStatus;
+}
+
+/**
+ * The exact body POSTed to the blog's /api/changelog/new (the frozen §3 contract
+ * — field names must match the backend verbatim or the write silently no-ops).
+ * The five required fields are always sent; the optional ones carry through the
+ * extracted (possibly null) values so the backend stores "unknown" as null.
+ */
+export interface CreateReleasePayload {
+  vendor: string;
+  model: string;
+  version: string;
+  /** ISO string. */
+  releasedAt: string;
+  sourceUrl: string;
+  slug?: string;
+  contextTokens?: number | null;
+  priceIn?: number | null;
+  priceOut?: number | null;
+  changes?: string[];
+  verdict?: string | null;
+  sourceName?: string | null;
 }

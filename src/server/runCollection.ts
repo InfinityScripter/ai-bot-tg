@@ -1,11 +1,23 @@
 import { CONFIG } from "../config.js";
-import { RelevanceMode } from "../enums.js";
-import { filterRelevant } from "../llm/index.js";
 import { emitRelevanceDecisions } from "../audit-emit.js";
+import { CandidateKind, RelevanceMode } from "../enums.js";
 import { fetchAllFeeds, parseKeywords, curateForQueue } from "../feeds/index.js";
+import { filterRelevant, VENDOR_MARKERS, RELEASE_MARKERS } from "../llm/index.js";
 
-import type { Candidate } from "../types.js";
+import type { FeedItem, Candidate } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
+
+/**
+ * True when a feed item looks like an AI-model release announcement: a release
+ * marker AND a vendor marker both hit its title+snippet. Precision-biased — a
+ * bare "launch" (no vendor) or a vendor mention (no launch verb) stays 'news'.
+ */
+function isReleaseItem(item: FeedItem): boolean {
+  const hay = `${item.title} ${item.snippet}`.toLowerCase();
+  const hasRelease = RELEASE_MARKERS.some((m) => hay.includes(m));
+  const hasVendor = VENDOR_MARKERS.some((m) => hay.includes(m));
+  return hasRelease && hasVendor;
+}
 
 /** Summary of one collection run, returned for logging/visibility. */
 export interface RunSummary {
@@ -74,10 +86,13 @@ export async function runCollection(
 
   // Insert fresh (deduped) items, capped per run. The full raw item (snippet,
   // imageUrls) is persisted so the deferred rewrite can run from the row alone.
+  // Decide kind (news vs release) BEFORE insert: dedup is one table, so a URL
+  // first seen as 'news' would block it ever being re-collected as a 'release'.
   const fresh: number[] = [];
   for (const item of kept) {
     if (fresh.length >= CONFIG.MAX_PER_RUN) break;
-    const id = store.insertCollected(item);
+    const kind = isReleaseItem(item) ? CandidateKind.Release : CandidateKind.News;
+    const id = store.insertCollected({ ...item, kind });
     if (id !== null) fresh.push(id);
   }
   summary.fresh = fresh.length;

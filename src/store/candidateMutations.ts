@@ -9,7 +9,7 @@ import type Database from "better-sqlite3";
 
 import { CandidateState } from "../enums.js";
 
-import type { RewriteResult } from "../types.js";
+import type { RewriteResult, ReleaseResult } from "../types.js";
 
 /**
  * Resets rows stuck in a transient in-flight state back to a retryable one. A
@@ -80,13 +80,26 @@ export function setState(
   ).run(state, error, id);
 }
 
-/** Stores the rewrite result and moves the candidate to 'pending_review'. */
-export function attachRewrite(db: Database.Database, id: number, rewrite: RewriteResult): void {
+/**
+ * Stores an extracted entity JSON (a RewriteResult for news, a ReleaseResult for
+ * release) in the shared rewrite_json column and moves the candidate to
+ * 'pending_review'. attachRewrite is the news-typed alias kept for callers.
+ */
+export function attachExtraction(
+  db: Database.Database,
+  id: number,
+  extraction: RewriteResult | ReleaseResult,
+): void {
   db.prepare(
     `UPDATE candidates
        SET rewrite_json = ?, state = ?, error = NULL, updated_at = datetime('now')
      WHERE id = ?`,
-  ).run(JSON.stringify(rewrite), CandidateState.PendingReview, id);
+  ).run(JSON.stringify(extraction), CandidateState.PendingReview, id);
+}
+
+/** Stores the rewrite result and moves the candidate to 'pending_review'. */
+export function attachRewrite(db: Database.Database, id: number, rewrite: RewriteResult): void {
+  attachExtraction(db, id, rewrite);
 }
 
 /** Records the Telegram message id of the approval DM. */

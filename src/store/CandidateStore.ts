@@ -3,12 +3,12 @@ import { mkdirSync } from "node:fs";
 import Database from "better-sqlite3";
 
 import { CONFIG } from "../config.js";
-import { CandidateState } from "../enums.js";
 import * as settings from "./storeSettings.js";
 import * as mutations from "./candidateMutations.js";
+import { CandidateKind, CandidateState } from "../enums.js";
 import { SCHEMA, mapRow, MIGRATIONS } from "./candidateSchema.js";
 
-import type { FeedItem, Candidate, RewriteResult } from "../types.js";
+import type { FeedItem, Candidate, RewriteResult, ReleaseResult } from "../types.js";
 import type { CandidateRow, MockOverride, ModelOverride } from "./candidateSchema.js";
 
 // Re-exported so existing importers can keep importing these settings shapes
@@ -74,8 +74,8 @@ export class CandidateStore {
     const info = this.db
       .prepare(
         `INSERT OR IGNORE INTO candidates
-           (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, state)
-         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, @state)`,
+           (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, kind, state)
+         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, @kind, @state)`,
       )
       .run({
         dedupKey: item.dedupKey,
@@ -85,6 +85,9 @@ export class CandidateStore {
         imageUrl: item.imageUrl,
         snippet: item.snippet,
         imageUrls: JSON.stringify(item.imageUrls ?? []),
+        // The item carries its kind (decided by runCollection from the release
+        // markers before insert); an unset kind defaults to 'news'.
+        kind: item.kind ?? CandidateKind.News,
         state: CandidateState.Collected,
       });
     return info.changes === 1 ? Number(info.lastInsertRowid) : null;
@@ -116,6 +119,7 @@ export class CandidateStore {
       imageUrl: candidate.imageUrl,
       imageUrls,
       publishedAt: null, // not persisted — only used pre-insert for ordering
+      kind: candidate.kind, // carry the kind so a re-extract stays on the right path
     };
   }
 
@@ -207,6 +211,15 @@ export class CandidateStore {
     mutations.attachRewrite(this.db, id, rewrite);
   }
 
+  /**
+   * Stores an extracted release and moves the candidate to 'pending_review'. The
+   * release JSON shares the rewrite_json column (discriminated by `kind`), so the
+   * claim/publish lifecycle stays common with the news path.
+   */
+  attachRelease(id: number, release: ReleaseResult): void {
+    mutations.attachExtraction(this.db, id, release);
+  }
+
   /** Records the Telegram message id of the approval DM. */
   setTelegramMessage(id: number, messageId: number): void {
     mutations.setTelegramMessage(this.db, id, messageId);
@@ -222,6 +235,19 @@ export class CandidateStore {
     if (!candidate.rewriteJson) return null;
     try {
       return JSON.parse(candidate.rewriteJson) as RewriteResult;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Parses and returns the stored release for a candidate, or null. Same column
+   * as getRewrite (rewrite_json), read only for kind='release' candidates.
+   */
+  getRelease(candidate: Candidate): ReleaseResult | null {
+    if (!candidate.rewriteJson) return null;
+    try {
+      return JSON.parse(candidate.rewriteJson) as ReleaseResult;
     } catch {
       return null;
     }
