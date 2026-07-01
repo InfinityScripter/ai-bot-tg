@@ -11,7 +11,14 @@ import {
   providerButtons,
   mockToggleButton,
 } from "./modelPick.js";
-import { pingModel, PROVIDERS , listModels, isMockActive, hasActiveOverride, resolveActiveProvider } from "../llm/index.js";
+import {
+  pingModel,
+  PROVIDERS,
+  listModels,
+  isMockActive,
+  hasActiveOverride,
+  resolveActiveProvider,
+} from "../llm/index.js";
 
 import type { CandidateStore } from "../store/index.js";
 

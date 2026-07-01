@@ -132,4 +132,3 @@ export function statusText(
   const source = hasOverride ? "override" : "env";
   return `Текущая модель: ${label} / ${active.model} (источник: ${source})\n\nВыберите провайдера:`;
 }
-

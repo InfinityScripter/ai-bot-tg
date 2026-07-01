@@ -5,12 +5,18 @@ import { escapeMarkdown } from "../utils.js";
 import { CARD_CALLBACK } from "../consts.js";
 import { CandidateState } from "../enums.js";
 import { parseCallback } from "./modelPick.js";
+import { enrichItemBody } from "../feeds/index.js";
 import { handleModelCallback } from "./modelMenu.js";
 import { ackSilently, logEditError } from "./edit.js";
 import { rawKeyboard, previewKeyboard } from "./keyboards.js";
 import { PublishError, publishToBlog } from "../blog/index.js";
 import { renderPreview, isModelNotFound, renderRewriting } from "./render.js";
-import { PROVIDERS , rewriteToPost, hasActiveOverride, resolveActiveProvider } from "../llm/index.js";
+import {
+  PROVIDERS,
+  rewriteToPost,
+  hasActiveOverride,
+  resolveActiveProvider,
+} from "../llm/index.js";
 
 import type { Candidate } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
@@ -177,7 +183,10 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
         .catch(logEditError("rewrite in-progress"));
 
       try {
-        const item = store.getFeedItem(candidate);
+        // The feed often ships only a headline-length snippet; enrichItemBody
+        // scrapes the full article body when the snippet is short, falling back
+        // to the stored snippet on any scrape failure (never aborts the rewrite).
+        const item = await enrichItemBody(store.getFeedItem(candidate));
         const rewrite = await rewriteToPost(item, store);
         store.attachRewrite(id, rewrite); // → pending_review
         const updated = store.get(id) ?? candidate;

@@ -125,7 +125,10 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   // OpenRouter (namespaced ids). Live-tested for clean rewrite output.
   "deepseek/deepseek-chat": { tier: "paid", note: "OpenRouter $0.20/$0.80 за 1M" },
   "google/gemini-2.5-flash": { tier: "paid", note: "OpenRouter, дёшево" },
-  "qwen/qwen3-next-80b-a3b-instruct:free": { tier: "free", note: "OpenRouter $0 (нестабильно, 429)" },
+  "qwen/qwen3-next-80b-a3b-instruct:free": {
+    tier: "free",
+    note: "OpenRouter $0 (нестабильно, 429)",
+  },
   // Mock — no cost.
   mock: { tier: "free" },
 };

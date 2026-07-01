@@ -10,7 +10,9 @@ vi.mock("../src/feeds/index.js", async (importOriginal) => {
 });
 
 const rewriteToPost = vi.fn();
-vi.mock("../src/llm/rewriteToPost.js", () => ({ rewriteToPost: (...a: unknown[]) => rewriteToPost(...a) }));
+vi.mock("../src/llm/rewriteToPost.js", () => ({
+  rewriteToPost: (...a: unknown[]) => rewriteToPost(...a),
+}));
 
 // Spy on filterRelevant so the collector tests never reach the real classify
 // (which would resolve a provider and hit the network). The default impl just
@@ -28,7 +30,6 @@ vi.mock("../src/audit-emit.js", () => ({
   emitRelevanceDecisions: (...a: unknown[]) =>
     emitRelevanceDecisions(...(a as Parameters<typeof emitRelevanceDecisions>)),
 }));
-
 
 const { runCollection } = await import("../src/server/runCollection.js");
 const { CandidateStore } = await import("../src/store/index.js");

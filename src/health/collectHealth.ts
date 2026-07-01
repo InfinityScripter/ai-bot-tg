@@ -18,10 +18,7 @@ export async function collectHealth(
   const fetchFn = deps.fetchFn ?? fetch;
   const uptimeSec = deps.uptimeSec ?? (() => process.uptime());
 
-  const checks = [
-    processCheck(uptimeSec),
-    scheduleCheck(deps.nextRun),
-  ];
+  const checks = [processCheck(uptimeSec), scheduleCheck(deps.nextRun)];
 
   const [provider, blog] = await Promise.all([checkProvider(store, pingFn), checkBlog(fetchFn)]);
   checks.push(provider, blog);
