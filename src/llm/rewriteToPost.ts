@@ -65,8 +65,13 @@ function sanitizeImages(content: string, allowed: string[]): string {
   );
 }
 
-/** Parses, validates and post-processes a raw JSON string from any provider. */
-function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
+/**
+ * Parses, validates and post-processes a raw JSON string from any provider.
+ * Exported so the eval harness can push a recorded/live model reply through the
+ * exact production post-processing (image sanitize + source-line self-heal + tag
+ * normalize + title clamp) rather than reimplementing it and drifting.
+ */
+export function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
   if (!raw) {
     throw new Error("LLM не вернул JSON в ответе.");
   }

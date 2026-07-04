@@ -137,5 +137,14 @@ module.exports = {
         "max-lines": 0,
       },
     },
+    {
+      // The eval harness is dev-only tooling (fixtures with many cases, a CLI
+      // runner), not shipped service code — exempt it from the module size
+      // budget for the same reason as tests.
+      files: ["evals/**"],
+      rules: {
+        "max-lines": 0,
+      },
+    },
   ],
 };
