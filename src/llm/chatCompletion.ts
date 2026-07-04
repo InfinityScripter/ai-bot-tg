@@ -17,7 +17,13 @@ import type { ProviderSpec, ChatJsonRequest } from "./types.js";
  */
 
 // One SDK client for all features (previously duplicated per feature module).
-const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
+// maxRetries is capped here too (belt-and-suspenders with the per-request option
+// below) so no code path can inherit the SDK's default of 2 — on a degraded
+// provider that default multiplies the back-off and makes /fetch look frozen.
+const client = new Anthropic({
+  apiKey: CONFIG.ANTHROPIC_API_KEY,
+  maxRetries: CONFIG.LLM_MAX_RETRIES,
+});
 
 /** Extracts the text from the first text content block of a message response. */
 function extractText(response: Anthropic.Message): string {
@@ -35,15 +41,23 @@ function extractJson(text: string): string | null {
   return text.slice(start, end + 1);
 }
 
-/** Calls Claude (Anthropic SDK), with prompt caching on the system block. */
+/**
+ * Calls Claude (Anthropic SDK), with prompt caching on the system block. A hard
+ * per-request timeout + retry cap is passed as the second (RequestOptions) arg:
+ * without it the SDK waits out its ~10-min default and retries twice, and since
+ * collection classifies items serially, one stalled call makes /fetch hang.
+ */
 async function completeWithAnthropic(model: string, req: ChatJsonRequest): Promise<string> {
-  const response = await client.messages.create({
-    model,
-    max_tokens: req.maxTokens,
-    ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-    system: [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }],
-    messages: [{ role: "user", content: req.user }],
-  });
+  const response = await client.messages.create(
+    {
+      model,
+      max_tokens: req.maxTokens,
+      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+      system: [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: req.user }],
+    },
+    { timeout: CONFIG.LLM_TIMEOUT_MS, maxRetries: CONFIG.LLM_MAX_RETRIES },
+  );
 
   // 'refusal' may not be in this SDK version's StopReason union — compare as a
   // widened string so the guard works regardless of SDK version.
@@ -61,6 +75,13 @@ interface OpenAIChatResponse {
  * Calls any OpenAI-compatible chat-completions endpoint (Gemini, GLM, DeepSeek,
  * OpenRouter). No SDK — a single fetch. response_format=json_object nudges the
  * model toward pure JSON, but callers still extract+validate defensively.
+ *
+ * A hard timeout is enforced with AbortSignal.timeout: bare fetch has no timeout,
+ * so a stalled upstream would hang the request indefinitely (same freeze the
+ * Anthropic path guards against). On abort the fetch rejects and is surfaced as
+ * a readable error — a relevance classify then fails open (keep). fetch has no
+ * built-in retry, so LLM_MAX_RETRIES applies only to the Anthropic SDK path;
+ * this path made no retries before either (no regression).
  */
 async function completeWithOpenAICompat(
   spec: ProviderSpec,
@@ -71,6 +92,7 @@ async function completeWithOpenAICompat(
   try {
     response = await fetch(chatUrl(spec), {
       method: "POST",
+      signal: AbortSignal.timeout(CONFIG.LLM_TIMEOUT_MS),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${spec.apiKey()}`,
