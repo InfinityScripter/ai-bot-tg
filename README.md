@@ -1,193 +1,252 @@
-# ai-bot-tg — News bot for the blog
+# ai-bot-tg — новостной AI-бот для блога
 
-A standalone Telegram bot that collects news from trusted RSS feeds once a day,
-DMs the owner a **raw** card per item, and — on the owner's 🔄 tap — rewrites
-that item into a unique blog post with the model active at that moment (see
-`/model`), shows a preview, and on approval publishes the post to the blog
-(`talalaev.su`) authored by the owner. The rewrite runs **on demand at
-publish-time**, not at collection — tokens are spent only on items the owner
-chooses to process.
+Автономный Telegram-бот, который раз в день собирает новости из проверенных
+RSS-лент, присылает владельцу **сырые** карточки в личку и по нажатию кнопки
+переписывает выбранную новость в уникальный пост активной LLM-моделью
+(любой из настроенных провайдеров — GLM, DeepSeek, OpenRouter, Claude,
+Gemini, см. `/model`). После подтверждения пост публикуется в блог
+(`aifirst.us.com`) от имени владельца. Рерайт запускается **по требованию, в
+момент публикации** — токены тратятся только на новости, которые владелец
+решил обработать.
+
+Помимо новостей бот умеет:
+
+- **Релизы AI-моделей** — новость-анонс (OpenAI выпустила…, Anthropic
+  announces…) распознаётся по маркерам, из неё извлекается структурированная
+  запись (вендор, модель, версия, цены, контекст) и публикуется в changelog
+  блога — тоже после ручного подтверждения.
+- **Еженедельный e-mail-дайджест** (`/digest`) — собирает посты за неделю,
+  строит письмо через LLM, ждёт вердикт владельца и рассылает подтверждённым
+  подписчикам.
+- **Ручной ввод** — владелец кидает боту ссылку или текст, и материал идёт по
+  тому же конвейеру рерайта и публикации.
 
 ```
-croner (daily) ─► feeds (RSS) ─┐
-owner DMs a URL / text ─────────┼─► dedup (SQLite) ─► store RAW item
-                                │
-                                ▼
-   Telegram DM (RAW): source title + snippet + [🔄 Переработать] [❌ Пропустить]
-                                  │  (owner taps 🔄 — rewrite with the active /model)
-                                  ▼
-   Telegram DM (PREVIEW): rewritten title + summary + model
-                          [🔄 Заново] [✅ Опубликовать] [❌ Пропустить]
-                                  │  (owner taps Publish)
-                                  ▼
-        POST {BLOG_API_URL}/api/post/new  (Bearer BOT_API_TOKEN)
+croner (ежедневно) ─► RSS-фиды ──┐
+владелец шлёт URL / текст ───────┼─► keyword-фильтр ─► фильтр релевантности
+                                 │        (FILTER_*)     (off/shadow/on)
+                                 ▼
+                     dedup (SQLite) ─► RAW-кандидат (news | release)
+                                 │
+                                 ▼
+     ЛС в Telegram (RAW): заголовок + сниппет + [🔄 Переработать] [❌ Пропустить]
+                                 │   владелец жмёт 🔄 — активная модель (/model)
+                                 ▼
+     ЛС (PREVIEW): готовый пост / карточка релиза + модель
+                   [🔄 Заново] [✅ Опубликовать] [❌ Пропустить]
+                                 │   владелец жмёт ✅
+                                 ▼
+        news    → POST {BLOG_API_URL}/api/post/new       (Bearer BOT_API_TOKEN)
+        release → POST {BLOG_API_URL}/api/changelog/new  (Bearer BOT_API_TOKEN)
 ```
 
-Two entry points feed the same pipeline: the daily RSS collector and an owner
-message (a link or text) — see [Send a link or text](#send-a-link-or-text-manual-ingest).
+Бот общается с блогом только по HTTP API и владеет только своим состоянием —
+одним SQLite-файлом (dedup-леджер + жизненный цикл кандидатов + runtime-настройки).
 
-The bot talks to the blog only over the HTTP publish API. It owns its own state
-(a single SQLite file); the blog owns posts. See the design doc in the backend
-repo: `docs/superpowers/specs/2026-06-20-news-bot-design.md`.
+## Стек
 
-## Stack
+- [grammY](https://grammy.dev) — Telegram-бот (long polling)
+- [rss-parser](https://www.npmjs.com/package/rss-parser) — чтение RSS/Atom
+- [@anthropic-ai/sdk](https://www.npmjs.com/package/@anthropic-ai/sdk) — путь Claude;
+  остальные провайдеры (Gemini/GLM/DeepSeek/OpenRouter) ходят по
+  OpenAI-совместимому chat-completions через `fetch`, без SDK
+- [croner](https://www.npmjs.com/package/croner) — ежедневное расписание
+- [better-sqlite3](https://www.npmjs.com/package/better-sqlite3) — хранилище
+- [zod](https://zod.dev) — валидация env и структурированных ответов LLM
+- TypeScript, запуск через [tsx](https://www.npmjs.com/package/tsx) (без сборки)
 
-- [grammY](https://grammy.dev) — Telegram bot (long polling)
-- [rss-parser](https://www.npmjs.com/package/rss-parser) — feed ingest
-- [@anthropic-ai/sdk](https://www.npmjs.com/package/@anthropic-ai/sdk) — Claude rewrite (structured output)
-- [croner](https://www.npmjs.com/package/croner) — daily schedule, reused by `/fetch`
-- [better-sqlite3](https://www.npmjs.com/package/better-sqlite3) — dedup ledger + candidate lifecycle
-- [zod](https://zod.dev) — env + rewrite validation
-- TypeScript, run with [tsx](https://www.npmjs.com/package/tsx)
+## Структура проекта — что за что отвечает
 
-## Code style & structure
+```
+src/
+├── index.ts          # entrypoint: собирает store + бот + крон + control server
+├── config.ts         # загрузка env через zod-схему; экспортирует CONFIG
+├── enums.ts          # доменные string-enum'ы (состояния, провайдеры, режимы)
+├── consts.ts         # префиксы callback-данных Telegram-кнопок
+├── types.ts          # доменные интерфейсы: FeedItem, Candidate, тела POST'ов
+├── labels.ts         # строки статусов/уведомлений владельцу
+├── utils.ts          # canonicalizeUrl/dedupKey, stripHtml, truncate, escapeMarkdown
+├── auditEmit.ts      # зеркалирование решений фильтра в audit-log бэкенда
+├── schemas/          # zod-схемы: envSchema, rewriteSchema, releaseSchema
+├── bot/              # весь Telegram-слой
+│   ├── createBot.ts       # фабрика бота: команды, owner-lock, роутинг callback'ов
+│   ├── createHandlers.ts  # кнопки карточек: rewrite / publish / skip
+│   ├── createIngest.ts    # ручной ввод (URL/текст) + уведомления после сбоя
+│   ├── candidateActions.ts# ветвление news/release: extraction + publish
+│   ├── digestFlow.ts      # флоу /digest: превью → вердикт → рассылка
+│   ├── digestVerdict.ts   # плейсхолдер {{ВЕРДИКТ}} и его заполнение
+│   ├── menu.ts            # единый список команд: /help, кнопки, setMyCommands
+│   ├── modelMenu.ts       # интерактив /model (пинг модели перед сохранением)
+│   ├── modelPick.ts       # кодек callback-данных /model, кнопки, статус
+│   ├── keyboards.ts       # inline-клавиатуры карточек
+│   ├── render.ts / renderRelease.ts  # тексты RAW/PREVIEW карточек
+│   ├── edit.ts            # безопасные ack/edit (Telegram любит кидать 400)
+│   ├── autoRetry.ts       # ретраи 429/5xx Telegram API (vendored auto-retry)
+│   └── types.ts           # общие типы модуля
+├── feeds/            # получение контента
+│   ├── defaultFeeds.ts    # список RSS по умолчанию + override RSS_FEEDS
+│   ├── parseFeed.ts       # rss-parser → нормализованные FeedItem
+│   ├── fetchAllFeeds.ts   # обход всех фидов (изоляция сбоев) + og:image
+│   ├── fetchHtml.ts       # общий GET с таймаутом и капом байт
+│   ├── fetchArticleBody.ts# дотягивание полного текста перед рерайтом
+│   ├── ingestArticle.ts   # скрейп страницы по ссылке владельца → FeedItem
+│   ├── scrapeOgImage.ts   # обложка из og:image / twitter:image
+│   ├── collectImages.ts   # сбор картинок статьи (обложка + <img> из тела)
+│   ├── curateQueue.ts     # keyword-фильтры + сортировка очереди
+│   └── types.ts
+├── llm/              # всё про модели
+│   ├── providers.ts       # реестр провайдеров: URL, ключи, дефолтные модели
+│   ├── chatCompletion.ts  # ЕДИНОЕ ядро вызова (Anthropic SDK / OpenAI-compat)
+│   ├── prompts.ts         # все системные промпты и сборка user-сообщений
+│   ├── rewriteToPost.ts   # новость → пост (+mock-режим без LLM)
+│   ├── extractRelease.ts  # анонс → структурированный релиз (анти-галлюцинации)
+│   ├── buildDigest.ts     # посты недели → письмо дайджеста
+│   ├── classifyRelevance.ts / filterRelevant.ts  # фильтр релевантности (0–4)
+│   ├── relevanceMarkers.ts / releaseMarkers.ts   # keyword-маркеры (данные)
+│   ├── modelRegistry.ts   # listModels (live + fallback) и pingModel
+│   ├── modelPrices.ts     # ценники моделей для кнопок/панели (данные)
+│   └── types.ts
+├── store/            # SQLite-хранилище
+│   ├── CandidateStore.ts  # фасад: dedup, lifecycle, восстановление после краша
+│   ├── candidateSchema.ts # DDL, миграции, ключи настроек, маппинг строки
+│   ├── candidateMutations.ts # атомарные переходы состояний (claim/attach/…)
+│   ├── storeSettings.ts   # runtime-переопределения модели и mock
+│   └── types.ts
+├── blog/             # HTTP-клиент блога
+│   ├── publishPost.ts     # POST /api/post/new (+PublishError с maybePosted)
+│   ├── publishRelease.ts  # POST /api/changelog/new
+│   ├── sendDigest.ts      # POST /api/newsletter/send
+│   ├── fetchRecentPosts.ts# GET /api/post/list для дайджеста
+│   ├── normalizeTags.ts   # белый список тегов + дефолтные обложки
+│   └── types.ts
+├── health/           # /health и проверка моделей
+│   ├── collectHealth.ts   # отчёт готовности: процесс, крон, LLM, блог, очередь
+│   ├── probeChecks.ts     # отдельные пробы
+│   ├── probeModels.ts     # пинг дефолтной модели каждого control-провайдера
+│   ├── renderHealth.ts    # рендер отчёта в Telegram-Markdown
+│   └── types.ts
+├── server/           # инфраструктура процесса
+│   ├── runCollection.ts   # один цикл сбора (fetch→фильтры→dedup→карточки)
+│   ├── scheduler.ts       # ежедневный крон (croner)
+│   ├── controlServer.ts   # localhost HTTP API для админки блога
+│   └── types.ts
+└── cli/
+    ├── runCollection.ts   # npm run fetch — разовый сбор без polling
+    └── testModels.ts      # npm run test:models — доступность провайдеров с хоста
+```
 
-Shares the blog frontend's house style (ESLint airbnb-base + perfectionist +
-Prettier, see `.eslintrc.cjs`). Run `npm run lint` / `npm run lint:fix` and
-`npm run fm:fix`. Conventions, organised by entity:
+Конвенции: один модуль ≤ 200 строк кода (ESLint `max-lines`, error);
+доменные строковые значения — только через enum'ы из `src/enums.ts`;
+общие типы модуля — в его `types.ts`; чистые данные (маркеры, цены, фиды) —
+в отдельных файлах; zod-валидация — в `src/schemas/`; имена файлов camelCase.
 
-- **`src/enums.ts`** — domain string enums (member value = the wire string, so
-  DB/env/JSON stay byte-identical): `CandidateState`, `ProviderName`,
-  `ProviderKind`, `RelevanceMode`, `RelevanceStage`, `PublishStatus`,
-  `CallbackKind`, `InputKind`, `RelevanceAuditAction`. No raw string-literal
-  unions for these — always the enum member.
-- **`src/consts.ts`** — non-enum string constants (Telegram callback-data
-  prefixes: `MODEL_CALLBACK`, `CARD_CALLBACK`, `MODEL_CALLBACK_SEP`).
-- **`src/types.ts`** — the type hub: domain interfaces, re-exporting the enums
-  and the rewrite schema's inferred type.
-- **`src/schemas/`** — zod validation, one file per entity: `rewrite-schema.ts`
-  (the LLM rewrite output), `env-schema.ts` (the environment contract).
-- Business logic is split into focused modules under ~200 lines (`max-lines`
-  ESLint rule, locked at error): e.g. the bot is `bot.ts` + `bot-render` /
-  `bot-keyboards` / `bot-edit` / `bot-model-menu` / `bot-handlers` /
-  `bot-ingest`; the store is `store.ts` + `store-schema` / `store-settings`;
-  relevance is `relevance.ts` + `relevance-markers` / `relevance-classify`.
+## Жизненный цикл кандидата
 
-## Setup
+```
+collected ──🔄──► rewriting ──► pending_review ──✅──► publishing ──► published
+    │                │                │                    │
+    │                ▼                │ 🔄 заново          ▼ (сбой)
+    │          rewrite_failed ◄──── (ошибка)        publish_failed → pending_review
+    │                │ 🔄 retry                           │ (может быть опубликован)
+    └──❌──► skipped ◄────────────────────────────  needs_verification
+```
+
+`needs_verification` — упали посреди публикации: POST мог дойти. На старте бот
+предупреждает владельца, чтобы тот проверил блог перед повторной публикацией
+(защита от дублей). Двойные нажатия кнопок отсекаются атомарными UPDATE'ами
+(`claimForPublishing` / `claimForRewriting`) — задвоить пост или рерайт нельзя.
+
+## Команды бота (только для владельца)
+
+| Команда | Что делает |
+|---|---|
+| `/start`, `/menu` | меню с кнопками (Собрать новости / Модель / Проверка / Помощь) |
+| `/help` | список команд; тот же список в нативной кнопке Menu |
+| `/fetch` | запустить цикл сбора сейчас (как ежедневный крон) |
+| `/model` | сменить провайдера/модель на лету; пингует модель перед сохранением; переключатель 🧪 Mock (публикация копии без LLM); «↩️ Сбросить на env» |
+| `/digest` | собрать e-mail-дайджест за неделю → превью → вердикт → рассылка |
+| `/health` | готовность: процесс, следующий запуск, активная LLM (live-пинг), блог API, очередь |
+| `/ping` | `pong` — быстрая проверка живости |
+| ссылка/текст | ручной кандидат: URL скрейпится, текст берётся как статья |
+
+Выбор модели и mock-переключатель хранятся в SQLite и переживают рестарт;
+значение из БД имеет приоритет над env (`REWRITE_MOCK`/`REWRITE_PROVIDER`).
+
+## Фильтры очереди
+
+1. **Keyword-фильтр** (`FILTER_INCLUDE` / `FILTER_EXCLUDE`) — бесплатный CSV по
+   подстрокам заголовка+сниппета; exclude сильнее include.
+2. **Фильтр релевантности** (`RELEVANCE_MODE`) — тематический (AI/tech):
+   blocklist-маркеры → мгновенный drop; on-topic-маркеры → мгновенный keep;
+   иначе один дешёвый LLM-запрос со шкалой 0–4 (`RELEVANCE_THRESHOLD`).
+   Режимы: `off` — выключен; `shadow` (дефолт) — только логирует решения;
+   `on` — реально отбрасывает. Любая ошибка классификатора = keep (fail-open).
+   Решения зеркалируются в audit-log бэкенда (`RELEVANCE_AUDIT`).
+
+## Admin control server (опционально)
+
+При заданном `BOT_CONTROL_TOKEN` бот поднимает **localhost-only** HTTP-сервер
+(`127.0.0.1:CONTROL_PORT`, по умолчанию 8455), через который co-located бэкенд
+блога управляет моделью без Telegram. Каждый запрос — `Authorization: Bearer
+<BOT_CONTROL_TOKEN>` (сравнение constant-time). Без токена сервер не
+стартует; занятый порт отключает только панель, но не новостной конвейер.
+
+| Метод и путь | Что делает |
+|---|---|
+| `GET /control/status` | активные `{provider, model, isMockEnabled}` |
+| `GET /control/providers` | доступные панели провайдеры (glm/deepseek/openrouter) + наличие ключа |
+| `GET /control/models?provider=` | список моделей провайдера с ценовыми пометками |
+| `GET /control/models/health` | пинг дефолтной модели каждого control-провайдера |
+| `POST /control/model {provider,model}` | пинг → сохранить override (сбрасывает mock) |
+| `POST /control/mock {enabled}` | переключить mock-режим |
+
+## Настройка
 
 ```bash
 npm install
-cp .env.example .env   # fill in the values
+cp .env.example .env   # заполнить значения
 ```
 
-Required env (see `.env.example` for the full list):
+Обязательные переменные (полный список с комментариями — в `.env.example`):
 
-| Var | What |
+| Переменная | Что это |
 |---|---|
-| `TELEGRAM_BOT_TOKEN` | from @BotFather |
-| `OWNER_TELEGRAM_ID` | your numeric chat id (only you can drive the bot) |
-| `ANTHROPIC_API_KEY` | Claude API key |
-| `BLOG_API_URL` | blog API base (`http://localhost:7272` dev, `https://api.talalaev.su:8444` prod) |
-| `BOT_API_TOKEN` | shared secret — **must equal** the blog backend's `BOT_API_TOKEN` |
+| `TELEGRAM_BOT_TOKEN` | токен от @BotFather |
+| `OWNER_TELEGRAM_ID` | числовой chat id владельца (только он управляет ботом) |
+| `BLOG_API_URL` | база API блога (`http://localhost:7272` дев, `https://api.aifirst.us.com:8444` прод) |
+| `BOT_API_TOKEN` | общий секрет — **должен совпадать** с `BOT_API_TOKEN` бэкенда |
+| ключ провайдера | `GLM_API_KEY` / `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` — какой требует выбранный `REWRITE_PROVIDER` |
 
-The blog backend must also have `BOT_API_TOKEN` (same value) and `OWNER_EMAIL`
-set, so it can authenticate the bot as the owner's admin user.
+Ключевые опции: `REWRITE_PROVIDER` (glm/deepseek/openrouter/anthropic/gemini/mock),
+`REWRITE_TEMPERATURE`, `REWRITE_MAX_TOKENS`, `MAX_PER_RUN`, `CRON_SCHEDULE`/`CRON_TZ`,
+`RSS_FEEDS` (полная замена дефолтного списка), `SQLITE_PATH`.
 
-## Run
-
-```bash
-npm run dev      # start the bot (long polling) with reload
-npm start        # start the bot (no reload)
-npm run fetch    # one-shot collection run from the shell (no polling loop), then exit
-```
-
-Telegram commands (owner-only):
-
-- `/start`, `/menu` — show the inline button menu (Собрать новости / Модель /
-  Проверка / Помощь). Buttons run the same action as the matching command.
-- `/help` — list every command and what it does. The native Telegram **Menu**
-  button (registered via `setMyCommands`) shows the same list.
-- `/health` — readiness report in one DM: process uptime, next scheduled run,
-  the active LLM provider (live model ping), the blog API (reachability probe),
-  and the candidate-queue counts. Leads with **✅ Всё ОК** or **⚠️ Есть
-  проблемы**. Use this when the bot seems unresponsive — it tells you which
-  subsystem is down.
-- `/ping` — `pong` (fast liveness check).
-- `/fetch` — run a collection cycle now (same as the daily cron).
-- `/model` — switch the rewrite provider/model at runtime; pings the chosen
-  model before saving and persists the choice across restarts (in the SQLite
-  ledger). The menu also has a **🧪 Mock** toggle (publish a copy of the source
-  without an LLM) — its db value is authoritative over the `REWRITE_MOCK` env.
-  Picking a model clears Mock; "↩️ Сбросить на env" clears both overrides.
-
-### Send a link or text (manual ingest)
-
-Besides the daily RSS feed, the owner can inject a one-off post by **DMing the
-bot a message** — no command needed:
-
-- **A URL** (`https://…`) — the bot scrapes the page (title, body, og:image +
-  body images) and turns it into a candidate.
-- **Plain text** — the first line becomes the title, the rest the body. Paste an
-  article or write your own.
-
-Either way the bot replies with the usual **raw card** (🔄 Переработать /
-❌ Пропустить), so the message flows through the *same* rewrite → preview →
-publish path as a collected feed item. A URL already seen (or identical text
-re-sent) is deduped with a short "уже была" reply.
-
-## Admin control server (optional)
-
-When `BOT_CONTROL_TOKEN` is set, the bot also starts a **localhost-only**
-(`127.0.0.1:CONTROL_PORT`) HTTP control server so a co-located backend / web
-admin can read and change the active model + Mock without Telegram. Every
-request needs `Authorization: Bearer <BOT_CONTROL_TOKEN>` (constant-time check).
-Unset the token → the server isn't started and the bot runs normally; a bind
-failure (port taken) only disables the panel, never the news pipeline.
-
-Endpoints: `GET /control/status`, `GET /control/providers`,
-`GET /control/models?provider=`, `POST /control/model {provider,model}`,
-`POST /control/mock {enabled}`.
-
-## How a run works
-
-1. Fetch every configured RSS feed (per-feed timeout + isolation — one bad feed
-   never aborts the run).
-2. Dedup by canonical URL (`guid` preferred, tracking params stripped); already
-   seen → skipped via a SQLite unique index.
-3. Store each fresh item RAW (title + snippet + image URLs) and DM the owner a
-   **raw card** with **🔄 Переработать / ❌ Пропустить**. No rewrite happens at
-   this stage — cards arrive un-rewritten.
-4. On **🔄 Переработать**: rewrite the item into
-   `{title, description, content, tags, meta…}` with the provider/model active
-   right now (`/model`), structured output. The DM becomes a **preview card**
-   with **🔄 Заново / ✅ Опубликовать / ❌ Пропустить**. A failure marks that one
-   `rewrite_failed` and offers a retry. 🔄 Заново regenerates (e.g. after a
-   `/model` switch).
-5. On **✅ Опубликовать**: POST to the blog (idempotent — guarded by candidate
-   state so a double-tap can't double-post), store the blog post id, edit the DM
-   to confirm.
-
-## Verify end-to-end (manual)
-
-1. Start the blog backend locally on `:7272` with `BOT_API_TOKEN` + `OWNER_EMAIL`
-   set, and make sure your owner account is `role = 'admin'`.
-2. `cp .env.example .env`, fill it in (`BLOG_API_URL=http://localhost:7272`,
-   matching `BOT_API_TOKEN`).
-3. `npm run dev`, then send `/fetch` to the bot in Telegram.
-4. Tap **🔄 Переработать** on a raw card → wait for the preview → tap
-   **✅ Опубликовать** → the post appears on the blog, authored by you.
-
-## Tests
+## Запуск и разработка
 
 ```bash
-npm test       # vitest unit tests (feeds, dedup, store, publisher, rewriter)
-npm run ts     # tsc --noEmit typecheck
+npm run dev          # бот с автоперезапуском (tsx watch)
+npm start            # бот без перезапуска
+npm run fetch        # разовый сбор из шелла и выход (без polling)
+npm run test:models  # какие провайдеры доступны с этого хоста (гео/сеть)
+
+npm test             # vitest (310 тестов; сеть замокана, ключи не нужны)
+npm run ts           # tsc --noEmit
+npm run lint         # eslint (airbnb-base + perfectionist, max-lines=200)
+npm run fm:fix       # prettier
 ```
 
-Tests mock the network (RSS, Claude, blog) — no live keys needed.
+Проверка end-to-end руками: поднять бэкенд блога на `:7272` (с `BOT_API_TOKEN`
+и `OWNER_EMAIL`), `npm run dev`, в Telegram `/fetch` → 🔄 на карточке → ✅ —
+пост появляется в блоге.
 
-## Deploy
+## Деплой
 
-**Live in prod** on the same VDS as the blog (systemd `blog-newsbot`). A push to
-`main` auto-deploys via GitHub Actions.
+**Работает в проде** на той же VDS, что и блог (systemd-юнит `blog-newsbot`,
+`node --import tsx src/index.ts`, без сборки). Push в `main` деплоит
+автоматически через GitHub Actions.
 
-- **[deploy/RUNBOOK.md](deploy/RUNBOOK.md)** — reproducible recipe: deploy style,
-  the four CI secrets (and where the SSH key comes from — the step that bit us
-  once), first manual deploy, the backend-must-know-the-bot gotcha, verify, and
-  rollback. **Read this before setting up CI for a new service or re-running.**
-- **[deploy/DEPLOY.md](deploy/DEPLOY.md)** — exact env keys, the systemd unit, and
-  the CI / rollback reference.
+- **[deploy/RUNBOOK.md](deploy/RUNBOOK.md)** — воспроизводимый рецепт: CI-секреты,
+  первый ручной деплой, проверка, откат. Читать перед настройкой CI заново.
+- **[deploy/DEPLOY.md](deploy/DEPLOY.md)** — точные env-ключи, systemd-юнит, справка CI.
 
-Runs the TS entrypoint directly with `tsx` (`node --import tsx src/index.ts`) — no
-build step. `BLOG_API_URL` points at `http://localhost:7272` (co-located) or the
-public API `https://api.talalaev.su:8444`.
+Историческая документация решений — в `docs/` (планы и спеки фич по датам).
