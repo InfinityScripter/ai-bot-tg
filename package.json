@@ -13,12 +13,13 @@
     "ts": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint \"{src,tests}/**/*.ts\"",
-    "lint:fix": "eslint --fix \"{src,tests}/**/*.ts\"",
-    "fm:check": "prettier --check \"{src,tests}/**/*.ts\"",
-    "fm:fix": "prettier --write \"{src,tests}/**/*.ts\"",
+    "lint": "eslint \"{src,tests,evals}/**/*.ts\"",
+    "lint:fix": "eslint --fix \"{src,tests,evals}/**/*.ts\"",
+    "fm:check": "prettier --check \"{src,tests,evals}/**/*.ts\"",
+    "fm:fix": "prettier --write \"{src,tests,evals}/**/*.ts\"",
     "fetch": "tsx src/cli/runCollection.ts",
-    "test:models": "tsx src/cli/testModels.ts"
+    "test:models": "tsx src/cli/testModels.ts",
+    "eval": "tsx evals/runEval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",

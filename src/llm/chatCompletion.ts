@@ -27,8 +27,12 @@ function extractText(response: Anthropic.Message): string {
   return "";
 }
 
-/** Pulls the first balanced-looking JSON object out of a text blob. */
-function extractJson(text: string): string | null {
+/**
+ * Pulls the first balanced-looking JSON object out of a text blob. Exported so
+ * the eval harness can mirror the production reply→JSON step on recorded model
+ * output (which may carry surrounding prose) instead of duplicating it.
+ */
+export function extractJson(text: string): string | null {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) return null;
