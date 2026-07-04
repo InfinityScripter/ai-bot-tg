@@ -4,7 +4,7 @@ import { Bot, HttpError, GrammyError } from "grammy";
 
 import { CONFIG } from "./config.js";
 import { modelMenu } from "./bot/modelMenu.js";
-import { autoRetry } from "./bot/auto-retry.js";
+import { autoRetry } from "./bot/autoRetry.js";
 import { createIngest } from "./bot/createIngest.js";
 import { createDigestFlow } from "./bot/digestFlow.js";
 import { createHandlers } from "./bot/createHandlers.js";

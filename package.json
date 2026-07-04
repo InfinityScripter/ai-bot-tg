@@ -17,8 +17,8 @@
     "lint:fix": "eslint --fix \"{src,tests}/**/*.ts\"",
     "fm:check": "prettier --check \"{src,tests}/**/*.ts\"",
     "fm:fix": "prettier --write \"{src,tests}/**/*.ts\"",
-    "fetch": "tsx src/cli/run-collection.ts",
-    "test:models": "tsx src/cli/test-models.ts"
+    "fetch": "tsx src/cli/runCollection.ts",
+    "test:models": "tsx src/cli/testModels.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",

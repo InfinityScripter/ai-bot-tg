@@ -1,10 +1,10 @@
 import "dotenv/config";
 
-import { EnvSchema } from "./schemas/env-schema.js";
+import { EnvSchema } from "./schemas/envSchema.js";
 
 /**
  * Loads and validates the environment once at import. The schema lives in
- * src/schemas/env-schema.ts (validation separated by entity); this module only
+ * src/schemas/envSchema.ts (validation separated by entity); this module only
  * runs it and exposes the typed, frozen result as CONFIG. A missing/invalid var
  * aborts the process with a readable error rather than failing deep in the loop.
  */

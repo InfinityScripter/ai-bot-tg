@@ -89,6 +89,6 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
-  console.error("[test-models] fatal:", err);
+  console.error("[testModels] fatal:", err);
   process.exit(0);
 });

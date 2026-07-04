@@ -1,6 +1,6 @@
 import { CandidateKind } from "../enums.js";
 import { renderPreview } from "./render.js";
-import { renderReleasePreview } from "./render-release.js";
+import { renderReleasePreview } from "./renderRelease.js";
 import { rewriteToPost, extractRelease } from "../llm/index.js";
 import { publishToBlog, publishRelease } from "../blog/index.js";
 

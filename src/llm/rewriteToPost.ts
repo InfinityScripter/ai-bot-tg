@@ -4,7 +4,7 @@ import { CONFIG } from "../config.js";
 import { RewriteSchema } from "../types.js";
 import { normalizeTags } from "../blog/index.js";
 import { truncate, stripHtml } from "../utils.js";
-import { ensureSourceLine } from "./ensure-source-line.js";
+import { ensureSourceLine } from "./ensureSourceLine.js";
 import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
 import { ProviderKind, ProviderName as ProviderNameEnum } from "../enums.js";
 import {

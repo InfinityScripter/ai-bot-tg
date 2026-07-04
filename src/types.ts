@@ -2,14 +2,14 @@ import { PublishStatus, CandidateKind, CandidateState } from "./enums.js";
 
 // The rewrite zod schema + its inferred type live in src/schemas/ (validation
 // separated by entity). Re-exported here so "./types.js" stays the one type hub.
-export { RewriteSchema } from "./schemas/rewrite-schema.js";
+export { RewriteSchema } from "./schemas/rewriteSchema.js";
 
 // The release zod schema + its inferred type live alongside the rewrite one in
 // src/schemas/. Re-exported here so "./types.js" stays the one type hub.
-export { ReleaseSchema } from "./schemas/release-schema.js";
-export type { RewriteResult } from "./schemas/rewrite-schema.js";
+export { ReleaseSchema } from "./schemas/releaseSchema.js";
+export type { RewriteResult } from "./schemas/rewriteSchema.js";
 
-export type { ReleaseResult } from "./schemas/release-schema.js";
+export type { ReleaseResult } from "./schemas/releaseSchema.js";
 // Re-exported so existing importers of these domain enums can keep importing
 // them from "./types.js" alongside the interfaces that use them.
 export { PublishStatus, CandidateKind, CandidateState } from "./enums.js";

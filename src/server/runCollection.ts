@@ -1,5 +1,5 @@
 import { CONFIG } from "../config.js";
-import { emitRelevanceDecisions } from "../audit-emit.js";
+import { emitRelevanceDecisions } from "../auditEmit.js";
 import { CandidateKind, RelevanceMode } from "../enums.js";
 import { fetchAllFeeds, parseKeywords, curateForQueue } from "../feeds/index.js";
 import { filterRelevant, VENDOR_MARKERS, RELEASE_MARKERS } from "../llm/index.js";
