@@ -3,10 +3,6 @@ import { PublishError } from "./publishPost.js";
 
 import type { ReleaseResult, CreateReleasePayload } from "../types.js";
 
-// Re-exported so callers can import PublishError from the same module as
-// publishRelease (mirrors publishPost.ts exporting it alongside publishToBlog).
-export { PublishError } from "./publishPost.js";
-
 /**
  * Builds the /api/changelog/new body from an extracted release (the frozen §3
  * CreateReleasePayload). The five required fields are always present; the

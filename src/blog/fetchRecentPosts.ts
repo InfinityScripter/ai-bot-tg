@@ -1,20 +1,6 @@
 import { CONFIG } from "../config.js";
 
-/**
- * A blog post as returned by the public /api/post/list endpoint. The list path
- * is the source of truth for the digest — it catches hand-made posts too, not
- * only bot-published ones. Only the fields the digest needs are typed; the rest
- * of the row (content, cover, meta…) is ignored.
- */
-export interface RecentPost {
-  _id?: string;
-  id?: string;
-  title: string;
-  description?: string;
-  /** ISO creation time; used to filter to the last N days. */
-  createdAt: string;
-  tags?: string[];
-}
+import type { RecentPost } from "./types.js";
 
 /**
  * Fetches the blog's recent posts and returns only those created within the

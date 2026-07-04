@@ -7,12 +7,7 @@ import { OG_IMAGE_RE, OG_IMAGE_RE_ALT } from "./scrapeOgImage.js";
 import { truncate, stripHtml, canonicalizeUrl } from "../utils.js";
 
 import type { FeedItem } from "../types.js";
-
-/** The result of classifying an owner-sent message. */
-export type ClassifiedInput =
-  | { kind: InputKind.Url; url: string }
-  | { kind: InputKind.Text; text: string }
-  | { kind: InputKind.Empty };
+import type { ClassifiedInput } from "./types.js";
 
 /** True when the token is an absolute http(s) URL. */
 function isHttpUrl(token: string): boolean {

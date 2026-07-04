@@ -1,15 +1,7 @@
 import { CONFIG } from "../config.js";
 import { PublishError } from "./publishPost.js";
 
-// Re-exported so callers can import PublishError from the same module as
-// sendDigest (mirrors publishRelease.ts re-exporting it alongside publishRelease).
-export { PublishError } from "./publishPost.js";
-
-/** The digest-send result read from the backend's ok() envelope. */
-export interface DigestSendResult {
-  sent: number;
-  failed: number;
-}
+import type { DigestSendResult } from "./types.js";
 
 /**
  * Sends the weekly digest to every confirmed subscriber via the service-token

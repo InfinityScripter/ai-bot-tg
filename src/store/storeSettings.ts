@@ -9,7 +9,7 @@ import type Database from "better-sqlite3";
 
 import { MOCK_OVERRIDE_KEY, MODEL_OVERRIDE_KEY } from "./candidateSchema.js";
 
-import type { MockOverride, ModelOverride } from "./candidateSchema.js";
+import type { MockOverride, ModelOverride } from "./types.js";
 
 /** Low-level setter for a settings key. */
 export function setRawSetting(db: Database.Database, key: string, value: string): void {

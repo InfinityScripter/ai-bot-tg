@@ -4,20 +4,9 @@ import { renderReleasePreview } from "./renderRelease.js";
 import { rewriteToPost, extractRelease } from "../llm/index.js";
 import { publishToBlog, publishRelease } from "../blog/index.js";
 
+import type { LoadedExtraction } from "./types.js";
 import type { FeedItem, Candidate } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
-
-/**
- * A loaded, ready-to-publish extraction for a candidate, discriminated by kind.
- * `title` is the label shown in the "✅ Опубликовано: …" confirmation; `publish`
- * runs the kind-appropriate POST (/api/post/new for news, /api/changelog/new for
- * release) and returns the created id. Grouping the two per-kind branches here
- * keeps createHandlers.ts under the module size budget and kind-agnostic.
- */
-export interface LoadedExtraction {
-  title: string;
-  publish: () => Promise<string>;
-}
 
 /**
  * Reads the stored extraction for a candidate and wraps it with its publish

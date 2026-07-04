@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { type Server, createServer, type ServerResponse, type IncomingMessage } from "node:http";
+import { createServer, type ServerResponse, type IncomingMessage } from "node:http";
 
 import { probeAllModels } from "../health/index.js";
 import {
@@ -13,24 +13,7 @@ import {
   resolveActiveProvider,
 } from "../llm/index.js";
 
-import type { CandidateStore } from "../store/index.js";
-
-export interface ControlServerOptions {
-  port: number;
-  token: string;
-  store: CandidateStore;
-  /** Next scheduled run, or null. Kept for future use; not in the V1 status body. */
-  nextRun: () => Date | null;
-  /** Model ping, injectable for tests; defaults to the real pingModel. */
-  pingFn?: typeof pingModel;
-  /** Full-matrix model health, injectable for tests; defaults to probeAllModels. */
-  probeModelsFn?: typeof probeAllModels;
-}
-
-export interface ControlServerHandle {
-  server: Server;
-  close: () => Promise<void>;
-}
+import type { ControlServerHandle, ControlServerOptions } from "./types.js";
 
 interface EnrichedModel {
   id: string;

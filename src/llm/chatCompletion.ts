@@ -5,7 +5,7 @@ import { ProviderKind } from "../enums.js";
 import { chatUrl, PROVIDERS } from "./providers.js";
 
 import type { ProviderName } from "../enums.js";
-import type { ProviderSpec } from "./providers.js";
+import type { ProviderSpec, ChatJsonRequest } from "./types.js";
 
 /**
  * The one provider-agnostic chat-completion core shared by every LLM feature
@@ -18,21 +18,6 @@ import type { ProviderSpec } from "./providers.js";
 
 // One SDK client for all features (previously duplicated per feature module).
 const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
-
-/** What a feature asks a model for: prompts + sampling caps + refusal label. */
-export interface ChatJsonRequest {
-  system: string;
-  user: string;
-  /** Max output tokens (required — the Anthropic API demands an explicit cap). */
-  maxTokens: number;
-  /** Sampling temperature; omitted → the provider default. */
-  temperature?: number;
-  /**
-   * Verb phrase for the Anthropic refusal error, e.g. "обрабатывать новость" →
-   * "Claude отказался обрабатывать новость (refusal).".
-   */
-  refusalLabel: string;
-}
 
 /** Extracts the text from the first text content block of a message response. */
 function extractText(response: Anthropic.Message): string {

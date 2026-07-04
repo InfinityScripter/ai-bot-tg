@@ -4,14 +4,9 @@ import { completeChatJson } from "./chatCompletion.js";
 import { resolveActiveProvider } from "./providers.js";
 import { DIGEST_SYSTEM_PROMPT, buildDigestUserContent } from "./prompts.js";
 
+import type { DigestDraft } from "./types.js";
+import type { RecentPost } from "../blog/index.js";
 import type { CandidateStore } from "../store/index.js";
-import type { RecentPost } from "../blog/fetchRecentPosts.js";
-
-/** The digest email the model returns: an email subject + plain email HTML. */
-export interface DigestDraft {
-  subject: string;
-  html: string;
-}
 
 /**
  * Builds a digest directly from the week's posts with NO LLM call. Used when the
@@ -55,7 +50,10 @@ function finalizeDigest(raw: string | null): DigestDraft {
  * the SAME core the rewriter and release extractor use. Throws on refusal or
  * invalid output so the /digest flow surfaces the error in the owner DM.
  */
-export async function buildDigest(posts: RecentPost[], store: CandidateStore): Promise<DigestDraft> {
+export async function buildDigest(
+  posts: RecentPost[],
+  store: CandidateStore,
+): Promise<DigestDraft> {
   const { provider, model } = resolveActiveProvider(store);
   if (provider === ProviderName.Mock) {
     return mockDigest(posts);

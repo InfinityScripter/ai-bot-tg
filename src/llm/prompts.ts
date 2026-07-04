@@ -1,5 +1,5 @@
 import type { FeedItem } from "../types.js";
-import type { RecentPost } from "../blog/fetchRecentPosts.js";
+import type { RecentPost } from "../blog/index.js";
 
 export const REWRITE_SYSTEM_PROMPT = `Ты — редактор технического новостного блога. По заголовку,
 краткому описанию и (если есть) списку картинок напиши ОРИГИНАЛЬНЫЙ пост на

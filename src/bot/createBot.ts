@@ -9,22 +9,11 @@ import { createIngest } from "./createIngest.js";
 import { createDigestFlow } from "./digestFlow.js";
 import { createHandlers } from "./createHandlers.js";
 import { renderHealth, collectHealth } from "../health/index.js";
-import {
-  helpText,
-  menuIntro,
-  menuKeyboard,
-  nativeCommands,
-  parseMenuCallback,
-} from "./menu.js";
+import { helpText, menuIntro, menuKeyboard, nativeCommands, parseMenuCallback } from "./menu.js";
 
+import type { BotOptions } from "./types.js";
 import type { MenuAction } from "../enums.js";
 import type { CandidateStore } from "../store/index.js";
-
-/** Extra wiring the entrypoint supplies (kept optional so callers/tests can omit it). */
-export interface BotOptions {
-  /** Next scheduled cron run, for /health. Defaults to "unknown". */
-  nextRun?: () => Date | null;
-}
 
 /**
  * Creates the bot, locked to the owner, with the command menu (/start, /menu,
