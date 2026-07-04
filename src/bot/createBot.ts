@@ -2,23 +2,23 @@ import type { Context } from "grammy";
 
 import { Bot, HttpError, GrammyError } from "grammy";
 
-import { CONFIG } from "./config.js";
-import { modelMenu } from "./bot/modelMenu.js";
-import { autoRetry } from "./bot/autoRetry.js";
-import { createIngest } from "./bot/createIngest.js";
-import { createDigestFlow } from "./bot/digestFlow.js";
-import { createHandlers } from "./bot/createHandlers.js";
-import { renderHealth, collectHealth } from "./health/index.js";
+import { CONFIG } from "../config.js";
+import { modelMenu } from "./modelMenu.js";
+import { autoRetry } from "./autoRetry.js";
+import { createIngest } from "./createIngest.js";
+import { createDigestFlow } from "./digestFlow.js";
+import { createHandlers } from "./createHandlers.js";
+import { renderHealth, collectHealth } from "../health/index.js";
 import {
   helpText,
   menuIntro,
   menuKeyboard,
   nativeCommands,
   parseMenuCallback,
-} from "./bot/menu.js";
+} from "./menu.js";
 
-import type { MenuAction } from "./enums.js";
-import type { CandidateStore } from "./store/index.js";
+import type { MenuAction } from "../enums.js";
+import type { CandidateStore } from "../store/index.js";
 
 /** Extra wiring the entrypoint supplies (kept optional so callers/tests can omit it). */
 export interface BotOptions {

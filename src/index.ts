@@ -1,5 +1,5 @@
 import { CONFIG } from "./config.js";
-import { createBot } from "./bot.js";
+import { createBot } from "./bot/index.js";
 import { CandidateStore } from "./store/index.js";
 import { NOTIFY_LABELS, COLLECTION_LABELS } from "./labels.js";
 import { runCollection, scheduleDaily, startControlServer } from "./server/index.js";

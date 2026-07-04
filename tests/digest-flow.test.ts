@@ -14,7 +14,7 @@ vi.mock("../src/blog/index.js", async (importOriginal) => {
   };
 });
 
-const { createBot } = await import("../src/bot.js");
+const { createBot } = await import("../src/bot/index.js");
 const { CandidateStore } = await import("../src/store/index.js");
 import type { Update } from "grammy/types";
 
