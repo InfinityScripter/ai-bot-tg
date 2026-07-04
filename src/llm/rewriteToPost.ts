@@ -1,22 +1,15 @@
-import Anthropic from "@anthropic-ai/sdk";
-
 import { CONFIG } from "../config.js";
-import { RewriteSchema } from "../types.js";
+import { ProviderName } from "../enums.js";
 import { normalizeTags } from "../blog/index.js";
 import { truncate, stripHtml } from "../utils.js";
+import { completeChatJson } from "./chatCompletion.js";
+import { resolveActiveProvider } from "./providers.js";
 import { ensureSourceLine } from "./ensureSourceLine.js";
-import { chatUrl, PROVIDERS, resolveActiveProvider } from "./providers.js";
-import { ProviderKind, ProviderName as ProviderNameEnum } from "../enums.js";
-import {
-  REWRITE_SYSTEM_PROMPT as SYSTEM_PROMPT,
-  buildRewriteUserContent as buildUserContent,
-} from "./prompts.js";
+import { RewriteSchema } from "../schemas/rewriteSchema.js";
+import { REWRITE_SYSTEM_PROMPT, buildRewriteUserContent } from "./prompts.js";
 
 import type { CandidateStore } from "../store/index.js";
 import type { FeedItem, RewriteResult } from "../types.js";
-import type { ProviderName, ProviderSpec } from "./providers.js";
-
-const client = new Anthropic({ apiKey: CONFIG.ANTHROPIC_API_KEY });
 
 /**
  * Builds a post from the feed item directly, with NO LLM call. Used when
@@ -54,22 +47,6 @@ function mockRewrite(item: FeedItem): RewriteResult {
   };
 }
 
-/** Extracts the text from the first text content block of a message response. */
-function extractText(response: Anthropic.Message): string {
-  for (const block of response.content) {
-    if (block.type === "text") return block.text;
-  }
-  return "";
-}
-
-/** Pulls the first balanced-looking JSON object out of a text blob. */
-function extractJson(text: string): string | null {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  return text.slice(start, end + 1);
-}
-
 /**
  * Strips any Markdown image whose URL is not in the allow-list. Guards against
  * a model inventing image URLs (or echoing the cover): only images that came
@@ -88,7 +65,7 @@ function sanitizeImages(content: string, allowed: string[]): string {
   );
 }
 
-/** Parses, validates and post-processes a raw JSON string from either provider. */
+/** Parses, validates and post-processes a raw JSON string from any provider. */
 function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
   if (!raw) {
     throw new Error("LLM не вернул JSON в ответе.");
@@ -110,9 +87,9 @@ function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
   // normalizeTags is the safety net for the tag list — it forces 'новости'
   // first, drops anything off the whitelist, maps synonyms, and caps at 4, so
   // the published tags/metaKeywords are always the clean curated set. Applied
-  // here so BOTH providers (Claude and the OpenAI-compatible ones) get it.
+  // here so EVERY provider path gets it.
   const allowed = item.imageUrls.slice(1);
-  // Run source-line self-heal AFTER sanitizeImages so both provider paths land a
+  // Run source-line self-heal AFTER sanitizeImages so all provider paths land a
   // clean canonical `Источник:` line once (the mock path builds its own).
   const content = ensureSourceLine(
     sanitizeImages(parsed.data.content, allowed),
@@ -127,96 +104,24 @@ function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResult {
   };
 }
 
-/** Rewrites via Claude (Anthropic) with the given model. */
-async function rewriteWithAnthropic(item: FeedItem, model: string): Promise<RewriteResult> {
-  const response = await client.messages.create({
-    model,
-    max_tokens: CONFIG.REWRITE_MAX_TOKENS,
-    temperature: CONFIG.REWRITE_TEMPERATURE,
-    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-    messages: [{ role: "user", content: buildUserContent(item) }],
-  });
-
-  // 'refusal' may not be in this SDK version's StopReason union — compare as a
-  // widened string so the guard works regardless of SDK version.
-  if ((response.stop_reason as string) === "refusal") {
-    throw new Error("Claude отказался обрабатывать новость (refusal).");
-  }
-  return finalizeRewrite(extractJson(extractText(response)), item);
-}
-
-interface OpenAIChatResponse {
-  choices?: { message?: { content?: string } }[];
-}
-
-/**
- * Rewrites via any OpenAI-compatible chat-completions endpoint (Gemini, GLM,
- * DeepSeek). No SDK — a single fetch. response_format=json_object nudges the
- * model toward pure JSON, but we still extract+validate defensively. URL/key
- * come from the provider registry; the model is resolved at call time.
- */
-async function rewriteWithOpenAICompat(
-  item: FeedItem,
-  spec: ProviderSpec,
-  model: string,
-): Promise<RewriteResult> {
-  let response: Response;
-  try {
-    response = await fetch(chatUrl(spec), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${spec.apiKey()}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildUserContent(item) },
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: CONFIG.REWRITE_MAX_TOKENS,
-        temperature: CONFIG.REWRITE_TEMPERATURE,
-      }),
-    });
-  } catch (err) {
-    throw new Error(`Не удалось связаться с ${spec.label}: ${String(err)}`);
-  }
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`${spec.label} ответил ${response.status}: ${text.slice(0, 200)}`);
-  }
-
-  const data = (await response.json()) as OpenAIChatResponse;
-  const text = data.choices?.[0]?.message?.content ?? "";
-  return finalizeRewrite(extractJson(text), item);
-}
-
 /**
  * Rewrites a feed item into a unique blog post. Resolves the active provider +
  * model at call time (a stored /model override wins over the env default), then
- * dispatches to Claude / an OpenAI-compatible endpoint / mock. Throws on refusal
- * or invalid output — the caller marks the candidate rewrite_failed and surfaces
- * the error in the Telegram DM, so one failure never aborts the batch.
+ * dispatches through the shared chat core (or the no-LLM mock). Throws on
+ * refusal or invalid output — the caller marks the candidate rewrite_failed and
+ * surfaces the error in the Telegram DM, so one failure never aborts the batch.
  */
 export async function rewriteToPost(item: FeedItem, store: CandidateStore): Promise<RewriteResult> {
   const { provider, model } = resolveActiveProvider(store);
-  return rewriteWith(item, provider, model);
-}
-
-/** Dispatches a rewrite to a specific provider+model. Shared by the rewriter. */
-async function rewriteWith(
-  item: FeedItem,
-  provider: ProviderName,
-  model: string,
-): Promise<RewriteResult> {
-  if (provider === ProviderNameEnum.Mock) {
+  if (provider === ProviderName.Mock) {
     return mockRewrite(item);
   }
-  const spec = PROVIDERS[provider];
-  if (spec.kind === ProviderKind.Anthropic) {
-    return rewriteWithAnthropic(item, model);
-  }
-  return rewriteWithOpenAICompat(item, spec, model);
+  const raw = await completeChatJson(provider, model, {
+    system: REWRITE_SYSTEM_PROMPT,
+    user: buildRewriteUserContent(item),
+    maxTokens: CONFIG.REWRITE_MAX_TOKENS,
+    temperature: CONFIG.REWRITE_TEMPERATURE,
+    refusalLabel: "обрабатывать новость",
+  });
+  return finalizeRewrite(raw, item);
 }
