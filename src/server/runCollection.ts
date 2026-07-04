@@ -1,11 +1,12 @@
 import { CONFIG } from "../config.js";
-import { emitRelevanceDecisions } from "../audit-emit.js";
+import { emitRelevanceDecisions } from "../auditEmit.js";
 import { CandidateKind, RelevanceMode } from "../enums.js";
 import { fetchAllFeeds, parseKeywords, curateForQueue } from "../feeds/index.js";
 import { filterRelevant, VENDOR_MARKERS, RELEASE_MARKERS } from "../llm/index.js";
 
-import type { FeedItem, Candidate } from "../types.js";
+import type { FeedItem } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
+import type { RunSummary, SendRawCard } from "./types.js";
 
 /**
  * True when a feed item looks like an AI-model release announcement: a release
@@ -18,27 +19,6 @@ function isReleaseItem(item: FeedItem): boolean {
   const hasVendor = VENDOR_MARKERS.some((m) => hay.includes(m));
   return hasRelease && hasVendor;
 }
-
-/** Summary of one collection run, returned for logging/visibility. */
-export interface RunSummary {
-  fetched: number;
-  /** Items remaining after the keyword filter (before dedup/cap). */
-  afterFilter: number;
-  /** Items remaining after the topic relevance filter (== afterFilter unless mode='on'). */
-  afterRelevance: number;
-  /** Items the relevance filter actually dropped (only > 0 when mode='on'). */
-  droppedRelevance: number;
-  fresh: number;
-  /** Raw cards successfully DM'd to the owner. */
-  sent: number;
-  /** Cards that failed to DM. */
-  failed: number;
-  /** True if a keyword filter (include/exclude) was active this run. */
-  filterActive: boolean;
-}
-
-/** Sends the owner a "raw" review card for a freshly-collected candidate. */
-type SendRawCard = (candidate: Candidate) => Promise<void>;
 
 // The bot installs @grammyjs/auto-retry, which waits out any 429 retry_after
 // and resubmits — grammY's recommended approach over proactive throttling. So
@@ -127,7 +107,7 @@ export async function runCollection(
   // produces no decisions; the mode here must match the one filterRelevant
   // resolved (both read CONFIG.RELEVANCE_MODE). Fire-and-forget and fail-silent:
   // emitRelevanceDecisions never throws, so a backend outage cannot break the run.
-  const mode = CONFIG.RELEVANCE_MODE as RelevanceMode;
+  const mode = CONFIG.RELEVANCE_MODE;
   if (CONFIG.RELEVANCE_AUDIT && mode !== RelevanceMode.Off && decisions.length > 0) {
     await emitRelevanceDecisions(decisions, mode);
   }

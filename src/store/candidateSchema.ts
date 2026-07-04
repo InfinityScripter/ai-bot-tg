@@ -1,13 +1,14 @@
 /**
  * Persistence-layer constants and row mapping for the candidate store: the
- * SQLite schema, the additive migrations, the settings keys, the raw row shape
- * and the row → domain `Candidate` mapper. Kept beside store.ts so the store
- * class stays focused on behaviour, not DDL.
+ * SQLite schema, the additive migrations, the settings keys and the raw-row →
+ * domain `Candidate` mapper. Kept beside CandidateStore.ts so the store class
+ * stays focused on behaviour, not DDL.
  */
 
 import { CandidateKind, CandidateState } from "../enums.js";
 
 import type { Candidate } from "../types.js";
+import type { CandidateRow } from "./types.js";
 
 export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS candidates (
@@ -59,36 +60,6 @@ export const MODEL_OVERRIDE_KEY = "model_override";
 
 /** The single settings row holding the runtime mock ("без LLM") override. */
 export const MOCK_OVERRIDE_KEY = "mock_override";
-
-/** Runtime override of the rewrite provider/model, stored in `settings`. */
-export interface ModelOverride {
-  provider: string;
-  model: string;
-}
-
-/** Runtime override of mock mode, stored in `settings`. */
-export interface MockOverride {
-  enabled: boolean;
-}
-
-export interface CandidateRow {
-  id: number;
-  dedup_key: string;
-  source_url: string;
-  source_title: string | null;
-  feed_title: string | null;
-  image_url: string | null;
-  snippet: string | null;
-  image_urls: string | null;
-  kind: string;
-  state: string;
-  rewrite_json: string | null;
-  tg_message_id: number | null;
-  blog_post_id: string | null;
-  error: string | null;
-  created_at: string;
-  updated_at: string;
-}
 
 /** Narrows a stored `kind` string to the enum; anything unexpected → News. */
 function toKind(value: string): CandidateKind {

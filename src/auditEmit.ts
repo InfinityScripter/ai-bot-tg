@@ -3,7 +3,7 @@ import { RelevanceMode, RelevanceStage, RelevanceAuditAction } from "./enums.js"
 
 import type { RelevanceDecision } from "./llm/index.js";
 
-// Re-exported so "./audit-emit.js" stays the stable import path for the action
+// Re-exported so "./auditEmit.js" stays the stable import path for the action
 // enum after it moved into enums.ts (preserves the original public API).
 export { RelevanceAuditAction } from "./enums.js";
 
@@ -104,11 +104,11 @@ export async function emitRelevanceDecision(
     });
     if (!response.ok) {
       // eslint-disable-next-line no-console
-      console.warn(`[audit-emit] ingest returned ${response.status} for url=${decision.url}`);
+      console.warn(`[auditEmit] ingest returned ${response.status} for url=${decision.url}`);
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn(`[audit-emit] ingest failed for url=${decision.url}: ${String(err)}`);
+    console.warn(`[auditEmit] ingest failed for url=${decision.url}: ${String(err)}`);
   }
 }
 

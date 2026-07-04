@@ -1,8 +1,8 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
-import { fetchRecentPosts } from "../src/blog/fetchRecentPosts.js";
+import { fetchRecentPosts } from "../src/blog/index.js";
 
-import type { RecentPost } from "../src/blog/fetchRecentPosts.js";
+import type { RecentPost } from "../src/blog/index.js";
 
 /** An ISO string `days` before now. */
 function daysAgo(days: number): string {
@@ -40,7 +40,10 @@ describe("fetchRecentPosts", () => {
       { id: "edge", title: "Six days old", createdAt: daysAgo(6) },
       { id: "old", title: "Ten days old", createdAt: daysAgo(10) },
     ];
-    vi.stubGlobal("fetch", vi.fn(async () => listResponse(posts)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => listResponse(posts)),
+    );
 
     const result = await fetchRecentPosts(7);
     const titles = result.map((p) => p.title);
@@ -53,7 +56,10 @@ describe("fetchRecentPosts", () => {
       { id: "a", title: "One day", createdAt: daysAgo(1) },
       { id: "b", title: "Three days", createdAt: daysAgo(3) },
     ];
-    vi.stubGlobal("fetch", vi.fn(async () => listResponse(posts)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => listResponse(posts)),
+    );
 
     const result = await fetchRecentPosts(2);
     expect(result.map((p) => p.title)).toEqual(["One day"]);
@@ -72,7 +78,10 @@ describe("fetchRecentPosts", () => {
       { id: "good", title: "Good", createdAt: daysAgo(1) },
       { id: "bad", title: "Bad", createdAt: "not-a-date" },
     ];
-    vi.stubGlobal("fetch", vi.fn(async () => listResponse(posts)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => listResponse(posts)),
+    );
 
     const result = await fetchRecentPosts();
     expect(result.map((p) => p.title)).toEqual(["Good"]);

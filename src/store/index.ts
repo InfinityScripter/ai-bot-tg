@@ -1,2 +1,2 @@
 export { CandidateStore } from "./CandidateStore.js";
-export type { MockOverride, ModelOverride } from "./candidateSchema.js";
+export type { CandidateRow, MockOverride, ModelOverride } from "./types.js";

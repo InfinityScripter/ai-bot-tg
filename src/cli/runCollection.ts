@@ -1,4 +1,4 @@
-import { createBot } from "../bot.js";
+import { createBot } from "../bot/index.js";
 import { runCollection } from "../server/index.js";
 import { CandidateStore } from "../store/index.js";
 

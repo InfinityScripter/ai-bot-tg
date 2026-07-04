@@ -1,7 +1,7 @@
-import { ProviderKind } from "../enums.js";
+import { ProviderKind, ProviderName } from "../enums.js";
 import { pingModel, PROVIDERS, providerNames } from "../llm/index.js";
 
-import type { ProviderName, ProviderSpec } from "../llm/index.js";
+import type { ProviderSpec } from "../llm/index.js";
 
 /**
  * Diagnostic CLI (`npm run test:models`): for every provider, reports whether
@@ -16,11 +16,11 @@ import type { ProviderName, ProviderSpec } from "../llm/index.js";
 
 const TIMEOUT_MS = 8_000;
 const KEY_ENV: Partial<Record<ProviderName, string>> = {
-  anthropic: "ANTHROPIC_API_KEY",
-  gemini: "GEMINI_API_KEY",
-  glm: "GLM_API_KEY",
-  deepseek: "DEEPSEEK_API_KEY",
-  openrouter: "OPENROUTER_API_KEY",
+  [ProviderName.Anthropic]: "ANTHROPIC_API_KEY",
+  [ProviderName.Gemini]: "GEMINI_API_KEY",
+  [ProviderName.Glm]: "GLM_API_KEY",
+  [ProviderName.DeepSeek]: "DEEPSEEK_API_KEY",
+  [ProviderName.OpenRouter]: "OPENROUTER_API_KEY",
 };
 
 interface ModelsListResponse {
@@ -59,7 +59,7 @@ async function probeOpenAICompat(spec: ProviderSpec, key: string): Promise<strin
 
 /** Anthropic has no OpenAI-shape /models list; do a key + chat-ping check. */
 async function probeAnthropic(spec: ProviderSpec): Promise<string> {
-  const ping = await pingModel("anthropic" as ProviderName, spec.defaultModel);
+  const ping = await pingModel(ProviderName.Anthropic, spec.defaultModel);
   return ping.ok ? `✅ ключ задан, ping ${spec.defaultModel}: ok` : `❌ ${ping.error}`;
 }
 
@@ -89,6 +89,6 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
-  console.error("[test-models] fatal:", err);
+  console.error("[testModels] fatal:", err);
   process.exit(0);
 });

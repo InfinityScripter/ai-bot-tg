@@ -1,6 +1,6 @@
 import { it, expect, describe } from "vitest";
 
-import { ensureSourceLine } from "../src/llm/ensure-source-line.js";
+import { ensureSourceLine } from "../src/llm/ensureSourceLine.js";
 
 const URL = "https://ex.com/article";
 const FEED = "Example Feed";

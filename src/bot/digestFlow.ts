@@ -138,7 +138,9 @@ export function createDigestFlow(bot: Bot, store: CandidateStore) {
       } else {
         pending = draft;
         await ctx
-          .editMessageText(`⚠️ Не удалось отправить: ${message}`, { reply_markup: digestKeyboard() })
+          .editMessageText(`⚠️ Не удалось отправить: ${message}`, {
+            reply_markup: digestKeyboard(),
+          })
           .catch(logEditError("digest send failure text"));
       }
     }

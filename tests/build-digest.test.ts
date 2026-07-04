@@ -12,7 +12,7 @@ const { buildDigest } = await import("../src/llm/index.js");
 import { ProviderName } from "../src/enums.js";
 import { CandidateStore } from "../src/store/index.js";
 
-import type { RecentPost } from "../src/blog/fetchRecentPosts.js";
+import type { RecentPost } from "../src/blog/index.js";
 
 // An in-memory store with no override → resolveActiveProvider uses the env
 // default (anthropic in setup.ts unless a case stubs REWRITE_PROVIDER).
@@ -20,7 +20,12 @@ const STORE = new CandidateStore(":memory:");
 
 const POSTS: RecentPost[] = [
   { id: "1", title: "GPT-5 вышла", description: "Крупный релиз OpenAI.", createdAt: "2026-06-30" },
-  { id: "2", title: "Claude обновлён", description: "Новая версия Anthropic.", createdAt: "2026-06-29" },
+  {
+    id: "2",
+    title: "Claude обновлён",
+    description: "Новая версия Anthropic.",
+    createdAt: "2026-06-29",
+  },
 ];
 
 const DIGEST = {

@@ -2,7 +2,7 @@
  * Candidate-lifecycle write operations for the store: the atomic state-machine
  * transitions (claim/setState/attach/publish/recover). Free functions taking the
  * better-sqlite3 handle; `CandidateStore` delegates to them so the store class
- * stays a thin facade over the candidate lifecycle (mirrors store-settings.ts).
+ * stays a thin facade over the candidate lifecycle (mirrors storeSettings.ts).
  */
 
 import type Database from "better-sqlite3";

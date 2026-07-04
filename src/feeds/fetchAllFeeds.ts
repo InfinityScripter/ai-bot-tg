@@ -1,5 +1,6 @@
+import { resolveFeeds } from "./defaultFeeds.js";
 import { fetchOgImage } from "./scrapeOgImage.js";
-import { mapFeed, rssParser, resolveFeeds } from "./parseFeed.js";
+import { mapFeed, rssParser } from "./parseFeed.js";
 
 import type { FeedItem } from "../types.js";
 

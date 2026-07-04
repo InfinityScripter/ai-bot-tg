@@ -14,7 +14,7 @@ vi.mock("../src/feeds/index.js", async (importOriginal) => {
   return { ...actual, fetchArticle: (...a: unknown[]) => fetchArticle(...a) };
 });
 
-const { createBot } = await import("../src/bot.js");
+const { createBot } = await import("../src/bot/index.js");
 const { CandidateStore } = await import("../src/store/index.js");
 import type { Update } from "grammy/types";
 

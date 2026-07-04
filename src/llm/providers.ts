@@ -1,31 +1,14 @@
 import { CONFIG } from "../config.js";
 import { ProviderKind, ProviderName } from "../enums.js";
 
+import type { ProviderSpec } from "./types.js";
 import type { CandidateStore } from "../store/index.js";
-
-// Re-exported so existing importers can keep importing these domain enums from
-// "./providers.js" alongside the registry and helpers that use them.
-export { ProviderKind, ProviderName } from "../enums.js";
-
-/** Static + lazy description of one provider. */
-export interface ProviderSpec {
-  /** Human label for buttons and error messages. */
-  label: string;
-  kind: ProviderKind;
-  /** Chat-completions base URL — openai-compat only. */
-  baseUrl?: string;
-  /** Reads the API key from CONFIG lazily (so test re-imports pick up stubs). */
-  apiKey: () => string | undefined;
-  /** Default model when no explicit override is set. */
-  defaultModel: string;
-  /** Static model list used when the live /models lookup is unavailable. */
-  fallbackModels: string[];
-}
 
 /**
  * The provider registry — the single source of truth shared by the rewriter,
  * the /models listing, the ping check, and the /model bot command. URLs and key
- * accessors live here so adding a provider touches exactly one place.
+ * accessors live here so adding a provider touches exactly one place. (Price
+ * hints live in modelPrices.ts; the call mechanics in chatCompletion.ts.)
  */
 export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
   [ProviderName.Anthropic]: {
@@ -91,56 +74,6 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
   },
 };
 
-/**
- * Rough price hints per model, for the /model buttons. Prices are USD per 1M
- * tokens (input/output), approximate and provider-published — meant to flag
- * "free vs paid", not for billing. A model absent here renders without a hint.
- *   tier 'free'  → 🆓
- *   tier 'paid'  → 💲 with the $in/$out note
- */
-export interface ModelPrice {
-  tier: "free" | "paid";
-  /** Short note shown next to the model, e.g. "$0.14/$0.28 за 1M". */
-  note?: string;
-}
-
-export const MODEL_PRICES: Record<string, ModelPrice> = {
-  // GLM (Z.ai) — *-flash are free; others are paid.
-  "glm-4.7-flash": { tier: "free" },
-  "glm-4.5-flash": { tier: "free" },
-  "glm-4.6": { tier: "paid", note: "$0.60/$2.20 за 1M" },
-  "glm-4.7": { tier: "paid", note: "$0.60/$2.20 за 1M" },
-  "glm-4.5-air": { tier: "paid", note: "дёшево" },
-  "glm-5": { tier: "paid", note: "$1.00/… за 1M" },
-  // DeepSeek — both V4 tiers are paid but cheap.
-  "deepseek-v4-flash": { tier: "paid", note: "$0.14/$0.28 за 1M" },
-  "deepseek-v4-pro": { tier: "paid", note: "$1.74/$3.48 за 1M" },
-  "deepseek-chat": { tier: "paid", note: "≈ v4-flash" },
-  // Claude — paid.
-  "claude-haiku-4-5": { tier: "paid", note: "Anthropic, платно" },
-  "claude-sonnet-4-6": { tier: "paid", note: "Anthropic, дороже" },
-  // Gemini — free tier exists but is geo/quota limited from RU.
-  "gemini-2.5-flash": { tier: "free", note: "free-tier (гео-лимит из РФ)" },
-  "gemini-2.5-flash-lite": { tier: "free", note: "free-tier (гео-лимит из РФ)" },
-  // OpenRouter (namespaced ids). Live-tested for clean rewrite output.
-  "deepseek/deepseek-chat": { tier: "paid", note: "OpenRouter $0.20/$0.80 за 1M" },
-  "google/gemini-2.5-flash": { tier: "paid", note: "OpenRouter, дёшево" },
-  "qwen/qwen3-next-80b-a3b-instruct:free": {
-    tier: "free",
-    note: "OpenRouter $0 (нестабильно, 429)",
-  },
-  // Mock — no cost.
-  mock: { tier: "free" },
-};
-
-/** A short price/tier label for a model, or '' if unknown. */
-export function modelPriceLabel(model: string): string {
-  const p = MODEL_PRICES[model];
-  if (!p) return "";
-  if (p.tier === "free") return p.note ? `🆓 ${p.note}` : "🆓";
-  return p.note ? `💲 ${p.note}` : "💲";
-}
-
 /** All provider names, in registry order. */
 export function providerNames(): ProviderName[] {
   return Object.keys(PROVIDERS) as ProviderName[];
@@ -180,7 +113,7 @@ export function chatUrl(spec: ProviderSpec): string {
 /** The env-configured default provider (mock if forced), with no override. */
 function envDefaultProvider(): ProviderName {
   if (CONFIG.REWRITE_MOCK) return ProviderName.Mock;
-  return CONFIG.REWRITE_PROVIDER as ProviderName;
+  return CONFIG.REWRITE_PROVIDER;
 }
 
 /**

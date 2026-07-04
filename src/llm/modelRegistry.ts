@@ -1,10 +1,8 @@
-import { ProviderKind } from "../enums.js";
 import { PROVIDERS } from "./providers.js";
+import { ProviderKind } from "../enums.js";
 
-import type { ProviderName, ProviderSpec } from "./providers.js";
-
-/** Result of a model ping probe. */
-export type PingResult = { ok: true } | { ok: false; error: string };
+import type { ProviderName } from "../enums.js";
+import type { PingResult, ProviderSpec } from "./types.js";
 
 interface ModelsListResponse {
   data?: { id?: string }[];

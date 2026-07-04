@@ -5,14 +5,9 @@ import { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevanceMarkers.js";
 
 import type { FeedItem } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
+import type { ClassifyFn, FilterOptions, RelevanceDecision } from "./types.js";
 
-export { classifyRelevance } from "./classifyRelevance.js";
-// Re-exported so "./filterRelevant.js" stays the stable import path for the markers,
-// the classifier, and the RelevanceMode enum after the module split.
-export { RelevanceMode, RelevanceStage } from "../enums.js";
-export { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevanceMarkers.js";
-
-/** Lowercased title + first ~300 chars of snippet — the text every stage reads. */
+/** Lowercased title + snippet — the text every stage reads. */
 function haystack(item: FeedItem): string {
   return `${item.title} ${item.snippet}`.toLowerCase();
 }
@@ -21,31 +16,6 @@ function haystack(item: FeedItem): string {
 function hasMarker(item: FeedItem, markers: string[]): boolean {
   const hay = haystack(item);
   return markers.some((m) => hay.includes(m));
-}
-
-/** What the filter decided for one item (used for the shadow-mode audit log). */
-export interface RelevanceDecision {
-  url: string;
-  title: string;
-  /** What WOULD happen: true = keep, false = drop. */
-  kept: boolean;
-  /** Which path decided it. */
-  stage: RelevanceStage;
-  /** The LLM score (0–4), or null when no LLM call was made/usable. */
-  score: number | null;
-  reason: string;
-}
-
-/** Injected classifier — defaults to the real classifyRelevance; tests pass a stub. */
-type ClassifyFn = (item: FeedItem, store: CandidateStore) => Promise<number | null>;
-
-export interface FilterOptions {
-  /** Inject a fake classifier so tests never hit the network. */
-  classify?: ClassifyFn;
-  /** Override the env RELEVANCE_MODE. */
-  mode?: RelevanceMode;
-  /** Override the env RELEVANCE_THRESHOLD (keep if score >= threshold). */
-  threshold?: number;
 }
 
 /** Computes the decision for one item (stages A then B). Pure aside from classify. */
@@ -128,7 +98,7 @@ export async function filterRelevant(
   store: CandidateStore,
   opts: FilterOptions = {},
 ): Promise<{ kept: FeedItem[]; decisions: RelevanceDecision[] }> {
-  const mode = opts.mode ?? (CONFIG.RELEVANCE_MODE as RelevanceMode);
+  const mode = opts.mode ?? CONFIG.RELEVANCE_MODE;
   const threshold = opts.threshold ?? CONFIG.RELEVANCE_THRESHOLD;
   const classify = opts.classify ?? classifyRelevance;
 

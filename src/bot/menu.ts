@@ -3,17 +3,7 @@ import { InlineKeyboard } from "grammy";
 import { MenuAction } from "../enums.js";
 import { MENU_CALLBACK } from "../consts.js";
 
-/** One bot command: its slash name, the human title, and a one-line description. */
-export interface CommandSpec {
-  /** Slash command without the leading "/". */
-  command: string;
-  /** Short title for the inline button (omitted → no button, /help-only). */
-  buttonTitle?: string;
-  /** The MenuAction a button tap maps to (omitted → no button). */
-  action?: MenuAction;
-  /** One-line description for /help and the native Telegram command list. */
-  description: string;
-}
+import type { CommandSpec } from "./types.js";
 
 /**
  * The single source of truth for the bot's commands. /help renders from it, the

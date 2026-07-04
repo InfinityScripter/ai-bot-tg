@@ -2,7 +2,8 @@ import { CallbackKind, ProviderKind } from "../enums.js";
 import { MODEL_CALLBACK, MODEL_CALLBACK_SEP } from "../consts.js";
 import { PROVIDERS, providerNames, isProviderName, modelPriceLabel } from "../llm/index.js";
 
-import type { ProviderName } from "../llm/index.js";
+import type { ProviderName } from "../enums.js";
+import type { ButtonSpec, ParsedCallback } from "./types.js";
 
 /**
  * Pure helpers for the /model command — callback-data encode/decode, button
@@ -17,12 +18,6 @@ import type { ProviderName } from "../llm/index.js";
  *   mmock_on / mmock_off     turn the runtime mock (без LLM) override on/off
  */
 
-/** A button: a label and the callback data it carries. */
-export interface ButtonSpec {
-  text: string;
-  data: string;
-}
-
 /** Encodes the provider-pick callback data. */
 export function encodeProvider(provider: ProviderName): string {
   return `${MODEL_CALLBACK.PROVIDER}${provider}`;
@@ -35,15 +30,6 @@ export function encodeProvider(provider: ProviderName): string {
 export function encodeModel(provider: ProviderName, model: string): string {
   return `${MODEL_CALLBACK.MODEL}${provider}${MODEL_CALLBACK_SEP}${model}`;
 }
-
-export type ParsedCallback =
-  | { kind: CallbackKind.Provider; provider: ProviderName }
-  | { kind: CallbackKind.Model; provider: ProviderName; model: string }
-  | { kind: CallbackKind.Reset }
-  | { kind: CallbackKind.Back }
-  | { kind: CallbackKind.MockOn }
-  | { kind: CallbackKind.MockOff }
-  | null;
 
 /** Decodes /model callback data, or null if it isn't a /model callback. */
 export function parseCallback(data: string): ParsedCallback {

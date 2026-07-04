@@ -5,7 +5,7 @@ import {
   relevanceActionFor,
   emitRelevanceDecision,
   emitRelevanceDecisions,
-} from "../src/audit-emit.js";
+} from "../src/auditEmit.js";
 
 import type { RelevanceDecision } from "../src/llm/index.js";
 

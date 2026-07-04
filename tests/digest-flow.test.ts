@@ -14,13 +14,13 @@ vi.mock("../src/blog/index.js", async (importOriginal) => {
   };
 });
 
-const { createBot } = await import("../src/bot.js");
+const { createBot } = await import("../src/bot/index.js");
 const { CandidateStore } = await import("../src/store/index.js");
 import type { Update } from "grammy/types";
 
 import { CandidateState } from "../src/enums.js";
 
-import type { RecentPost } from "../src/blog/fetchRecentPosts.js";
+import type { RecentPost } from "../src/blog/index.js";
 
 const OWNER_ID = 123456789; // matches setup.ts OWNER_TELEGRAM_ID
 

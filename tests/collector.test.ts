@@ -26,7 +26,7 @@ vi.mock("../src/llm/filterRelevant.js", () => ({
 // Keep the collector offline: stub the audit emitter so it never hits the
 // network. We still assert it's invoked with the decisions when present.
 const emitRelevanceDecisions = vi.fn(async () => {});
-vi.mock("../src/audit-emit.js", () => ({
+vi.mock("../src/auditEmit.js", () => ({
   emitRelevanceDecisions: (...a: unknown[]) =>
     emitRelevanceDecisions(...(a as Parameters<typeof emitRelevanceDecisions>)),
 }));
@@ -234,7 +234,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     const filter = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions }));
     vi.doMock("../src/llm/filterRelevant.js", () => ({ filterRelevant: filter }));
     const emit = vi.fn(async (_decisions: unknown, _mode: string) => {});
-    vi.doMock("../src/audit-emit.js", () => ({ emitRelevanceDecisions: emit }));
+    vi.doMock("../src/auditEmit.js", () => ({ emitRelevanceDecisions: emit }));
     // Default RELEVANCE_MODE in the test env is 'shadow' (not 'off'), so emit fires.
     const { runCollection: run } = await import("../src/server/runCollection.js");
 
@@ -248,7 +248,7 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     expect(emit.mock.calls[0]![1]).toBe("shadow");
     store.close();
     vi.doUnmock("../src/llm/filterRelevant.js");
-    vi.doUnmock("../src/audit-emit.js");
+    vi.doUnmock("../src/auditEmit.js");
     vi.resetModules();
   });
 

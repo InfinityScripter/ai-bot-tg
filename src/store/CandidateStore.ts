@@ -8,12 +8,8 @@ import * as mutations from "./candidateMutations.js";
 import { CandidateKind, CandidateState } from "../enums.js";
 import { SCHEMA, mapRow, MIGRATIONS } from "./candidateSchema.js";
 
+import type { CandidateRow, MockOverride, ModelOverride } from "./types.js";
 import type { FeedItem, Candidate, RewriteResult, ReleaseResult } from "../types.js";
-import type { CandidateRow, MockOverride, ModelOverride } from "./candidateSchema.js";
-
-// Re-exported so existing importers can keep importing these settings shapes
-// from "./CandidateStore.js" alongside the CandidateStore that produces them.
-export type { MockOverride, ModelOverride } from "./candidateSchema.js";
 
 /**
  * The candidate store. One SQLite file doubles as the dedup ledger and the
@@ -253,8 +249,8 @@ export class CandidateStore {
     }
   }
 
-  // --- settings: runtime model + mock override (delegated to store-settings) -
-  // Thin delegations to the free functions in store-settings.ts; the public
+  // --- settings: runtime model + mock override (delegated to storeSettings) -
+  // Thin delegations to the free functions in storeSettings.ts; the public
   // method set/signatures are unchanged so existing callers keep working.
 
   /** Low-level setter for a settings key. Exposed mainly for tests. */
