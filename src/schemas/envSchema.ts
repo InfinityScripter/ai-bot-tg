@@ -58,6 +58,23 @@ export const EnvSchema = z
     REWRITE_TEMPERATURE: z.coerce.number().min(0).max(1).default(0.6),
     /** Max output tokens for the rewrite. 4096 fits a full structured post. */
     REWRITE_MAX_TOKENS: z.coerce.number().int().positive().default(4096),
+    /**
+     * Hard per-call wall-clock timeout (ms) for EVERY LLM request — rewrite,
+     * relevance classify, digest, release extraction. Without it the Anthropic
+     * SDK / fetch would wait out their ~10-min default on a stalled or degraded
+     * upstream, and since collection classifies items serially, one hung call
+     * makes /fetch look frozen. 30s is generous for a single completion; a
+     * relevance classify that hits it fails open (keep), so the cap never
+     * swallows the queue.
+     */
+    LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+    /**
+     * Max automatic retries per LLM call. The Anthropic SDK defaults to 2, which
+     * multiplies the stall on retriable errors (429/5xx/connection). Capped at 1
+     * so a degraded provider can't turn one collection run into many minutes of
+     * back-off. Set 0 to disable retries entirely.
+     */
+    LLM_MAX_RETRIES: z.coerce.number().int().min(0).default(1),
     /** Google AI Studio API key — required when REWRITE_PROVIDER=gemini. */
     GEMINI_API_KEY: z.string().optional(),
     /** Gemini model. 2.0-flash is retired; 2.5-flash is the current free-tier floor. */
