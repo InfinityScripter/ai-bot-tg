@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { InputKind } from "../enums.js";
+import { fetchHtml } from "./fetchHtml.js";
+import { collectImageUrls } from "./collectImages.js";
+import { OG_IMAGE_RE, OG_IMAGE_RE_ALT } from "./scrapeOgImage.js";
 import { truncate, stripHtml, canonicalizeUrl } from "../utils.js";
-import { IMG_SRC_RE, OG_IMAGE_RE, OG_IMAGE_RE_ALT } from "./scrapeOgImage.js";
 
 import type { FeedItem } from "../types.js";
 
@@ -104,27 +106,6 @@ function extractCover(html: string): string | null {
 }
 
 /**
- * Collects every usable image: the og cover first, then every body <img src>,
- * absolute http(s) only, de-duplicated and order-preserved — same shape feeds
- * produce for `imageUrls`.
- */
-function extractImages(html: string, cover: string | null): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  const push = (url: string | null | undefined) => {
-    if (!url) return;
-    const u = url.trim();
-    if (!/^https?:\/\//i.test(u)) return;
-    if (seen.has(u)) return;
-    seen.add(u);
-    out.push(u);
-  };
-  push(cover);
-  for (const m of html.matchAll(IMG_SRC_RE)) push(m[1]);
-  return out;
-}
-
-/**
  * Strips the page chrome and non-content elements, then reduces the HTML to a
  * plain-text body. Not a full readability engine — drops the obvious noise
  * (scripts, styles, nav/header/footer/aside) and lets stripHtml flatten the
@@ -141,68 +122,18 @@ export function extractBody(html: string): string {
 }
 
 /**
- * Reads a response body as text, stopping once `maxBytes` have been consumed so
- * a huge page never buffers unbounded. Falls back to a plain (already-bounded by
- * the caller's slice) `res.text()` when the body isn't a readable stream.
- */
-export async function readCapped(res: Response, maxBytes: number): Promise<string> {
-  const reader = res.body?.getReader?.();
-  if (!reader) return (await res.text()).slice(0, maxBytes);
-  const decoder = new TextDecoder("utf-8");
-  let out = "";
-  let read = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      read += value.byteLength;
-      out += decoder.decode(value, { stream: true });
-      if (read >= maxBytes) break;
-    }
-  } finally {
-    // Stop the transfer; we have enough. Ignore any cancel error.
-    await reader.cancel().catch(() => {});
-  }
-  out += decoder.decode();
-  return out;
-}
-
-/**
  * Scrapes an article page into a FeedItem so a manually-submitted URL flows
  * through the exact same rewrite → preview → publish pipeline as a collected
- * RSS item. Single GET, 8s timeout, reads only the first 256KB. Throws a
- * readable Error on a network failure, a non-HTML/non-ok response, or a page
- * with no usable title — the caller surfaces it in the Telegram DM.
+ * RSS item. Single GET, 8s timeout, reads only the first 256KB (the <head>
+ * meta tags and most body text live up top). Throws a readable Error on a
+ * network failure, a non-HTML/non-ok response, or a page with no usable
+ * title — the caller surfaces it in the Telegram DM.
  */
 export async function fetchArticle(url: string): Promise<FeedItem> {
   const dedupKey = canonicalizeUrl(url);
   if (!dedupKey) throw new Error("Не удалось разобрать ссылку.");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8_000);
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        "User-Agent": "blog-newsbot/1.0",
-      },
-    });
-  } catch (err) {
-    throw new Error(`Не удалось загрузить страницу: ${String(err)}`);
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!res.ok) throw new Error(`Страница ответила ${res.status}.`);
-  const type = res.headers.get("content-type") ?? "";
-  if (type && !type.includes("html")) throw new Error("Ссылка ведёт не на HTML-страницу.");
-
-  // The <head> meta tags and most body text live up top; cap the read so a huge
-  // (or maliciously large) page can't buffer unbounded into memory. Read the
-  // body stream incrementally and stop once we have enough.
-  const html = await readCapped(res, 256_000);
+  const html = await fetchHtml(url, 256_000);
 
   const title = extractTitle(html);
   if (!title) throw new Error("Не удалось извлечь заголовок статьи.");
@@ -227,7 +158,7 @@ export async function fetchArticle(url: string): Promise<FeedItem> {
     snippet,
     feedTitle: host || "Ссылка",
     imageUrl: cover,
-    imageUrls: extractImages(html, cover),
+    imageUrls: collectImageUrls(cover, html),
     publishedAt: null,
   };
 }

@@ -1,7 +1,7 @@
 import Parser from "rss-parser";
 
 import { CONFIG } from "../config.js";
-import { IMG_SRC_RE } from "./scrapeOgImage.js";
+import { collectImageUrls } from "./collectImages.js";
 import { truncate, stripHtml, dedupKeyFor } from "../utils.js";
 
 import type { FeedItem } from "../types.js";
@@ -89,32 +89,6 @@ function extractImageUrl(item: Parser.Item & RssItem): string | null {
   return null;
 }
 
-/**
- * Collects every usable image URL for an item: the cover first, then every
- * <img> embedded in the article body (<content:encoded>), de-duplicated and
- * order-preserved. Only absolute http(s) URLs are kept — relative/data URIs
- * are dropped so what we hand downstream is always a real, fetchable cover.
- */
-function extractImageUrls(item: Parser.Item & RssItem, cover: string | null): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  const push = (url: string | null | undefined) => {
-    if (!url) return;
-    const u = url.trim();
-    if (!/^https?:\/\//i.test(u)) return; // skip relative / data: URIs
-    if (seen.has(u)) return;
-    seen.add(u);
-    out.push(u);
-  };
-
-  push(cover);
-  const body = item.contentEncoded || item.content || "";
-  for (const m of body.matchAll(IMG_SRC_RE)) {
-    push(m[1]);
-  }
-  return out;
-}
-
 /** Maps a single parsed feed into normalized FeedItems, dropping unusable ones. */
 export function mapFeed(feed: Parser.Output<RssItem>): FeedItem[] {
   const feedTitle = feed.title ?? "";
@@ -144,7 +118,8 @@ export function mapFeed(feed: Parser.Output<RssItem>): FeedItem[] {
       feedTitle,
       imageUrl,
       publishedAt,
-      imageUrls: extractImageUrls(item, imageUrl),
+      // Cover first, then every <img> in the article body (<content:encoded>).
+      imageUrls: collectImageUrls(imageUrl, item.contentEncoded || item.content || ""),
     });
   }
   return items;
