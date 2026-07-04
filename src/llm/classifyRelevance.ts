@@ -7,7 +7,11 @@ import { RELEVANCE_SYSTEM_PROMPT, buildRelevanceUserContent } from "./prompts.js
 import type { FeedItem } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
 
-/** The classify reply is a tiny JSON score — cap the output tokens accordingly. */
+/**
+ * The classify reply is a tiny JSON score — cap the output tokens accordingly
+ * (both provider paths). A reply truncated by the cap fails open: parse → null
+ * → keep, so the cap can never swallow the queue.
+ */
 const CLASSIFY_MAX_TOKENS = 120;
 
 /** Clamps a parsed score to the valid 0..4 range, or null if not a finite number. */

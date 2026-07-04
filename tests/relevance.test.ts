@@ -193,3 +193,63 @@ describe("classifyRelevance — mock provider", () => {
     store.close();
   });
 });
+
+describe("classifyRelevance — openai-compat wire format", () => {
+  it("sends a 120-token cap and NO temperature, and parses the score", async () => {
+    vi.stubEnv("REWRITE_PROVIDER", "glm");
+    vi.stubEnv("GLM_API_KEY", "test-key");
+    vi.resetModules();
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: '{"score":3}' } }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const storeMod = await import("../src/store/index.js");
+    const store = new storeMod.CandidateStore(":memory:");
+    const mod = await import("../src/llm/index.js");
+    const score = await mod.classifyRelevance(item(), store);
+
+    expect(score).toBe(3);
+    const call = fetchMock.mock.calls[0] as [string, { body: string }];
+    const sent = JSON.parse(call[1].body) as {
+      max_tokens?: number;
+      temperature?: number;
+      response_format?: { type: string };
+    };
+    // The classify reply is a tiny JSON score: the request carries an explicit
+    // 120-token output cap and no temperature. A truncated reply fails open
+    // (parse → null → keep), so the cap can never swallow the queue.
+    expect(sent.max_tokens).toBe(120);
+    expect(sent.temperature).toBeUndefined();
+    expect(sent.response_format).toEqual({ type: "json_object" });
+
+    store.close();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("fails open (null) when the provider responds non-OK", async () => {
+    vi.stubEnv("REWRITE_PROVIDER", "glm");
+    vi.stubEnv("GLM_API_KEY", "test-key");
+    vi.resetModules();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => "boom" }),
+    );
+
+    const storeMod = await import("../src/store/index.js");
+    const store = new storeMod.CandidateStore(":memory:");
+    const mod = await import("../src/llm/index.js");
+
+    await expect(mod.classifyRelevance(item(), store)).resolves.toBeNull();
+
+    store.close();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+});
