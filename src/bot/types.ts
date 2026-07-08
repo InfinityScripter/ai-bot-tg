@@ -43,9 +43,25 @@ export type ParsedCallback =
  * A loaded, ready-to-publish extraction for a candidate, discriminated by kind.
  * `title` is the label shown in the "✅ Опубликовано: …" confirmation; `publish`
  * runs the kind-appropriate POST (/api/post/new for news, /api/changelog/new for
- * release) and returns the created id.
+ * release) and returns the created id. `crossPost` describes how to render the
+ * channel announcement once the published id is known (news → /post/{id},
+ * release → /changelog); `null`/`undefined` fields degrade gracefully.
  */
 export interface LoadedExtraction {
   title: string;
   publish: () => Promise<string>;
+  crossPost: CrossPostContent;
+}
+
+/**
+ * The kind-specific pieces needed to build a channel announcement for a
+ * published item. `linkFor(id)` turns the freshly-created id into a public URL
+ * (the id/slug isn't known until publish resolves). `description` and `coverUrl`
+ * are optional — the announcement renders without them.
+ */
+export interface CrossPostContent {
+  title: string;
+  description?: string | null;
+  coverUrl?: string | null;
+  linkFor: (publishedId: string) => string;
 }

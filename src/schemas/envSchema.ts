@@ -21,6 +21,21 @@ export const EnvSchema = z
     /** Required only when REWRITE_PROVIDER=anthropic (the default). */
     ANTHROPIC_API_KEY: z.string().optional(),
     BLOG_API_URL: z.string().url("BLOG_API_URL must be a URL"),
+    /**
+     * Public site (frontend) base URL, used to build the "Читать" link when
+     * cross-posting a published post/release to the Telegram channel. OPTIONAL:
+     * defaults to the well-known prod site so an existing deploy keeps working;
+     * override for staging/local. Distinct from BLOG_API_URL (the backend API).
+     */
+    BLOG_PUBLIC_URL: z.string().url("BLOG_PUBLIC_URL must be a URL").default("https://aifirst.us.com"),
+    /**
+     * Target channel/chat for auto cross-posting a post on publish (a @username
+     * or a numeric -100… id). OPTIONAL: when unset, cross-posting is DISABLED and
+     * the bot publishes to the blog exactly as before — so deploying this code
+     * without the var added never changes behavior. The bot must be an admin of
+     * the channel with post permission for the send to succeed.
+     */
+    TELEGRAM_CHANNEL_ID: z.string().min(1).optional(),
     BOT_API_TOKEN: z.string().min(8, "BOT_API_TOKEN must be a long shared secret"),
     /** Port for the localhost-only admin control server. */
     CONTROL_PORT: z.coerce.number().int().positive().default(8455),

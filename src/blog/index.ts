@@ -3,6 +3,7 @@ export { fetchRecentPosts } from "./fetchRecentPosts.js";
 export type { RecentPost, DigestSendResult } from "./types.js";
 export { toReleaseBody, publishRelease } from "./publishRelease.js";
 export { PublishError, publishToBlog, toBlogPostBody } from "./publishPost.js";
+export { crossPostPublished, crossPostToChannel, buildCrossPostCaption } from "./crossPost.js";
 
 export {
   NEWS_TAG,

@@ -5,12 +5,12 @@ import { escapeMarkdown } from "../utils.js";
 import { CARD_CALLBACK } from "../consts.js";
 import { CandidateState } from "../enums.js";
 import { parseCallback } from "./modelPick.js";
-import { PublishError } from "../blog/index.js";
 import { enrichItemBody } from "../feeds/index.js";
 import { handleModelCallback } from "./modelMenu.js";
 import { ackSilently, logEditError } from "./edit.js";
 import { rawKeyboard, previewKeyboard } from "./keyboards.js";
 import { isModelNotFound, renderRewriting } from "./render.js";
+import { PublishError, crossPostPublished } from "../blog/index.js";
 import { runExtraction, loadExtraction } from "./candidateActions.js";
 import { PROVIDERS, hasActiveOverride, resolveActiveProvider } from "../llm/index.js";
 
@@ -121,6 +121,10 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
             parse_mode: "Markdown",
           })
           .catch(logEditError("publish success text"));
+        // Distribution: announce the live post in the channel. Runs AFTER the
+        // post is confirmed live and is fully isolated — a channel-send failure
+        // is surfaced as a soft DM warning and never fails the publish.
+        await crossPostPublished(bot.api, ctx, extracted, postId);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // If the POST may have reached the blog (5xx / unreadable 201 / timeout),
