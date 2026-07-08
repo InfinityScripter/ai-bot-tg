@@ -98,4 +98,29 @@ describe("crossPostToChannel", () => {
     expect(sendMessage).toHaveBeenCalledOnce();
     expect(sendPhoto).not.toHaveBeenCalled();
   });
+
+  it("skips sendPhoto for a relative/host-empty coverUrl (would 400) and sends text", async () => {
+    vi.stubEnv("TELEGRAM_CHANNEL_ID", "@sh0ny");
+    const { crossPostToChannel } = await import("../src/blog/crossPost.js");
+    // A relative path like "/assets/x.jpg" has an empty host → invalid photo URL.
+    const sent = await crossPostToChannel(api, { ...NEWS, coverUrl: "/assets/x.jpg" }, "9");
+    expect(sent).toBe(true);
+    expect(sendPhoto).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledOnce();
+  });
+
+  it("falls back to text when sendPhoto fails (non-image URL / 404) — never drops the post", async () => {
+    vi.stubEnv("TELEGRAM_CHANNEL_ID", "@sh0ny");
+    sendPhoto.mockRejectedValueOnce(new Error("400: Bad Request: wrong file identifier"));
+    const { crossPostToChannel } = await import("../src/blog/crossPost.js");
+    // Shaped like a URL (passes the check) but not a real image → sendPhoto 400s.
+    const sent = await crossPostToChannel(
+      api,
+      { ...NEWS, coverUrl: "https://habr.com/share/publication/1/abc/" },
+      "5",
+    );
+    expect(sent).toBe(true);
+    expect(sendPhoto).toHaveBeenCalledOnce();
+    expect(sendMessage).toHaveBeenCalledOnce();
+  });
 });

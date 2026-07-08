@@ -42,10 +42,33 @@ export function buildCrossPostCaption(content: CrossPostContent, url: string): s
 }
 
 /**
+ * True only for an absolute http(s) URL that Telegram can fetch as a photo. A
+ * relative path (host-empty), a non-http scheme, or a garbage value must NOT be
+ * handed to sendPhoto — it 400s ("invalid file HTTP URL"). Note this can't tell
+ * an image URL from a non-image page (e.g. a habr /share/ link): those still
+ * pass the shape check but 400 at fetch time, which the send-with-fallback below
+ * handles by degrading to a text message rather than dropping the post.
+ */
+function isUsableImageUrl(value: string | null | undefined): value is string {
+  if (!value) return false;
+  try {
+    const u = new URL(value);
+    return (u.protocol === "http:" || u.protocol === "https:") && u.host.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Sends the channel announcement for a freshly-published item. Returns true when
  * a message was sent, false when cross-posting is disabled (no channel configured).
- * Throws only on an actual send failure so the caller can surface it as a soft
- * warning in the owner DM — it must NOT be called in a way that fails publish.
+ * Throws only when BOTH the photo and the text fallback fail, so the caller can
+ * surface it as a soft warning — it must NOT be called in a way that fails publish.
+ *
+ * A usable cover → a photo card (richer, higher engagement). If sendPhoto fails
+ * (a non-image URL like a habr /share/ page, a 404, a host block), we fall back
+ * to a plain text message so a bad cover never costs us the announcement. No
+ * usable cover → straight to text and let Telegram render the link og-preview.
  */
 export async function crossPostToChannel(
   api: Api,
@@ -58,16 +81,19 @@ export async function crossPostToChannel(
   const url = content.linkFor(publishedId);
   const caption = buildCrossPostCaption(content, url);
 
-  // With a cover: a photo card (richer, higher engagement). Without: a plain
-  // text message and let Telegram render the link's og-preview.
-  if (content.coverUrl) {
-    await api.sendPhoto(channel, content.coverUrl, {
-      caption,
-      parse_mode: "Markdown",
-    });
-  } else {
-    await api.sendMessage(channel, caption, { parse_mode: "Markdown" });
+  if (isUsableImageUrl(content.coverUrl)) {
+    try {
+      await api.sendPhoto(channel, content.coverUrl, { caption, parse_mode: "Markdown" });
+      return true;
+    } catch {
+      // Cover URL was shaped like a URL but Telegram couldn't use it as a photo
+      // (non-image page, 404, blocked host) — degrade to text rather than drop.
+      await api.sendMessage(channel, caption, { parse_mode: "Markdown" });
+      return true;
+    }
   }
+
+  await api.sendMessage(channel, caption, { parse_mode: "Markdown" });
   return true;
 }
 
