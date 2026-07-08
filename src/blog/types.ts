@@ -15,9 +15,20 @@ export interface RecentPost {
   id?: string;
   title: string;
   description?: string;
+  /** Cover image URL, if the post has one; used by the channel backfill. */
+  coverUrl?: string | null;
   /** ISO creation time; used to filter to the last N days. */
   createdAt: string;
   tags?: string[];
+  /** Publish status ('published' | 'draft'); the backfill posts published only. */
+  publish?: string;
+}
+
+/** The paginated list response shape from /api/post/list?page&limit. */
+export interface PostListPage {
+  posts: RecentPost[];
+  total: number;
+  hasMore: boolean;
 }
 
 /** The digest-send result read from the backend's ok() envelope. */
