@@ -20,7 +20,9 @@ const TRACKING_PARAMS = [
  * use non-URL guids).
  */
 export function canonicalizeUrl(raw: string): string {
-  const value = (raw ?? "").trim();
+  // Defensive: rss-parser sometimes yields a non-string link/guid (object/array).
+  // Coerce anything non-string to "" so one malformed item can't crash the run.
+  const value = (typeof raw === "string" ? raw : "").trim();
   if (!value) return "";
 
   try {
@@ -55,7 +57,7 @@ export function dedupKeyFor(guid: string | undefined, link: string | undefined):
 
 /** Strips HTML tags and collapses whitespace — defensive for feeds that put markup in snippets. */
 export function stripHtml(input: string): string {
-  return (input ?? "")
+  return (typeof input === "string" ? input : "")
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();

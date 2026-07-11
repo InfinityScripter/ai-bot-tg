@@ -229,7 +229,7 @@ npm start            # бот без перезапуска
 npm run fetch        # разовый сбор из шелла и выход (без polling)
 npm run test:models  # какие провайдеры доступны с этого хоста (гео/сеть)
 
-npm test             # vitest (310 тестов; сеть замокана, ключи не нужны)
+npm test             # vitest (371 тест; сеть замокана, ключи не нужны)
 npm run ts           # tsc --noEmit
 npm run lint         # eslint (airbnb-base + perfectionist, max-lines=200)
 npm run fm:fix       # prettier

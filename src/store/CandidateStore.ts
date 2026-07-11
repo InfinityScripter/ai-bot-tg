@@ -49,7 +49,8 @@ export class CandidateStore {
    * leaves a row in 'rewriting'/'publishing' — a state none of the bot's button
    * guards accept, so the card would be permanently dead. On startup we move
    * those back: 'rewriting' → 'collected' (re-offer the 🔄 card), 'publishing'
-   * → 'pending_review' (re-offer publish). Idempotent; runs once per process.
+   * → 'needs_verification' (POST may have reached the blog — warn before re-publish).
+   * Idempotent; runs once per process.
    */
   private recoverInFlight(): void {
     mutations.recoverInFlight(this.db);

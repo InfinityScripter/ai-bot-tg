@@ -125,9 +125,11 @@ export const EnvSchema = z
      *   'off'    — no filtering (legacy behavior).
      *   'shadow' — run + LOG every decision, but DON'T drop (calibration window).
      *   'on'     — actually drop off-topic items.
-     * Default 'shadow' so deploying this code never silently drops the queue.
+     * Default 'on' — the shadow calibration window is over; off-topic items
+     * (fashion/celebrity/sport) reaching the live "AI blog" feed are the single
+     * biggest credibility leak, and Stage B fails open so the queue can't empty.
      */
-    RELEVANCE_MODE: z.nativeEnum(RelevanceMode).default(RelevanceMode.Shadow),
+    RELEVANCE_MODE: z.nativeEnum(RelevanceMode).default(RelevanceMode.On),
     /** Keep an item when its LLM relevance score is >= this (0–4). Default 2. */
     RELEVANCE_THRESHOLD: z.coerce.number().int().min(0).max(4).default(2),
     /** Optional model for the classify call; default = the active rewrite model. */

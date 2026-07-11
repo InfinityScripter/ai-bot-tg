@@ -12,10 +12,23 @@ function haystack(item: FeedItem): string {
   return `${item.title} ${item.snippet}`.toLowerCase();
 }
 
-/** True if title+snippet contains any of the (already-lowercased) markers. */
+// A "word character" for boundary purposes: Cyrillic + Latin + digit. JS `\b` is
+// ASCII-only so it can't see Cyrillic; this class works for both scripts.
+const WORD_CHAR = "a-zа-яё0-9";
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * True if title+snippet contains a marker at a WORD START. A letter/digit
+ * immediately before the marker blocks the match, so a marker never fires inside
+ * a larger word: "спорт" ⊄ "экспорт"/"транспорт", "ai" ⊄ "email", "мода" ⊄
+ * "модальность". Any continuation AFTER is allowed, so prefix stems still match
+ * their inflections: "нейросет" ⊂ "нейросети", "футбол" ⊂ "футболу".
+ */
 function hasMarker(item: FeedItem, markers: string[]): boolean {
   const hay = haystack(item);
-  return markers.some((m) => hay.includes(m));
+  return markers.some((m) =>
+    new RegExp(`(?<![${WORD_CHAR}])${escapeRe(m)}`).test(hay),
+  );
 }
 
 /** Computes the decision for one item (stages A then B). Pure aside from classify. */

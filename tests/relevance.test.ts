@@ -60,6 +60,22 @@ describe("filterRelevant — stage A blocklist (mode on)", () => {
       true,
     );
   });
+
+  it("does NOT blocklist AI text where an off-topic marker is a substring of a real word", async () => {
+    // Real false-positives seen on the live feed with substring matching:
+    // "спорт" ⊂ "экспорт/транспорт", "футбол" in a metaphor, "мода" ⊂ "модальность".
+    const classify = vi.fn().mockResolvedValue(4);
+    const items = [
+      item({ url: "https://ex/1", title: "ИИ снова закрывается", snippet: "заблокировать экспорт GLM и Qwen" }),
+      item({ url: "https://ex/2", title: "Инженерная эволюция платформы", snippet: "данных, транспорта, оркестрации" }),
+      item({ url: "https://ex/3", title: "Мультимодальность в LLM", snippet: "работа с модальностью изображений" }),
+    ];
+    const { decisions } = await filterRelevant(items, STORE, {
+      classify,
+      mode: RelevanceMode.On,
+    });
+    expect(decisions.some((d) => d.stage === RelevanceStage.Blocklist)).toBe(false);
+  });
 });
 
 describe("filterRelevant — stage A fast-accept (mode on)", () => {
@@ -75,6 +91,24 @@ describe("filterRelevant — stage A fast-accept (mode on)", () => {
     expect(classify).not.toHaveBeenCalled();
     expect(decisions[0]!.kept).toBe(true);
     expect(decisions[0]!.stage).toBe(RelevanceStage.Accept);
+  });
+
+  it("does NOT fast-accept on a spurious short-Latin substring (email/html), routes to LLM", async () => {
+    const classify = vi.fn().mockResolvedValue(0);
+    const items = [
+      item({ url: "https://ex/email", title: "Email-рассылка о новом фасоне пальто" }),
+      item({ url: "https://ex/html", title: "Вёрстка карточки товара в HTML" }),
+    ];
+    const { decisions } = await filterRelevant(items, STORE, {
+      classify,
+      mode: RelevanceMode.On,
+    });
+
+    // "email" contains "ai", "html" contains "ml" — neither is an AI signal.
+    // Both must miss the marker fast-path and reach the LLM classify.
+    expect(decisions[0]!.stage).not.toBe(RelevanceStage.Accept);
+    expect(decisions[1]!.stage).not.toBe(RelevanceStage.Accept);
+    expect(classify).toHaveBeenCalledTimes(2);
   });
 });
 

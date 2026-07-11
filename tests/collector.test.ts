@@ -235,7 +235,10 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     vi.doMock("../src/llm/filterRelevant.js", () => ({ filterRelevant: filter }));
     const emit = vi.fn(async (_decisions: unknown, _mode: string) => {});
     vi.doMock("../src/auditEmit.js", () => ({ emitRelevanceDecisions: emit }));
-    // Default RELEVANCE_MODE in the test env is 'shadow' (not 'off'), so emit fires.
+    // Pin the mode so the test documents its own precondition: any non-'off' mode
+    // with non-empty decisions forwards to the emitter (CONFIG reads env on import).
+    const prevMode = process.env.RELEVANCE_MODE;
+    process.env.RELEVANCE_MODE = "shadow";
     const { runCollection: run } = await import("../src/server/runCollection.js");
 
     const { CandidateStore: Store } = await import("../src/store/index.js");
@@ -247,6 +250,8 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     expect(emit.mock.calls[0]![0]).toEqual(decisions);
     expect(emit.mock.calls[0]![1]).toBe("shadow");
     store.close();
+    if (prevMode === undefined) delete process.env.RELEVANCE_MODE;
+    else process.env.RELEVANCE_MODE = prevMode;
     vi.doUnmock("../src/llm/filterRelevant.js");
     vi.doUnmock("../src/auditEmit.js");
     vi.resetModules();

@@ -37,6 +37,17 @@ describe("canonicalizeUrl", () => {
   it("returns empty for empty input", () => {
     expect(canonicalizeUrl("")).toBe("");
   });
+
+  it("does not throw on a non-string input (some feeds put objects in link/guid)", () => {
+    // rss-parser can hand back a non-string link/guid; canonicalizeUrl must
+    // degrade to "" rather than crash the whole collection run.
+    const asAny = canonicalizeUrl as unknown as (v: unknown) => string;
+    expect(asAny({ href: "https://x/y" })).toBe("");
+    expect(asAny(["https://x/y"])).toBe("");
+    expect(asAny(42)).toBe("");
+    expect(asAny(null)).toBe("");
+    expect(asAny(undefined)).toBe("");
+  });
 });
 
 describe("dedupKeyFor", () => {
