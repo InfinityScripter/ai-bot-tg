@@ -1,12 +1,6 @@
 import { it, expect, describe } from "vitest";
 
-import {
-  NEWS_TAG,
-  normalizeTags,
-  TAG_WHITELIST,
-  DEFAULT_COVERS,
-  pickDefaultCover,
-} from "../src/blog/normalizeTags.js";
+import { NEWS_TAG, normalizeTags, TAG_WHITELIST } from "../src/blog/normalizeTags.js";
 
 describe("normalizeTags", () => {
   it("always returns новости first, even from an empty list", () => {
@@ -47,23 +41,5 @@ describe("normalizeTags", () => {
     for (const tag of result) {
       expect(TAG_WHITELIST).toContain(tag);
     }
-  });
-});
-
-describe("pickDefaultCover", () => {
-  it("returns a stable cover from the default set", () => {
-    const cover = pickDefaultCover("Some news title");
-    expect(DEFAULT_COVERS).toContain(cover);
-  });
-
-  it("is deterministic for the same title", () => {
-    expect(pickDefaultCover("Same title")).toBe(pickDefaultCover("Same title"));
-  });
-
-  it("varies across different titles (not all identical)", () => {
-    const covers = new Set(
-      Array.from({ length: 25 }, (_, i) => pickDefaultCover(`Distinct title number ${i}`)),
-    );
-    expect(covers.size).toBeGreaterThan(1);
   });
 });

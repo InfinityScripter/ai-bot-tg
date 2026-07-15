@@ -3,7 +3,7 @@ import { CandidateKind } from "../enums.js";
 import { renderPreview } from "./render.js";
 import { renderReleasePreview } from "./renderRelease.js";
 import { rewriteToPost, extractRelease } from "../llm/index.js";
-import { publishToBlog, publishRelease } from "../blog/index.js";
+import { publishToBlog, publishRelease, pickDefaultCover } from "../blog/index.js";
 
 import type { CandidateStore } from "../store/index.js";
 import type { LoadedExtraction, CrossPostContent } from "./types.js";
@@ -47,15 +47,21 @@ export function loadExtraction(
   }
   const rewrite = store.getRewrite(candidate);
   if (!rewrite) return null;
+  // Decide the cover ONCE for both the blog post and the channel card: the feed
+  // image if the source had one, else a themed default ROTATED by the candidate
+  // id, so covers cycle through the topical pool instead of repeating. Keyed on
+  // the stable id (not the title), so a publish retry and the cross-post agree
+  // on the same image and an imageless post still gets a fitting photo card.
+  const cover = candidate.imageUrl ?? pickDefaultCover(rewrite.tags, candidate.id);
   const crossPost: CrossPostContent = {
     title: rewrite.title,
     description: rewrite.description,
-    coverUrl: candidate.imageUrl,
+    coverUrl: cover,
     linkFor: (postId) => `${PUBLIC_BASE}/post/${postId}`,
   };
   return {
     title: rewrite.title,
-    publish: () => publishToBlog(rewrite, candidate.imageUrl, candidate.dedupKey),
+    publish: () => publishToBlog(rewrite, cover, candidate.dedupKey),
     crossPost,
   };
 }

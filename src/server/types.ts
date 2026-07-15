@@ -15,7 +15,17 @@ export interface RunSummary {
   fetched: number;
   /** Items remaining after the keyword filter (before dedup/cap). */
   afterFilter: number;
-  /** Items remaining after the topic relevance filter (== afterFilter unless mode='on'). */
+  /**
+   * New (not-yet-seen) items after dedup, i.e. what the relevance classifier
+   * actually runs on. Dedup happens BEFORE relevance so already-seen items don't
+   * burn an LLM call every run.
+   */
+  afterDedup: number;
+  /**
+   * Items kept by the relevance filter, from the freshest slice it classified
+   * (that slice is capped per run so a huge backlog can't fire hundreds of LLM
+   * calls). Equals the classified count unless mode='on' dropped some.
+   */
   afterRelevance: number;
   /** Items the relevance filter actually dropped (only > 0 when mode='on'). */
   droppedRelevance: number;

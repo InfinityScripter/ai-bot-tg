@@ -125,7 +125,8 @@ src/
 │   ├── publishRelease.ts  # POST /api/changelog/new
 │   ├── sendDigest.ts      # POST /api/newsletter/send
 │   ├── fetchRecentPosts.ts# GET /api/post/list для дайджеста
-│   ├── normalizeTags.ts   # белый список тегов + дефолтные обложки
+│   ├── normalizeTags.ts   # белый список тегов
+│   ├── defaultCovers.ts   # дефолтные обложки по темам (подбор по тегам поста)
 │   └── types.ts
 ├── health/           # /health и проверка моделей
 │   ├── collectHealth.ts   # отчёт готовности: процесс, крон, LLM, блог, очередь
