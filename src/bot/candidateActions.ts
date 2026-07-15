@@ -3,7 +3,7 @@ import { CandidateKind } from "../enums.js";
 import { renderPreview } from "./render.js";
 import { renderReleasePreview } from "./renderRelease.js";
 import { rewriteToPost, extractRelease } from "../llm/index.js";
-import { publishToBlog, publishRelease } from "../blog/index.js";
+import { publishToBlog, publishRelease, pickDefaultCover } from "../blog/index.js";
 
 import type { CandidateStore } from "../store/index.js";
 import type { LoadedExtraction, CrossPostContent } from "./types.js";
@@ -50,7 +50,10 @@ export function loadExtraction(
   const crossPost: CrossPostContent = {
     title: rewrite.title,
     description: rewrite.description,
-    coverUrl: candidate.imageUrl,
+    // Feed image if the source had one, else the same themed-by-meaning default
+    // the blog cover uses — so an imageless post still gets a fitting photo card
+    // in the channel instead of a bare text announcement.
+    coverUrl: candidate.imageUrl ?? pickDefaultCover(rewrite.title, rewrite.tags),
     linkFor: (postId) => `${PUBLIC_BASE}/post/${postId}`,
   };
   return {

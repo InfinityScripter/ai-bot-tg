@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import http from "node:http";
 import { it, vi, expect, afterAll, describe, beforeAll } from "vitest";
 
-import { DEFAULT_COVERS } from "../src/blog/normalizeTags.js";
+import { DEFAULT_COVERS } from "../src/blog/defaultCovers.js";
 
 import type { RewriteResult } from "../src/types.js";
 

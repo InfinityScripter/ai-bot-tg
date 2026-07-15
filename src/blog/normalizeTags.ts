@@ -1,5 +1,6 @@
 /**
- * Curated tag whitelist + cover fallbacks for bot-published posts.
+ * Curated tag whitelist for bot-published posts. (Default cover fallbacks moved
+ * to ./defaultCovers.ts — the tags computed here also drive that topical pick.)
  *
  * The blog is AI/tech-focused and files items under a fixed set of news
  * rubrics. Claude is prompted to choose only whitelisted tags, but free-form
@@ -91,37 +92,4 @@ export function normalizeTags(rawTags: string[]): string[] {
   }
 
   return out;
-}
-
-/**
- * Stable remote cover URLs used when a feed item has no image and no og:image.
- * Neutral tech/AI photography from the Unsplash CDN (images.unsplash.com) —
- * direct file URLs (not the redirecting source.unsplash.com), so they are
- * stable and hot-linkable. A themed default keeps bot posts from all falling
- * back to the backend's generic placeholder (the "all mock images" problem).
- */
-export const DEFAULT_COVERS: readonly string[] = [
-  "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80", // circuit board
-  "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=1200&q=80", // AI neural abstract
-  "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80", // matrix code
-  "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80", // cyber security
-  "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80", // global network
-];
-
-/**
- * Deterministically picks a default cover from `DEFAULT_COVERS` by hashing the
- * post title, so the same post always gets the same cover (idempotent retries)
- * while different posts vary (no "everything looks identical" feel). Uses a
- * small FNV-1a-style hash — no crypto dependency needed.
- */
-export function pickDefaultCover(title: string): string {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < title.length; i += 1) {
-    hash ^= title.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  const index = Math.abs(hash) % DEFAULT_COVERS.length;
-  // DEFAULT_COVERS is a non-empty literal, so the indexed access is defined;
-  // the fallback satisfies noUncheckedIndexedAccess without ever triggering.
-  return DEFAULT_COVERS[index] ?? DEFAULT_COVERS[0] ?? "";
 }
