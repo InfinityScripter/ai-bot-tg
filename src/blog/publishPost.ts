@@ -1,6 +1,6 @@
 import { CONFIG } from "../config.js";
 import { PublishStatus } from "../enums.js";
-import { pickDefaultCover } from "./defaultCovers.js";
+import { coverSeed, pickDefaultCover } from "./defaultCovers.js";
 
 import type { BlogPostBody, RewriteResult } from "../types.js";
 
@@ -25,10 +25,11 @@ export class PublishError extends Error {
  * Builds the blog post body from a rewrite result and an optional cover image
  * URL (the feed image or scraped og:image). We ALWAYS send a coverUrl now: when
  * the source had no image we pick a themed default BY MEANING — the post's tags
- * choose a topical image pool (AI / security / dev / …) and the title picks one
- * inside it — so bot posts never fall back to the backend's generic placeholder
- * (the "all bot posts look mock" problem) and no longer all look identical.
- * metaKeywords reuse the already-normalized tags, so they're the clean set too.
+ * choose a topical image pool (AI / security / dev / …) — so bot posts never
+ * fall back to the backend's generic placeholder (the "all bot posts look mock"
+ * problem). The production publish path passes the id-rotated cover in via
+ * `coverUrl`; the title-seeded default here is only a fallback for a caller that
+ * has no cover at all. metaKeywords reuse the normalized tags — the clean set.
  */
 export function toBlogPostBody(rewrite: RewriteResult, coverUrl?: string | null): BlogPostBody {
   return {
@@ -39,7 +40,7 @@ export function toBlogPostBody(rewrite: RewriteResult, coverUrl?: string | null)
     metaTitle: rewrite.metaTitle,
     metaDescription: rewrite.metaDescription,
     metaKeywords: rewrite.tags,
-    coverUrl: coverUrl || pickDefaultCover(rewrite.title, rewrite.tags),
+    coverUrl: coverUrl || pickDefaultCover(rewrite.tags, coverSeed(rewrite.title)),
     publish: PublishStatus.Published,
   };
 }

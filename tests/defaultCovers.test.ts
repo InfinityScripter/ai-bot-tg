@@ -1,11 +1,10 @@
 import { it, expect, describe } from "vitest";
 
-import { DEFAULT_COVERS, pickDefaultCover } from "../src/blog/defaultCovers.js";
+import { coverSeed, DEFAULT_COVERS, pickDefaultCover } from "../src/blog/defaultCovers.js";
 
-// A spread of distinct titles so the title-hash lands on several pool slots.
-const titles = Array.from({ length: 60 }, (_, i) => `Distinct headline number ${i}`);
-const coversFor = (tags: string[]): Set<string> =>
-  new Set(titles.map((title) => pickDefaultCover(title, tags)));
+// Covers returned for a topic across seq 0..n-1 (one cover per candidate id).
+const coversForSeqRange = (tags: string[], n: number): Set<string> =>
+  new Set(Array.from({ length: n }, (_, seq) => pickDefaultCover(tags, seq)));
 
 describe("DEFAULT_COVERS", () => {
   it("is a large pool (well beyond the old 5)", () => {
@@ -25,45 +24,75 @@ describe("DEFAULT_COVERS", () => {
 
 describe("pickDefaultCover", () => {
   it("always returns a known cover from the pool", () => {
-    expect(DEFAULT_COVERS).toContain(pickDefaultCover("Some title", ["новости", "ai"]));
-    expect(DEFAULT_COVERS).toContain(pickDefaultCover("Some title"));
+    expect(DEFAULT_COVERS).toContain(pickDefaultCover(["новости", "ai"], 1));
+    expect(DEFAULT_COVERS).toContain(pickDefaultCover([], 1));
   });
 
-  it("is deterministic for the same title and tags", () => {
-    expect(pickDefaultCover("Same", ["новости", "ai"])).toBe(
-      pickDefaultCover("Same", ["новости", "ai"]),
-    );
+  it("is deterministic for the same tags and seq", () => {
+    expect(pickDefaultCover(["ai"], 7)).toBe(pickDefaultCover(["ai"], 7));
   });
 
-  it("varies across titles within a topic (not all identical)", () => {
-    expect(coversFor(["ai"]).size).toBeGreaterThan(1);
+  it("gives consecutive posts different covers (no adjacent repeat)", () => {
+    for (let seq = 0; seq < 20; seq += 1) {
+      expect(pickDefaultCover(["ai"], seq)).not.toBe(pickDefaultCover(["ai"], seq + 1));
+    }
+  });
+
+  it("rotates through the whole topic pool before any repeat (unique covers)", () => {
+    const first = pickDefaultCover(["ai"], 0);
+    const seen = [first];
+    let period = -1;
+    for (let seq = 1; seq < 500; seq += 1) {
+      const cover = pickDefaultCover(["ai"], seq);
+      if (cover === first) {
+        period = seq;
+        break;
+      }
+      seen.push(cover);
+    }
+    // The pool cycles back to the first cover only after a full rotation, and
+    // every cover within that rotation is unique — no early repeats.
+    expect(period).toBeGreaterThan(10);
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(seen.length).toBe(period);
   });
 
   it("picks by meaning: AI and security posts draw from disjoint pools", () => {
-    const ai = coversFor(["ai"]);
-    const security = coversFor(["безопасность"]);
+    const ai = coversForSeqRange(["ai"], 80);
+    const security = coversForSeqRange(["безопасность"], 80);
     for (const cover of ai) expect(security.has(cover)).toBe(false);
   });
 
   it("maps related tags to the AI pool (llm / агенты / нейросети → ai)", () => {
-    const ai = coversFor(["ai"]);
     for (const tag of ["llm", "агенты", "нейросети"]) {
-      for (const title of titles) expect(ai.has(pickDefaultCover(title, [tag]))).toBe(true);
+      for (let seq = 0; seq < 40; seq += 1) {
+        expect(pickDefaultCover([tag], seq)).toBe(pickDefaultCover(["ai"], seq));
+      }
     }
   });
 
   it("uses the first topical tag and skips новости", () => {
-    // новости has no pool; ai wins over the later безопасность.
-    expect(pickDefaultCover("x", ["новости", "ai", "безопасность"])).toBe(
-      pickDefaultCover("x", ["ai"]),
-    );
+    expect(pickDefaultCover(["новости", "ai", "безопасность"], 3)).toBe(pickDefaultCover(["ai"], 3));
   });
 
   it("falls back to the universal pool for non-topical tags", () => {
-    const universal = coversFor(["политика"]);
+    const universal = coversForSeqRange(["политика"], 40);
     // новости-only and no-tags resolve to the same universal pool.
-    expect(coversFor(["новости"])).toEqual(universal);
-    expect(coversFor([])).toEqual(universal);
+    expect(coversForSeqRange(["новости"], 40)).toEqual(universal);
+    expect(coversForSeqRange([], 40)).toEqual(universal);
     for (const cover of universal) expect(DEFAULT_COVERS).toContain(cover);
+  });
+
+  it("tolerates negative, fractional and NaN seq", () => {
+    for (const seq of [-1, -100, 3.7, Number.NaN]) {
+      expect(DEFAULT_COVERS).toContain(pickDefaultCover(["ai"], seq));
+    }
+  });
+});
+
+describe("coverSeed", () => {
+  it("is deterministic and non-negative", () => {
+    expect(coverSeed("Some title")).toBe(coverSeed("Some title"));
+    expect(coverSeed("Some title")).toBeGreaterThanOrEqual(0);
   });
 });

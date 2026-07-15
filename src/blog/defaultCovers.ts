@@ -7,11 +7,14 @@
  *
  * The old fix was ONE flat list of 5 images picked by a title hash: with only 5
  * slots the same few covers repeated constantly and never matched the subject.
- * This module fixes both complaints:
+ * This module fixes all of that:
  *   - LARGE, de-duplicated pool (dozens of images) → far fewer repeats;
  *   - picked BY MEANING: the post's normalized tags choose a topical pool
  *     (AI / security / dev / gadgets / science / business / tech), so an AI post
  *     gets AI imagery and a security post gets security imagery;
+ *   - ROTATED, not hashed: the picker indexes the pool by the candidate's
+ *     monotonic id, so consecutive posts of a topic get DIFFERENT covers and the
+ *     pool cycles fully before any repeat (a title hash collided too often);
  *   - a neutral UNIVERSAL pool is the fallback when no topical tag matches
  *     (e.g. политика / культура / a bare новости post).
  *
@@ -207,23 +210,43 @@ export const DEFAULT_COVERS: readonly string[] = [
 ];
 
 /**
- * Picks a default cover BY MEANING: the post's tags select a topical pool, then
- * a title hash selects one image inside it. Deterministic for a given
- * (title, tags) pair — idempotent publish retries get the same cover — while
- * different titles/topics vary, so posts no longer all look identical. The first
+ * Resolves the topical cover pool for a post from its normalized tags. The first
  * tag with a topical mapping wins (`новости` and unmapped tags are skipped);
- * with no topical tag it falls back to the neutral universal pool. Uses a small
- * FNV-1a hash — no crypto dependency needed.
+ * with no topical tag it falls back to the neutral universal pool.
  */
-export function pickDefaultCover(title: string, tags: readonly string[] = []): string {
+function poolFor(tags: readonly string[]): readonly string[] {
   const poolId = tags.map((tag) => TAG_TO_POOL[tag.toLowerCase().trim()]).find(Boolean) ?? "universal";
-  const pool = COVER_POOLS[poolId] ?? UNIVERSAL_COVERS;
+  return COVER_POOLS[poolId] ?? UNIVERSAL_COVERS;
+}
+
+/**
+ * FNV-1a hash of a string → a non-negative seed. Lets a caller that only has a
+ * title (no stable sequence number) still get a deterministic rotation index.
+ */
+export function coverSeed(text: string): number {
   let hash = 0x811c9dc5;
-  for (let i = 0; i < title.length; i += 1) {
-    hash ^= title.charCodeAt(i);
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
     hash = Math.imul(hash, 0x01000193);
   }
-  const index = Math.abs(hash) % pool.length;
+  return Math.abs(hash);
+}
+
+/**
+ * Picks a default cover BY MEANING and ROTATED so posts don't repeat: the tags
+ * select a topical pool, then `seq` indexes into it modulo the pool size. Pass
+ * the candidate's monotonic id as `seq` — consecutive posts of the same topic
+ * then get DIFFERENT covers and the whole pool cycles before any repeat. (The
+ * previous title-hash pick collided ~1/poolSize on every pair, so covers came up
+ * repeated far too often, which is exactly what the owner saw.) Deterministic
+ * for a given (tags, seq): idempotent publish retries and the blog-vs-channel
+ * cover always agree.
+ */
+export function pickDefaultCover(tags: readonly string[], seq: number): string {
+  const pool = poolFor(tags);
+  const size = pool.length;
+  // Safe non-negative modulo; tolerate a fractional/NaN/negative seq defensively.
+  const index = size > 0 ? ((Math.trunc(seq) % size) + size) % size : 0;
   // pool is a non-empty literal, so the indexed access is defined; the fallback
   // satisfies noUncheckedIndexedAccess without ever triggering.
   return pool[index] ?? pool[0] ?? "";
