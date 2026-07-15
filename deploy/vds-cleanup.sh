@@ -33,7 +33,16 @@
 #   --journal-cap   also pin journald to SystemMaxUse=200M so it can't regrow
 #                   (writes a drop-in and restarts systemd-journald)
 #   --days N        age threshold for rotated logs / tmp (default 14 / 10)
+#   --alert         threshold mode (what vds-disk-alert.timer runs daily):
+#                   exit quietly while / is under --threshold; at/over it run
+#                   the normal cleanup, then DM the owner through the bot's
+#                   own Telegram token from .env.production (DM needs --apply)
+#   --threshold N   disk use% that arms --alert (default 85)
 #   -h, --help      show this help and exit
+#
+# PREVENTION (one-time): deploy/vds-cleanup-install.sh installs a weekly
+# cleanup timer, a daily --alert check and the journald size cap, so the box
+# keeps itself clean unattended. Details: deploy/CLEANUP.md.
 # ---------------------------------------------------------------------------
 
 # NOT `set -e`: cleanup must be fail-soft — we handle failures per-step so one
@@ -44,6 +53,8 @@ APPLY=0
 JOURNAL_CAP=0
 LOG_DAYS=14
 TMP_DAYS=10
+ALERT=0
+THRESHOLD=85
 
 BOT_DIR=/opt/blog-app/ai-bot-tg
 BACKEND_DIR=/opt/blog-app/backend
@@ -53,11 +64,15 @@ while [ $# -gt 0 ]; do
     --apply)        APPLY=1 ;;
     --journal-cap)  JOURNAL_CAP=1 ;;
     --days)         shift; LOG_DAYS="${1:?--days needs a number}"; TMP_DAYS="$1" ;;
-    -h|--help)      sed -n '2,45p' "$0"; exit 0 ;;
+    --alert)        ALERT=1 ;;
+    --threshold)    shift; THRESHOLD="${1:?--threshold needs a number}" ;;
+    -h|--help)      sed -n '2,/^# ------/p' "$0" 2>/dev/null \
+                      || echo "[cleanup] (piped run — help is the header of deploy/vds-cleanup.sh)"; exit 0 ;;
     *) echo "[cleanup] unknown flag: $1 (try --help)" >&2; exit 2 ;;
   esac
   shift
 done
+case "$THRESHOLD" in *[!0-9]*|'') echo "[cleanup] --threshold must be an integer percent" >&2; exit 2 ;; esac
 
 say(){ printf '[cleanup] %s\n' "$*"; }
 hr(){  printf '[cleanup] --- %s\n' "$*"; }
@@ -89,8 +104,39 @@ safe_rm_rf(){
 }
 
 df_root(){ df -h / | awk 'NR==1||NR==2'; }
+disk_pct(){ df -P / | awk 'NR==2 { gsub(/%/, "", $5); print $5 }'; }
+
+# DM the owner through the bot's own Telegram token — no new secrets on the
+# box; both vars are read straight from the bot's .env.production (values are
+# unquoted there, see DEPLOY.md §3). Fail-soft: a missing file/var or a network
+# hiccup only logs — the cleanup itself has already happened by this point.
+notify_owner(){
+  local text="$1" env_file="$BOT_DIR/.env.production" token chat_id
+  [ -r "$env_file" ] || { say "(no $env_file — skipping Telegram notify)"; return 0; }
+  token="$(grep -m1 '^TELEGRAM_BOT_TOKEN=' "$env_file" | cut -d= -f2- | tr -d '\r')"
+  chat_id="$(grep -m1 '^OWNER_TELEGRAM_ID=' "$env_file" | cut -d= -f2- | tr -d '\r')"
+  if [ -z "$token" ] || [ -z "$chat_id" ]; then
+    say "(TELEGRAM_BOT_TOKEN / OWNER_TELEGRAM_ID not in env — skipping notify)"; return 0
+  fi
+  curl -fsS -m 15 -o /dev/null -X POST "https://api.telegram.org/bot${token}/sendMessage" \
+      --data-urlencode "chat_id=${chat_id}" --data-urlencode "text=${text}" \
+    && say "owner notified in Telegram" \
+    || say "(ignored failure: Telegram notify)"
+}
 
 # ---------------------------------------------------------------------------
+# Alert-mode gate (what vds-disk-alert.timer runs daily): below the threshold
+# this must stay a one-line no-op in the journal; at/over it we fall through
+# to the normal cleanup and report the outcome to the owner at the very end.
+USE_BEFORE="$(disk_pct)"
+if [ "$ALERT" -eq 1 ]; then
+  if [ "${USE_BEFORE:-0}" -lt "$THRESHOLD" ]; then
+    say "alert: / at ${USE_BEFORE}% < threshold ${THRESHOLD}% — nothing to do"
+    exit 0
+  fi
+  say "alert: / at ${USE_BEFORE}% >= threshold ${THRESHOLD}% — running full cleanup"
+fi
+
 say "mode: $([ "$APPLY" -eq 1 ] && echo APPLY\ \(will\ delete\) || echo DRY-RUN\ \(read-only\))"
 say "protected and never touched: *.env.production, $BOT_DIR/data (SQLite ledger), Postgres, runtime node_modules"
 [ -d "$BOT_DIR" ] || say "WARNING: $BOT_DIR not found — is this the right box? Doing generic cleanup only."
@@ -218,4 +264,16 @@ if [ "$APPLY" -eq 0 ]; then
   say "DRY-RUN complete. Re-run with --apply to reclaim the space above."
 else
   say "Cleanup complete. Nothing stateful was touched (.env / SQLite ledger / Postgres intact)."
+fi
+
+# --- Alert-mode outcome → owner DM ------------------------------------------
+# Only with --apply (a dry alert run just prints the report above). The texts
+# are owner-facing → Russian, like every user-visible bot string (CLAUDE.md).
+if [ "$ALERT" -eq 1 ] && [ "$APPLY" -eq 1 ]; then
+  USE_AFTER="$(disk_pct)"
+  if [ "${USE_AFTER:-100}" -lt "$THRESHOLD" ]; then
+    notify_owner "⚠️ VDS: диск был заполнен на ${USE_BEFORE}% — автоочистка вернула ${USE_AFTER}%. Делать ничего не нужно."
+  else
+    notify_owner "🔴 VDS: диск заполнен на ${USE_AFTER}% (было ${USE_BEFORE}%, порог ${THRESHOLD}%) — автоочистка не помогла, нужно смотреть вручную: ssh blog 'bash ${BOT_DIR}/deploy/vds-cleanup.sh' покажет, что именно съело место (см. deploy/CLEANUP.md)."
+  fi
 fi

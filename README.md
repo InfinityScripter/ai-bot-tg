@@ -257,5 +257,9 @@ npm run fm:fix       # prettier
 - **[deploy/RUNBOOK.md](deploy/RUNBOOK.md)** — воспроизводимый рецепт: CI-секреты,
   первый ручной деплой, проверка, откат. Читать перед настройкой CI заново.
 - **[deploy/DEPLOY.md](deploy/DEPLOY.md)** — точные env-ключи, systemd-юнит, справка CI.
+- **[deploy/CLEANUP.md](deploy/CLEANUP.md)** — забитый диск VDS: безопасная очистка
+  (`vds-cleanup.sh`, dry-run по умолчанию) и профилактика «поставил и забыл»
+  (`vds-cleanup-install.sh`: еженедельная авточистка + ежедневная проверка диска
+  с алертом владельцу в Telegram + лимит журнала systemd).
 
 Историческая документация решений — в `docs/` (планы и спеки фич по датам).

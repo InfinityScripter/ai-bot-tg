@@ -245,6 +245,16 @@ ssh blog 'bash -s' < deploy/vds-cleanup.sh             # diagnose (read-only)
 ssh blog 'bash -s -- --apply' < deploy/vds-cleanup.sh  # reclaim space
 ```
 
+One-time prevention, so the box cleans itself instead of waiting for a human:
+
+```bash
+ssh blog 'bash /opt/blog-app/ai-bot-tg/deploy/vds-cleanup-install.sh --apply'
+```
+
+installs a weekly cleanup timer, a daily disk check that auto-cleans and DMs
+the owner in Telegram (via the bot's own token) when usage crosses 85%, and a
+journald size cap. Details in [CLEANUP.md](CLEANUP.md).
+
 ---
 
 ## Bot Telegram commands (owner-only, @blog_talalaev_bot)

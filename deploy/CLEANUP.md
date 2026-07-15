@@ -42,6 +42,8 @@ deployed; `-- --apply` passes the flag to the piped script.
 
 Optional: `--journal-cap` writes a `journald` drop-in pinning `SystemMaxUse=200M`
 so the journal can't regrow. `--days N` changes the log/tmp age threshold.
+`--alert` / `--threshold N` power the automated daily check — see
+[Prevention](#prevention--the-box-cleans-itself-one-time-install) below.
 
 ## What it will NEVER touch (hard invariants)
 
@@ -58,6 +60,52 @@ These are load-bearing state; the script is written so it cannot reach them:
 The two `rm -rf` steps go through an allow-list guard (`safe_rm_rf`) that refuses
 any path outside `*/.npm/_cacache` and `/var/lib/systemd/coredump`, so a future
 edit can't fat-finger a protected path into a delete.
+
+## Prevention — the box cleans itself (one-time install)
+
+Running the script by hand fixes today's 92%; the installer makes sure there is
+no next time. `deploy/vds-cleanup-install.sh` wires everything into systemd —
+plain units, **no extra packages** — and is dry-run by default, `--apply` to
+install, idempotent to re-run:
+
+```bash
+# preview exactly what would be written/enabled (read-only):
+ssh blog 'bash -s' < deploy/vds-cleanup-install.sh
+
+# install (run AFTER this branch is deployed, so the units' ExecStart target exists):
+ssh blog 'bash /opt/blog-app/ai-bot-tg/deploy/vds-cleanup-install.sh --apply'
+
+# remove everything it installed:
+ssh blog 'bash -s -- --apply --uninstall' < deploy/vds-cleanup-install.sh
+```
+
+What it installs:
+
+| Piece | Runs | Does |
+|---|---|---|
+| journald cap (`/etc/systemd/journald.conf.d/00-size-cap.conf`) | always on | pins the journal to `SystemMaxUse=200M`, so the #1 grower can never regrow |
+| `vds-cleanup.timer` | weekly, Sun ~05:30 | full `vds-cleanup.sh --apply` (everything in the table above) |
+| `vds-disk-alert.timer` | daily, ~06:15 | `vds-cleanup.sh --alert --apply --threshold 85`: under 85% → silent no-op; at/over → full cleanup **plus a Telegram DM to the owner** — ⚠️ «почистил до N%», or 🔴 «не помогло — смотреть руками» |
+
+The DM goes through the bot's own `TELEGRAM_BOT_TOKEN` + `OWNER_TELEGRAM_ID`,
+read from `/opt/blog-app/ai-bot-tg/.env.production` — no new secrets anywhere,
+and a missing env file just skips the DM (fail-soft, like everything else here).
+
+Operating it:
+
+```bash
+# are the timers armed, when do they fire next:
+ssh blog 'systemctl list-timers vds-cleanup.timer vds-disk-alert.timer --no-pager'
+
+# what the last daily check did:
+ssh blog 'journalctl -u vds-disk-alert.service -n 30 --no-pager'
+
+# end-to-end test of the Telegram alert (--threshold 0 forces the alert path):
+ssh blog 'bash /opt/blog-app/ai-bot-tg/deploy/vds-cleanup.sh --alert --apply --threshold 0'
+```
+
+To change the threshold, re-run the installer with `--threshold N --apply`
+(units are overwritten in place).
 
 ## After cleanup
 
