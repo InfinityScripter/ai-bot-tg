@@ -45,6 +45,7 @@ export async function runCollection(
   const summary: RunSummary = {
     fetched: items.length,
     afterFilter: 0,
+    afterDedup: 0,
     afterRelevance: 0,
     droppedRelevance: 0,
     fresh: 0,
@@ -58,11 +59,27 @@ export async function runCollection(
   const curated = curateForQueue(items, include, exclude);
   summary.afterFilter = curated.length;
 
-  // Topic relevance filter (AI/tech). In off/shadow mode kept === curated, so
-  // nothing is dropped until the owner flips RELEVANCE_MODE=on.
-  const { kept, decisions } = await filterRelevant(curated, store);
+  // Two guards keep the (LLM-backed) relevance filter cheap and non-stalling:
+  //  (1) Dedup BEFORE classifying — an already-seen item is dropped at insert
+  //      anyway, so scoring it is pure waste.
+  //  (2) Cap how many items are classified per run — items are newest-first and
+  //      we only need MAX_PER_RUN fresh cards, so scoring the whole (thousands-
+  //      strong) feed backlog every run is pointless.
+  // Without these, mode='on' fired HUNDREDS of SERIAL LLM calls per run (the
+  // big AI feed set), which made /fetch crawl and could stall it outright when
+  // the model was slow. insertCollected still dedups as a race backstop.
+  const unseen = curated.filter((item) => !store.isSeen(item.dedupKey));
+  summary.afterDedup = unseen.length;
+  const classifyBudget = Math.max(CONFIG.MAX_PER_RUN * 4, 40);
+  const toClassify = unseen.slice(0, classifyBudget);
+
+  // Topic relevance filter (AI/tech) over the freshest slice. In off/shadow mode
+  // kept === toClassify, so nothing is dropped until the owner flips
+  // RELEVANCE_MODE=on. Older unseen items beyond the budget are reconsidered on
+  // a later run (newest-first means fresh items always get priority).
+  const { kept, decisions } = await filterRelevant(toClassify, store);
   summary.afterRelevance = kept.length;
-  summary.droppedRelevance = curated.length - kept.length;
+  summary.droppedRelevance = toClassify.length - kept.length;
 
   // Insert fresh (deduped) items, capped per run. The full raw item (snippet,
   // imageUrls) is persisted so the deferred rewrite can run from the row alone.
@@ -99,7 +116,8 @@ export async function runCollection(
   // eslint-disable-next-line no-console
   console.log(
     `[collector] run done: fetched=${summary.fetched} afterFilter=${summary.afterFilter} ` +
-      `afterRelevance=${summary.afterRelevance} droppedRelevance=${summary.droppedRelevance} ` +
+      `afterDedup=${summary.afterDedup} afterRelevance=${summary.afterRelevance} ` +
+      `droppedRelevance=${summary.droppedRelevance} ` +
       `fresh=${summary.fresh} sent=${summary.sent} failed=${summary.failed}`,
   );
 

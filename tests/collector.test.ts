@@ -223,6 +223,35 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     vi.resetModules();
   });
 
+  it("dedups BEFORE relevance so already-seen items never reach the classifier", async () => {
+    vi.resetModules();
+    const feeds = await import("../src/feeds/index.js");
+    vi.spyOn(feeds, "fetchAllFeeds").mockResolvedValue([
+      feedItem({ dedupKey: "seen", url: "https://ex.com/seen" }),
+      feedItem({ dedupKey: "new", url: "https://ex.com/new" }),
+    ]);
+    const filter = vi.fn(async (items: FeedItem[]) => ({ kept: items, decisions: [] }));
+    vi.doMock("../src/llm/filterRelevant.js", () => ({ filterRelevant: filter }));
+    const { runCollection: run } = await import("../src/server/runCollection.js");
+
+    const { CandidateStore: Store } = await import("../src/store/index.js");
+    const store = new Store(":memory:");
+    // Pre-seed the ledger so "seen" is already known before the run.
+    store.insertCollected(feedItem({ dedupKey: "seen", url: "https://ex.com/seen" }));
+
+    const summary = await run(store, async () => {}, 0);
+
+    // Only the NEW item reached the classifier; the seen one was filtered first.
+    expect(filter).toHaveBeenCalledTimes(1);
+    expect(filter.mock.calls[0]![0].map((i) => i.dedupKey)).toEqual(["new"]);
+    expect(summary.afterFilter).toBe(2);
+    expect(summary.afterDedup).toBe(1);
+    expect(summary.fresh).toBe(1);
+    store.close();
+    vi.doUnmock("../src/llm/filterRelevant.js");
+    vi.resetModules();
+  });
+
   it("forwards the relevance decisions to the audit emitter (mode shadow, non-empty)", async () => {
     vi.resetModules();
     const feeds = await import("../src/feeds/index.js");
