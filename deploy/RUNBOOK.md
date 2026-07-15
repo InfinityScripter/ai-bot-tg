@@ -231,6 +231,22 @@ SQLite ledger survives both. See [DEPLOY.md](DEPLOY.md) §7.
 
 ---
 
+## 8. Housekeeping — reclaiming disk
+
+The box is small and fills over time in predictable throwaway places (systemd
+journal, apt cache + old kernels, npm cache, rotated logs, coredumps).
+`deploy/vds-cleanup.sh` reports and reclaims exactly those — **dry-run by
+default**, `--apply` to delete — and by construction never touches
+`.env.production`, the SQLite ledger (`data/candidates.db`), or Postgres. Full
+details in [CLEANUP.md](CLEANUP.md).
+
+```bash
+ssh blog 'bash -s' < deploy/vds-cleanup.sh             # diagnose (read-only)
+ssh blog 'bash -s -- --apply' < deploy/vds-cleanup.sh  # reclaim space
+```
+
+---
+
 ## Bot Telegram commands (owner-only, @blog_talalaev_bot)
 
 | Command | Does |
