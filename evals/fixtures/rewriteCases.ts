@@ -91,4 +91,35 @@ export const REWRITE_CASES: RewriteCase[] = [
       imageUrls: [],
     }),
   },
+  {
+    id: "manual-first-person",
+    about: "Manual author draft — preserve first-person experience and edge",
+    item: feed({
+      url: "",
+      title: "Неделя с AI-агентом: где он экономил время, а где ломал сборку",
+      snippet:
+        "Я неделю гонял AI-агента на реальном pet-проекте и отдал ему 23 задачи. " +
+        "На миграциях и тестах он сэкономил мне около 4 часов. Дважды агент менял " +
+        "публичный контракт, а зелёные unit-тесты не ловили поломку интеграции. Мой вывод: " +
+        "агент полезен на узкой задаче с регрессией и опасен в широком рефакторинге.",
+      feedTitle: "Прислано вручную",
+      imageUrl: null,
+      imageUrls: [],
+    }),
+  },
+  {
+    id: "counterintuitive-cost",
+    about: "Counterintuitive result — lead with tension and explain total cost",
+    item: feed({
+      url: "https://example.com/research/cheaper-token-higher-bill",
+      title: "Новая модель снизила цену токена, но итоговый счёт вырос",
+      snippet:
+        "Провайдер снизил цену входного токена на 40%. В тесте команды агент стал " +
+        "генерировать в 2.3 раза больше токенов из-за длинного reasoning. Итоговая стоимость " +
+        "задачи выросла на 18%, а точность поднялась с 71% до 78%.",
+      feedTitle: "AI Cost Lab",
+      imageUrl: null,
+      imageUrls: [],
+    }),
+  },
 ];

@@ -1,15 +1,21 @@
 import { it, expect, describe } from "vitest";
 
 import { isCasePassing } from "../evals/checks/types.js";
+import { finalizeRewrite } from "../src/llm/rewriteToPost.js";
+import { parseJudgeVerdict } from "../evals/judge/runJudge.js";
+import { judgeGate, parseJudgeFloor } from "../evals/judge/judgeGate.js";
 import { checkRelevance, parseRelevanceReply } from "../evals/checks/relevanceChecks.js";
 import {
   checkMeta,
   checkTags,
   checkTitle,
+  checkLinks,
   checkImages,
   checkRewrite,
   checkMarkdown,
+  checkFactuality,
   checkSourceLine,
+  checkEditorialQuality,
   checkNoLeadingHeading,
 } from "../evals/checks/rewriteChecks.js";
 
@@ -92,6 +98,16 @@ describe("checkTitle", () => {
       warnedOn(checkTitle({ ...goodResult(), title: ITEM.title }, ITEM), "title.notVerbatim"),
     ).toBe(true);
   });
+
+  it("errors on a generic company-announcement headline", () => {
+    const result = { ...goodResult(), title: "Компания представила новую модель ИИ" };
+    expect(erroredOn(checkTitle(result, ITEM), "title.specific")).toBe(true);
+  });
+
+  it("accepts a specific consequence-led headline", () => {
+    const result = { ...goodResult(), title: "Новая модель режет расходы на инференс вдвое" };
+    expect(erroredOn(checkTitle(result, ITEM), "title.specific")).toBe(false);
+  });
 });
 
 describe("checkNoLeadingHeading", () => {
@@ -118,6 +134,24 @@ describe("checkSourceLine", () => {
   });
   it("passes for the canonical source line", () => {
     expect(isCasePassing(checkSourceLine(goodResult(), ITEM))).toBe(true);
+  });
+
+  it("allows legitimate interior Источник prose in a manual draft", () => {
+    const item = { ...ITEM, url: "" };
+    const result = {
+      ...goodResult(),
+      content: "Источник: мои замеры за неделю.\n\nВот что из них следует.",
+    };
+    expect(erroredOn(checkSourceLine(result, item), "source.present")).toBe(false);
+  });
+
+  it("parses canonical attribution after hostile feed-title sanitization", () => {
+    const item = { ...ITEM, feedTitle: "Feed](https://evil.example) [spoof" };
+    const finalized = finalizeRewrite(JSON.stringify(goodResult()), item);
+    const findings = checkSourceLine(finalized, item);
+
+    expect(erroredOn(findings, "source.present")).toBe(false);
+    expect(erroredOn(findings, "source.url")).toBe(false);
   });
 });
 
@@ -188,6 +222,150 @@ describe("checkMarkdown", () => {
   });
   it("passes clean markdown", () => {
     expect(isCasePassing(checkMarkdown(goodResult()))).toBe(true);
+  });
+});
+
+describe("checkLinks", () => {
+  it("errors on a link invented by the model", () => {
+    const result = {
+      ...goodResult(),
+      content:
+        "Читайте [подробнее](https://evil.example/prompt).\n\nИсточник: [Хабр](https://ex.com/article)",
+    };
+    expect(erroredOn(checkLinks(result, ITEM), "links.sourceOnly")).toBe(true);
+  });
+
+  it("allows the original source URL", () => {
+    expect(erroredOn(checkLinks(goodResult(), ITEM), "links.sourceOnly")).toBe(false);
+  });
+
+  it("errors on invented reference, bare and raw-HTML URLs", () => {
+    for (const content of [
+      "[текст][x]\n\n[x]: https://evil.example/reference",
+      "https://evil.example/bare",
+      '<iframe src="https://evil.example/frame"></iframe>',
+    ]) {
+      expect(erroredOn(checkLinks({ ...goodResult(), content }, ITEM), "links.sourceOnly")).toBe(
+        true,
+      );
+    }
+  });
+});
+
+describe("checkEditorialQuality", () => {
+  it("errors on the generic AI template: generic heading plus three bullets", () => {
+    const result = {
+      ...goodResult(),
+      content:
+        "Компания представила обновление.\n\n## Основные изменения\n\n- быстрее\n- дешевле\n- удобнее\n\nИсточник: [Хабр](https://ex.com/article)",
+    };
+    expect(erroredOn(checkEditorialQuality(result, ITEM), "voice.genericTemplate")).toBe(true);
+  });
+
+  it("errors when a manual first-person draft loses the author's voice", () => {
+    const item = {
+      ...ITEM,
+      url: "",
+      feedTitle: "Прислано вручную",
+      snippet: "Я неделю тестировал агент и понял, где он ломается.",
+    };
+    const result = {
+      ...goodResult(),
+      content: "Автор неделю тестировал агент и нашёл сбой.",
+    };
+    expect(erroredOn(checkEditorialQuality(result, item), "voice.preserveFirstPerson")).toBe(true);
+  });
+
+  it("keeps first-person voice in a manual draft", () => {
+    const item = { ...ITEM, url: "", snippet: "Я неделю тестировал агент." };
+    const result = { ...goodResult(), content: "Я неделю тестировал агент и нашёл сбой." };
+    expect(erroredOn(checkEditorialQuality(result, item), "voice.preserveFirstPerson")).toBe(false);
+  });
+});
+
+describe("checkFactuality", () => {
+  it("errors on a numeral absent from the source", () => {
+    const result = { ...goodResult(), content: "Модель ускорилась в 2 раза." };
+    expect(erroredOn(checkFactuality(result, ITEM), "facts.numbers")).toBe(true);
+  });
+
+  it("allows a numeral stated in the source", () => {
+    const item = { ...ITEM, title: "Релиз Linux 6.20", snippet: "Вышло ядро Linux 6.20." };
+    const result = { ...goodResult(), content: "Linux 6.20 уже доступен." };
+    expect(erroredOn(checkFactuality(result, item), "facts.numbers")).toBe(false);
+  });
+
+  it("ignores numerals that appear only inside the canonical source URL", () => {
+    const item = { ...ITEM, url: "https://ex.com/articles/900001" };
+    const result = {
+      ...goodResult(),
+      content: "Текст без чисел.\n\nИсточник: [Хабр](https://ex.com/articles/900001)",
+    };
+    expect(erroredOn(checkFactuality(result, item), "facts.numbers")).toBe(false);
+  });
+
+  it("errors on a long quote absent from the source", () => {
+    const result = {
+      ...goodResult(),
+      content: "Разработчики заявили: «Эта модель полностью изменит рынок уже завтра».",
+    };
+    expect(erroredOn(checkFactuality(result, ITEM), "facts.quotes")).toBe(true);
+  });
+
+  it("errors on an unsupported long quote in the description", () => {
+    const result = {
+      ...goodResult(),
+      description: "Разработчики обещают: «Эта модель полностью изменит рынок уже завтра».",
+    };
+    expect(erroredOn(checkFactuality(result, ITEM), "facts.quotes")).toBe(true);
+  });
+});
+
+describe("parseJudgeVerdict", () => {
+  it("computes the total from the six quality dimensions", () => {
+    expect(
+      parseJudgeVerdict(
+        JSON.stringify({
+          headline: 18,
+          hook: 13,
+          readerValue: 18,
+          brandVoice: 13,
+          humanizer: 14,
+          trust: 15,
+          issues: [],
+        }),
+      ),
+    ).toEqual({
+      score: 91,
+      headline: 18,
+      hook: 13,
+      readerValue: 18,
+      brandVoice: 13,
+      humanizer: 14,
+      trust: 15,
+      issues: [],
+    });
+  });
+
+  it("rejects an incomplete or out-of-range rubric", () => {
+    expect(parseJudgeVerdict('{"headline":20,"issues":[]}')).toBeNull();
+    expect(
+      parseJudgeVerdict(
+        '{"headline":21,"hook":15,"readerValue":20,"brandVoice":15,"humanizer":15,"trust":15,"issues":[]}',
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("judge gate", () => {
+  it("rejects malformed floor configuration instead of failing open", () => {
+    expect(() => parseJudgeFloor("garbage")).toThrow(/EVAL_JUDGE_FLOOR/);
+    expect(() => parseJudgeFloor("101")).toThrow(/EVAL_JUDGE_FLOOR/);
+    expect(parseJudgeFloor(undefined)).toBe(80);
+  });
+
+  it("fails the case when the judge is unavailable", () => {
+    expect(erroredOn(judgeGate(null, 80), "judge.unavailable")).toBe(true);
   });
 });
 

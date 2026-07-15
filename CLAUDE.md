@@ -157,10 +157,16 @@ narrows which providers the panel may pick (Telegram `/model` sees all of them).
 A prompt-quality gate for the rewrite and relevance prompts, separate from unit
 tests. Mock mode replays `evals/fixtures/recorded/*.json` through the **exact
 production path** (`extractJson` → `finalizeRewrite`) and asserts the output
-contract deterministically; the graders themselves are unit-tested in
-`tests/eval-checks.test.ts`. Live/judge modes spend real credits and are never
-run in CI. If you change `prompts.ts` or the rewrite/relevance output contract,
-run `npm run eval` and update fixtures/checks accordingly.
+contract plus high-signal editorial rules: specific headlines, no forced
+three-item templates, first-person preservation, source-only links, and no novel
+numbers/long quotes. The graders are unit-tested in `tests/eval-checks.test.ts`.
+Live judge scores headline/hook/value/voice/humanizer/trust out of 100 and fails
+below 80 by default; an unavailable judge fails closed. `finalizeRewrite` parses
+the complete attributed Markdown into an AST, removes raw HTML, and allow-lists
+source-owned links/images. Live/judge modes spend real credits and are never run
+in CI.
+If you change `prompts.ts` or the rewrite/relevance output contract, run
+`npm run eval` and update fixtures/checks accordingly.
 
 ## Deployment
 

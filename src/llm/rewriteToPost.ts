@@ -6,6 +6,7 @@ import { completeChatJson } from "./chatCompletion.js";
 import { resolveActiveProvider } from "./providers.js";
 import { ensureSourceLine } from "./ensureSourceLine.js";
 import { RewriteSchema } from "../schemas/rewriteSchema.js";
+import { extractHttpUrls, sanitizeMarkdown } from "./sanitizeMarkdown.js";
 import { REWRITE_SYSTEM_PROMPT, buildRewriteUserContent } from "./prompts.js";
 
 import type { CandidateStore } from "../store/index.js";
@@ -30,12 +31,13 @@ function mockRewrite(item: FeedItem): RewriteResult {
   // Drop the cover (shown by the page already); embed the rest of the images so
   // the mock body isn't a flat wall of text either.
   const bodyImages = item.imageUrls.slice(1, 4).map((u) => `![](${u})`);
-  const content = [
+  const rawContent = [
     snippet || "_Полный текст доступен по ссылке на источник._",
     ...(bodyImages.length ? ["", ...bodyImages] : []),
     "",
     `Источник: [${item.feedTitle || "оригинал"}](${item.url})`,
   ].join("\n");
+  const content = finalizeContent(rawContent, item);
   return {
     title,
     description,
@@ -47,22 +49,18 @@ function mockRewrite(item: FeedItem): RewriteResult {
   };
 }
 
-/**
- * Strips any Markdown image whose URL is not in the allow-list. Guards against
- * a model inventing image URLs (or echoing the cover): only images that came
- * from the feed survive. Leaves the surrounding text untouched.
- */
-function sanitizeImages(content: string, allowed: string[]): string {
-  const allow = new Set(allowed);
-  return (
-    content
-      .replace(/!\[[^\]]*\]\(([^)]+)\)/g, (full, url: string) =>
-        allow.has(url.trim()) ? full : "",
-      )
-      // collapse blank-line runs left behind by removed images
-      .replace(/\n{3,}/g, "\n\n")
-      .trim()
-  );
+/** Extracts prose-link candidates owned by the input item. */
+function sourceUrls(item: FeedItem): string[] {
+  return [item.url, ...extractHttpUrls(item.snippet)].filter(Boolean);
+}
+
+/** Adds attribution, then sanitizes the complete Markdown including metadata. */
+function finalizeContent(content: string, item: FeedItem): string {
+  const attributed = ensureSourceLine(content, item.feedTitle, item.url);
+  return sanitizeMarkdown(attributed, {
+    links: sourceUrls(item),
+    images: item.imageUrls.slice(1),
+  });
 }
 
 /**
@@ -93,14 +91,9 @@ export function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResu
   // first, drops anything off the whitelist, maps synonyms, and caps at 4, so
   // the published tags/metaKeywords are always the clean curated set. Applied
   // here so EVERY provider path gets it.
-  const allowed = item.imageUrls.slice(1);
-  // Run source-line self-heal AFTER sanitizeImages so all provider paths land a
-  // clean canonical `Источник:` line once (the mock path builds its own).
-  const content = ensureSourceLine(
-    sanitizeImages(parsed.data.content, allowed),
-    item.feedTitle,
-    item.url,
-  );
+  // The complete body is parsed as Markdown only after attribution is added, so
+  // feed metadata cannot inject a second link or raw HTML after sanitization.
+  const content = finalizeContent(parsed.data.content, item);
   return {
     ...parsed.data,
     title: truncate(parsed.data.title, 100),

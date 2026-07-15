@@ -17,6 +17,12 @@ import type { FeedItem, RewriteResult } from "../../src/types.js";
 /** A parsed judge verdict. */
 export interface JudgeVerdict {
   score: number;
+  headline: number;
+  hook: number;
+  readerValue: number;
+  brandVoice: number;
+  humanizer: number;
+  trust: number;
   issues: string[];
 }
 
@@ -31,21 +37,29 @@ function resolveJudge(): { provider: ProviderName; model: string } {
   return { provider, model };
 }
 
-/** Clamps a raw score to the 1–5 integer range, or null if unusable. */
-function clampScore(value: unknown): number | null {
+/** Accepts one integer rubric score inside its dimension range. */
+function rubricScore(value: unknown, max: number): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return Math.max(1, Math.min(5, Math.round(value)));
+  const rounded = Math.round(value);
+  return rounded >= 0 && rounded <= max ? rounded : null;
 }
 
 /** Parses the judge's raw JSON reply into a verdict, or null if malformed. */
 export function parseJudgeVerdict(raw: string | null): JudgeVerdict | null {
   if (!raw) return null;
   try {
-    const obj = JSON.parse(raw) as { score?: unknown; issues?: unknown };
-    const score = clampScore(obj.score);
-    if (score === null) return null;
+    const obj = JSON.parse(raw) as Record<string, unknown>;
+    const headline = rubricScore(obj.headline, 20);
+    const hook = rubricScore(obj.hook, 15);
+    const readerValue = rubricScore(obj.readerValue, 20);
+    const brandVoice = rubricScore(obj.brandVoice, 15);
+    const humanizer = rubricScore(obj.humanizer, 15);
+    const trust = rubricScore(obj.trust, 15);
+    if ([headline, hook, readerValue, brandVoice, humanizer, trust].includes(null)) return null;
     const issues = Array.isArray(obj.issues) ? obj.issues.map(String) : [];
-    return { score, issues };
+    const scores = { headline, hook, readerValue, brandVoice, humanizer, trust } as const;
+    const score = Object.values(scores).reduce<number>((sum, value) => sum + value!, 0);
+    return { score, ...scores, issues } as JudgeVerdict;
   } catch {
     return null;
   }
@@ -65,7 +79,7 @@ export async function judgeRewrite(
   const raw = await completeChatJson(provider, model, {
     system: JUDGE_SYSTEM_PROMPT,
     user: buildJudgeUserContent(item, result),
-    maxTokens: 400,
+    maxTokens: 700,
     temperature: 0,
     refusalLabel: "оценивать пост",
   });

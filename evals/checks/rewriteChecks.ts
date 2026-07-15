@@ -10,6 +10,7 @@
  */
 
 import { pass, fail } from "./types.js";
+import { normalizeHttpUrl } from "../../src/llm/safeUrl.js";
 import { NEWS_TAG, TAG_WHITELIST } from "../../src/blog/normalizeTags.js";
 
 import type { Finding } from "./types.js";
@@ -27,6 +28,8 @@ const WHITELIST_SET = new Set(TAG_WHITELIST);
 const SOURCE_LINE_RE = /^Источник:\s*\[([^\]]*)\]\(([^)]+)\)\s*$/;
 /** Any markdown image: captures the URL. */
 const IMAGE_RE = /!\[[^\]]*\]\(([^)]+)\)/g;
+/** Any http(s) URL, regardless of Markdown syntax. */
+const URL_RE = /https?:\/\/[^\s<>"'\]]+/g;
 /** A markdown inline link (non-image): captures text + url. */
 const LINK_RE = /(?<!!)\[([^\]]+)\]\(([^)]+)\)/g;
 /** "текст (http...)" — a URL in parens right after words, the anti-pattern. */
@@ -35,6 +38,14 @@ const BARE_URL_IN_PARENS_RE = /[^\]]\s\((https?:\/\/[^)]+)\)/;
 const ESCAPED_MD_RE = /\\[#\-*]/;
 /** A crude HTML tag detector. */
 const HTML_TAG_RE = /<\/?[a-z][a-z0-9]*(\s[^>]*)?>/i;
+const GENERIC_TITLE_RE =
+  /^(?:компания|стартап|разработчики|команда)\s+.*(?:новую модель|новую версию|обновление|ии)(?:$|[^\p{L}])/iu;
+const GENERIC_HEADING_RE =
+  /^##\s+(?:(?:основные|ключевые|главные)\s+(?:изменения|нововведения|возможности)|что изменилось|почему это важно|итоги|заключение)\s*$/gimu;
+const FIRST_PERSON_RE =
+  /(?:^|[^\p{L}])(?:я|мне|меня|мой|моя|моё|мои|мы|нам|наш|наша)(?=$|[^\p{L}])/iu;
+const NUMBER_RE = /\d+(?:[.,]\d+)*/g;
+const QUOTE_RE = /«([^»]{20,})»|"([^"\n]{20,})"/g;
 
 /** Title: non-empty, within the hard clamp, headline-length target, no leading #. */
 export function checkTitle(result: RewriteResult, item: FeedItem): Finding[] {
@@ -63,6 +74,11 @@ export function checkTitle(result: RewriteResult, item: FeedItem): Finding[] {
       ? fail("title.notVerbatim", "warn", "title copies the source verbatim")
       : pass("title.notVerbatim"),
   );
+  out.push(
+    GENERIC_TITLE_RE.test(title)
+      ? fail("title.specific", "error", "generic announcement headline has no reader stake")
+      : pass("title.specific"),
+  );
   return out;
 }
 
@@ -87,6 +103,13 @@ export function checkSourceLine(result: RewriteResult, item: FeedItem): Finding[
   const lastNonEmpty = [...lines].reverse().find((l) => l.trim().length > 0) ?? "";
   const m = SOURCE_LINE_RE.exec(lastNonEmpty.trim());
   const out: Finding[] = [];
+  if (!item.url) {
+    return [
+      SOURCE_LINE_RE.test(lastNonEmpty.trim())
+        ? fail("source.present", "error", "manual draft must not contain an empty source link")
+        : pass("source.present"),
+    ];
+  }
   if (!m) {
     out.push(
       fail(
@@ -99,7 +122,7 @@ export function checkSourceLine(result: RewriteResult, item: FeedItem): Finding[
   }
   out.push(pass("source.present"));
   out.push(
-    m[2] === item.url
+    normalizeHttpUrl(m[2]!) === normalizeHttpUrl(item.url)
       ? pass("source.url")
       : fail("source.url", "error", `source url "${m[2]}" != item url "${item.url}"`),
   );
@@ -109,6 +132,95 @@ export function checkSourceLine(result: RewriteResult, item: FeedItem): Finding[
     count === 1 ? pass("source.single") : fail("source.single", "error", `${count} source lines`),
   );
   return out;
+}
+
+/** Every prose link must come from the source input; model-invented URLs are unsafe. */
+export function checkLinks(result: RewriteResult, item: FeedItem): Finding[] {
+  const sourceUrls = item.snippet.match(/https?:\/\/[^\s<>"'\]]+/g) ?? [];
+  const allowed = new Set(
+    [item.url, ...sourceUrls, ...item.imageUrls.slice(1)]
+      .map(normalizeHttpUrl)
+      .filter((url): url is string => url !== null),
+  );
+  const used = [...result.content.matchAll(URL_RE)].map((match) =>
+    match[0].replace(/[),.;!?]+$/, ""),
+  );
+  const invented = used.filter((url) => {
+    const normalized = normalizeHttpUrl(url);
+    return !normalized || !allowed.has(normalized);
+  });
+  return [
+    invented.length
+      ? fail("links.sourceOnly", "error", `invented link(s): ${invented.slice(0, 2).join(", ")}`)
+      : pass("links.sourceOnly"),
+  ];
+}
+
+/** High-signal anti-template checks plus first-person preservation for author drafts. */
+export function checkEditorialQuality(result: RewriteResult, item: FeedItem): Finding[] {
+  const bullets = result.content.split("\n").filter((line) => /^-\s+/.test(line)).length;
+  const genericTemplate = GENERIC_HEADING_RE.test(result.content) && bullets === 3;
+  GENERIC_HEADING_RE.lastIndex = 0;
+  const sourceHasFirstPerson = !item.url && FIRST_PERSON_RE.test(item.snippet);
+  const outputHasFirstPerson = FIRST_PERSON_RE.test(`${result.description} ${result.content}`);
+  const firstParagraph =
+    result.content
+      .split(/\n\s*\n/, 1)[0]
+      ?.replace(/\s+/g, " ")
+      .trim() ?? "";
+  const description = result.description.replace(/\s+/g, " ").trim();
+  const echo =
+    firstParagraph.length >= 60 && description.slice(0, 60) === firstParagraph.slice(0, 60);
+  return [
+    genericTemplate
+      ? fail(
+          "voice.genericTemplate",
+          "error",
+          "generic heading followed by a forced three-item list",
+        )
+      : pass("voice.genericTemplate"),
+    sourceHasFirstPerson && !outputHasFirstPerson
+      ? fail(
+          "voice.preserveFirstPerson",
+          "error",
+          "manual first-person draft lost the author's voice",
+        )
+      : pass("voice.preserveFirstPerson"),
+    echo
+      ? fail("voice.descriptionEcho", "warn", "description is copied into the opening paragraph")
+      : pass("voice.descriptionEcho"),
+  ];
+}
+
+function normalizedNumbers(input: string): Set<string> {
+  return new Set((input.match(NUMBER_RE) ?? []).map((value) => value.replace(",", ".")));
+}
+
+/** Detects objectively unsupported numerals and long direct quotes. */
+export function checkFactuality(result: RewriteResult, item: FeedItem): Finding[] {
+  const source = `${item.title}\n${item.snippet}`;
+  const body = result.content
+    .split("\n")
+    .filter((line) => !SOURCE_LINE_RE.test(line.trim()))
+    .join("\n")
+    .replace(IMAGE_RE, "")
+    .replace(/\]\(https?:\/\/[^)]+\)/g, "]");
+  const output = `${result.title}\n${result.description}\n${body}\n${result.metaTitle}\n${result.metaDescription}`;
+  const sourceNumbers = normalizedNumbers(source);
+  const novelNumbers = [...normalizedNumbers(output)].filter((value) => !sourceNumbers.has(value));
+  const sourceNormalized = source.replace(/\s+/g, " ").toLowerCase();
+  const quoteOutput = `${result.title}\n${result.description}\n${body}\n${result.metaTitle}\n${result.metaDescription}`;
+  const novelQuotes = [...quoteOutput.matchAll(QUOTE_RE)]
+    .map((match) => (match[1] ?? match[2] ?? "").replace(/\s+/g, " ").trim().toLowerCase())
+    .filter((quote) => !sourceNormalized.includes(quote));
+  return [
+    novelNumbers.length
+      ? fail("facts.numbers", "error", `number(s) absent from source: ${novelNumbers.join(", ")}`)
+      : pass("facts.numbers"),
+    novelQuotes.length
+      ? fail("facts.quotes", "error", `quote absent from source: "${novelQuotes[0]!.slice(0, 60)}"`)
+      : pass("facts.quotes"),
+  ];
 }
 
 /** Every markdown image URL in the body must be in the item's allow-list (imageUrls[1:]). */
@@ -214,6 +326,9 @@ export function checkRewrite(result: RewriteResult, item: FeedItem): Finding[] {
     ...checkImages(result, item),
     ...checkTags(result),
     ...checkMarkdown(result),
+    ...checkLinks(result, item),
+    ...checkEditorialQuality(result, item),
+    ...checkFactuality(result, item),
     ...checkMeta(result),
   ];
 }

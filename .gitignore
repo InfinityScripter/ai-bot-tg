@@ -10,3 +10,9 @@ data/
 *.log
 .DS_Store
 .worktrees/
+
+# This machine has a global `/*` ignore. Keep project-owned eval fixtures and
+# design specs visible so a clean checkout receives the complete quality gate.
+!/docs/
+!/evals/
+!/src/

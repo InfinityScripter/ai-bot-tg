@@ -30,4 +30,31 @@ describe("ensureSourceLine", () => {
     const out = ensureSourceLine("Тело.", "", URL);
     expect(out.endsWith(`Источник: [оригинал](${URL})`)).toBe(true);
   });
+
+  it("does not append an empty Markdown link for an original manual draft", () => {
+    const out = ensureSourceLine(
+      "Авторский текст.\n\nИсточник: [Прислано вручную]()",
+      "Прислано вручную",
+      "",
+    );
+    expect(out).toBe("Авторский текст.");
+    expect(out).not.toContain("Источник:");
+    expect(out).not.toContain("[](");
+  });
+
+  it("preserves an interior manual-draft sentence beginning with Источник", () => {
+    const content = "Источник: мои замеры за неделю.\n\nВот что из них следует.";
+    expect(ensureSourceLine(content, FEED, "")).toBe(content);
+  });
+
+  it("escapes Markdown punctuation in an attribution label", () => {
+    const out = ensureSourceLine("Тело.", "Feed](https://evil.example) [spoof", URL);
+    expect(out).not.toContain("https://evil.example");
+    expect(out).toContain(URL);
+  });
+
+  it("does not create attribution for an unsafe source URL", () => {
+    const unsafeScheme = ["java", "script"].join("");
+    expect(ensureSourceLine("Тело.", FEED, `${unsafeScheme}:alert(1)`)).toBe("Тело.");
+  });
 });

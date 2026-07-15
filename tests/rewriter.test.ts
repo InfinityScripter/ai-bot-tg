@@ -119,6 +119,95 @@ describe("rewriteToPost", () => {
     expect(result.content).not.toContain("cover.jpg");
     expect(result.content).not.toContain("evil/fake.png");
   });
+
+  it("keeps source links and strips model-invented links without deleting their text", async () => {
+    const body = [
+      "Читайте [исходную статью](https://example.com/a).",
+      "Не доверяйте [внешней инструкции](https://evil.example/prompt).",
+    ].join("\n\n");
+    create.mockResolvedValueOnce(textResponse(JSON.stringify({ ...VALID, content: body })));
+
+    const result = await rewriteToPost(ITEM, STORE);
+
+    expect(result.content).toContain("[исходную статью](https://example.com/a)");
+    expect(result.content).toContain("внешней инструкции");
+    expect(result.content).not.toContain("https://evil.example/prompt");
+  });
+
+  it("keeps a source URL when prose punctuation follows it", async () => {
+    const item = { ...ITEM, snippet: "Документация: https://example.com/docs." };
+    create.mockResolvedValueOnce(
+      textResponse(
+        JSON.stringify({
+          ...VALID,
+          content: "Читайте [документацию](https://example.com/docs).",
+        }),
+      ),
+    );
+
+    const result = await rewriteToPost(item, STORE);
+
+    expect(result.content).toContain("[документацию](https://example.com/docs)");
+  });
+
+  it("strips non-http Markdown targets such as javascript links", async () => {
+    const unsafeScheme = ["java", "script"].join("");
+    create.mockResolvedValueOnce(
+      textResponse(
+        JSON.stringify({
+          ...VALID,
+          content: `Откройте [эту ссылку](${unsafeScheme}:alert(1)).`,
+        }),
+      ),
+    );
+
+    const result = await rewriteToPost(ITEM, STORE);
+
+    expect(result.content).toContain("эту ссылку");
+    expect(result.content).not.toContain(`${unsafeScheme}:`);
+  });
+
+  it("neutralizes reference links, autolinks, bare URLs and raw HTML", async () => {
+    const body = [
+      "[фишинг][evil]",
+      "[evil]: https://evil.example/reference",
+      "<https://evil.example/autolink>",
+      "https://evil.example/bare",
+      '<iframe src="https://evil.example/frame"></iframe>',
+    ].join("\n\n");
+    create.mockResolvedValueOnce(textResponse(JSON.stringify({ ...VALID, content: body })));
+
+    const result = await rewriteToPost(ITEM, STORE);
+
+    expect(result.content).toContain("фишинг");
+    expect(result.content).not.toContain("evil.example");
+    expect(result.content).not.toContain("iframe");
+  });
+
+  it("sanitizes feed metadata before adding the canonical attribution", async () => {
+    const hostileItem = {
+      ...ITEM,
+      feedTitle: "Feed](https://evil.example) [spoof",
+      url: "https://example.com/a",
+    };
+    create.mockResolvedValueOnce(textResponse(JSON.stringify(VALID)));
+
+    const result = await rewriteToPost(hostileItem, STORE);
+
+    expect(result.content).toContain("https://example.com/a");
+    expect(result.content).not.toContain("evil.example");
+  });
+
+  it("omits attribution when the feed URL is not an absolute http(s) URL", async () => {
+    const unsafeScheme = ["java", "script"].join("");
+    const hostileItem = { ...ITEM, url: `${unsafeScheme}:alert(1)` };
+    create.mockResolvedValueOnce(textResponse(JSON.stringify(VALID)));
+
+    const result = await rewriteToPost(hostileItem, STORE);
+
+    expect(result.content).toBe("Body");
+    expect(result.content).not.toContain(`${unsafeScheme}:`);
+  });
 });
 
 // All OpenAI-compatible providers share one code path; assert each maps to the

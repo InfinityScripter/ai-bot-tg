@@ -13,7 +13,7 @@ export interface CaseReport {
   id: string;
   about: string;
   findings: Finding[];
-  /** Optional judge line, already formatted (e.g. "judge 4/5"). */
+  /** Optional judge line, already formatted (e.g. "judge 84/100"). */
   judgeNote?: string;
   /** True when the case is considered failed (error findings or judge floor). */
   failed: boolean;

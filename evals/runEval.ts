@@ -2,7 +2,7 @@
  * Eval harness entrypoint for the post-generation prompts.
  *
  *   npm run eval                         # mock mode, deterministic checks only
- *   npm run eval -- --judge              # + LLM-as-judge on the produced posts
+ *   npm run eval -- --mode live --judge  # + LLM-as-judge on the produced posts
  *   npm run eval -- --mode live          # call the real provider (spends credits)
  *   npm run eval -- --mode live --record # live + overwrite the recordings
  *   npm run eval -- --only ru-rich-images
@@ -48,6 +48,11 @@ function parseArgs(argv: string[]): Args {
 }
 
 const ARGS = parseArgs(process.argv.slice(2));
+if (ARGS.judge && ARGS.mode !== "live") {
+  // eslint-disable-next-line no-console
+  console.error("--judge requires --mode live; mock mode has no semantic judge call.");
+  process.exit(2);
+}
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 // Placeholder env for the always-required vars (mirrors tests/setup.ts). Only
@@ -100,6 +105,7 @@ async function main(): Promise<void> {
     { checkRewrite },
     { checkRelevance, parseRelevanceReply },
     { judgeRewrite },
+    { judgeGate, parseJudgeFloor },
     { REWRITE_CASES },
     { RELEVANCE_CASES },
     report,
@@ -112,6 +118,7 @@ async function main(): Promise<void> {
     import("./checks/rewriteChecks.js"),
     import("./checks/relevanceChecks.js"),
     import("./judge/runJudge.js"),
+    import("./judge/judgeGate.js"),
     import("./fixtures/rewriteCases.js"),
     import("./fixtures/relevanceCases.js"),
     import("./report.js"),
@@ -138,7 +145,7 @@ async function main(): Promise<void> {
     console.log("mock mode — recorded replies, deterministic checks (no credits)\n");
   }
 
-  const judgeFloor = Number(process.env.EVAL_JUDGE_FLOOR ?? "3");
+  const judgeFloor = parseJudgeFloor(process.env.EVAL_JUDGE_FLOOR);
 
   // ---- REWRITE ----
   // eslint-disable-next-line no-console
@@ -175,18 +182,11 @@ async function main(): Promise<void> {
       if (ARGS.judge && ARGS.mode === "live") {
         const verdict = await judgeRewrite(c.item, result);
         if (verdict) {
-          judgeNote = `judge ${verdict.score}/5${verdict.issues.length ? ` — ${verdict.issues.join("; ")}` : ""}`;
-          if (verdict.score < judgeFloor) {
-            findings.push({
-              id: "judge.floor",
-              ok: false,
-              severity: "error" as const,
-              detail: `judge ${verdict.score} < floor ${judgeFloor}`,
-            });
-          }
+          judgeNote = `judge ${verdict.score}/100${verdict.issues.length ? ` — ${verdict.issues.join("; ")}` : ""}`;
         } else {
           judgeNote = "judge unavailable";
         }
+        findings.push(...judgeGate(verdict, judgeFloor));
       }
     } catch (err) {
       findings.push({
