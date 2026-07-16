@@ -1,0 +1,14 @@
+[Unit]
+Description=Weekly disk cleanup for the blog VDS
+Documentation=https://github.com/InfinityScripter/ai-bot-tg
+
+[Timer]
+# Sunday 04:00 box-local, plus up to 1h jitter so it never lands exactly on
+# the 09:00 MSK collection cron or any other job. Persistent=true runs a missed
+# sweep after the box was off/asleep at the scheduled time.
+OnCalendar=Sun *-*-* 04:00:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -26,6 +26,65 @@ ssh blog 'bash /opt/blog-app/ai-bot-tg/deploy/vds-cleanup.sh --apply'
 means you can run the current version straight from your checkout before it is
 deployed; `-- --apply` passes the flag to the piped script.
 
+## Why it fills up (root cause)
+
+Nothing is leaking — a few things simply **append forever and nothing caps them
+by default**. On this box the recurring growers are:
+
+- **systemd journal** — both services log on every poll / cron / publish, and
+  journald's default cap is generous (up to ~4 GB), so it grows until it hits
+  that. Usually the single biggest consumer when journald is persistent.
+- **npm cache** (`/root/.npm/_cacache`) — every deploy runs `npm ci`, which
+  fills the download cache; nothing prunes it, so it grows per deploy.
+- **old kernels** — `apt` upgrades install a new kernel but keep the old ones
+  until `autoremove` runs; each is ~200–400 MB.
+- **old snap revisions** — snapd keeps 3 revisions by default, each a full
+  squashfs image.
+- rotated logs, coredumps, stale `/tmp` — minor and mostly self-bounded.
+
+Run the dry-run (TL;DR step 1) to see the **actual** breakdown on the box —
+`journalctl --disk-usage` and the `du` output name the real culprits.
+
+## Stopping it at the source (prevention)
+
+Reclaiming (above) is the mop; this is the tap. Two one-time steps turn the box
+from "clean it by hand" into self-capping.
+
+### 1. Cap the fast growers — `--harden` (run once)
+
+Pins hard limits so the journal, coredumps, and snap can't balloon again. It
+only writes size-cap config (no data deleted), so it needs no `--apply`:
+
+```bash
+ssh blog 'bash /opt/blog-app/ai-bot-tg/deploy/vds-cleanup.sh --harden'
+# journald SystemMaxUse=200M · coredump MaxUse=200M · snap refresh.retain=2
+```
+
+Idempotent — safe to re-run. (`--journal-cap` does just the journal subset.)
+
+### 2. Auto-sweep the slow growers — weekly timer (enable once)
+
+Old kernels, npm cache, and rotated logs still accrue slowly; a systemd timer
+runs `vds-cleanup.sh --apply` weekly so you never touch them by hand. The units
+ship in this repo (`deploy/blog-cleanup.service` + `deploy/blog-cleanup.timer`);
+once this change is deployed to the box, enable them one time:
+
+```bash
+ssh blog '
+  cp /opt/blog-app/ai-bot-tg/deploy/blog-cleanup.service /etc/systemd/system/
+  cp /opt/blog-app/ai-bot-tg/deploy/blog-cleanup.timer   /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable --now blog-cleanup.timer
+  systemctl list-timers blog-cleanup.timer --no-pager   # confirm next run
+'
+```
+
+The timer fires Sunday 04:00 (box time, plus ≤1h jitter), `Persistent=true` so a
+missed run catches up after downtime. Inspect a run with
+`journalctl -u blog-cleanup.service -n 40`. With both steps in place the box
+stays bounded on its own — the periodic manual reclaim below becomes a fallback,
+not a chore.
+
 ## What it reclaims (and why it's safe)
 
 | # | Reclaims | Why it's throwaway |
@@ -40,8 +99,9 @@ deployed; `-- --apply` passes the flag to the piped script.
 | 8 | **stale temp** — `/tmp` + `/var/tmp` files older than 10d | Leftover temp files. |
 | 9 | **git gc** in the deploy repos | Repacks loose objects from a long history of `git reset --hard` deploys. Runs as the dir owner so it never leaves root-owned objects that would break the next deploy. |
 
-Optional: `--journal-cap` writes a `journald` drop-in pinning `SystemMaxUse=200M`
-so the journal can't regrow. `--days N` changes the log/tmp age threshold.
+To stop this growth at the source instead of mopping it up, see
+[Stopping it at the source](#stopping-it-at-the-source-prevention) above
+(`--harden` + the weekly timer). `--days N` changes the log/tmp age threshold.
 
 ## What it will NEVER touch (hard invariants)
 

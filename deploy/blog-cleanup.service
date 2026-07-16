@@ -1,0 +1,19 @@
+[Unit]
+Description=Reclaim disk on the blog VDS (vds-cleanup.sh --apply)
+Documentation=https://github.com/InfinityScripter/ai-bot-tg
+# One-shot janitor invoked by blog-cleanup.timer. It runs the exact same script
+# an operator runs by hand; dry-run is the script's default, so --apply here is
+# the deliberate "actually delete" switch. Keeps the slow growers (old kernels,
+# npm cache, rotated logs) bounded with zero manual work. The fast growers
+# (journal/coredump/snap) are handled once by `vds-cleanup.sh --harden`, not
+# here — see deploy/CLEANUP.md.
+
+[Service]
+Type=oneshot
+# Root: journal vacuum, apt autoremove --purge, coredump/tmp pruning need it.
+# The script drops to each repo's owner via runuser for `git gc`, so it never
+# leaves root-owned git objects that would break the next git-pull deploy.
+ExecStart=/bin/bash /opt/blog-app/ai-bot-tg/deploy/vds-cleanup.sh --apply
+# Never contend with the live bot/backend for CPU or disk.
+Nice=10
+IOSchedulingClass=idle

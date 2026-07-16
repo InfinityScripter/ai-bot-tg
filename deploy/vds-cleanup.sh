@@ -30,8 +30,13 @@
 #
 # FLAGS
 #   --apply         perform deletions (default is a read-only report)
-#   --journal-cap   also pin journald to SystemMaxUse=200M so it can't regrow
-#                   (writes a drop-in and restarts systemd-journald)
+#   --harden        apply durable caps so growth stops at the SOURCE. Writes
+#                   size-cap config only (no data deleted), so it applies on its
+#                   own — no --apply needed. Idempotent, run once via ssh:
+#                   journald SystemMaxUse=200M, coredump MaxUse=200M,
+#                   snap refresh.retain=2. Pairs with the weekly cleanup timer;
+#                   see deploy/CLEANUP.md "Stopping it at the source".
+#   --journal-cap   just the journald cap (a subset of --harden)
 #   --days N        age threshold for rotated logs / tmp (default 14 / 10)
 #   -h, --help      show this help and exit
 # ---------------------------------------------------------------------------
@@ -42,6 +47,7 @@ set -uo pipefail
 
 APPLY=0
 JOURNAL_CAP=0
+HARDEN=0
 LOG_DAYS=14
 TMP_DAYS=10
 
@@ -51,9 +57,10 @@ BACKEND_DIR=/opt/blog-app/backend
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply)        APPLY=1 ;;
+    --harden)       HARDEN=1 ;;
     --journal-cap)  JOURNAL_CAP=1 ;;
     --days)         shift; LOG_DAYS="${1:?--days needs a number}"; TMP_DAYS="$1" ;;
-    -h|--help)      sed -n '2,45p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '2,/^# ---/p' "$0"; exit 0 ;;
     *) echo "[cleanup] unknown flag: $1 (try --help)" >&2; exit 2 ;;
   esac
   shift
@@ -191,17 +198,36 @@ hr "git gc in deploy repos"
 gc_repo "$BOT_DIR"
 gc_repo "$BACKEND_DIR"
 
-# --- 10. optional: cap journald so it can't regrow -------------------------
-if [ "$JOURNAL_CAP" -eq 1 ]; then
-  hr "pin journald to SystemMaxUse=200M (persistent drop-in)"
-  if [ "$APPLY" -eq 1 ]; then
-    say "→ write /etc/systemd/journald.conf.d/00-size-cap.conf and restart journald"
-    { mkdir -p /etc/systemd/journald.conf.d \
-        && printf '[Journal]\nSystemMaxUse=200M\n' > /etc/systemd/journald.conf.d/00-size-cap.conf \
-        && systemctl restart systemd-journald ; } \
-      || say "  (ignored failure: journald cap)"
-  else
-    say "[dry] would: write journald.conf.d/00-size-cap.conf (SystemMaxUse=200M) + restart journald"
+# --- 10. durable caps: stop the fast growers at the source -----------------
+# WHY: the reclaim steps above are a mop; these are the tap. journald defaults
+# to a generous cap (up to ~4G), snapd keeps 3 old revisions, coredumps are
+# uncapped — so all three creep back after every cleanup. Pinning hard limits
+# means the fast growers self-bound in real time and you stop needing manual
+# sweeps for them. These ONLY add size limits (no application data is deleted),
+# so — unlike the reclaim steps — they apply on their own, without --apply.
+# Idempotent: safe to re-run; the intent is "run once via ssh blog".
+if [ "$HARDEN" -eq 1 ] || [ "$JOURNAL_CAP" -eq 1 ]; then
+  hr "durable cap: journald SystemMaxUse=200M"
+  { mkdir -p /etc/systemd/journald.conf.d \
+      && printf '[Journal]\nSystemMaxUse=200M\n' > /etc/systemd/journald.conf.d/00-size-cap.conf \
+      && systemctl restart systemd-journald \
+      && say "→ journald capped at 200M (drop-in written, journald restarted)"; } \
+    || say "  (ignored failure: journald cap)"
+fi
+
+if [ "$HARDEN" -eq 1 ]; then
+  hr "durable cap: coredump MaxUse=200M"
+  # systemd-coredump reads this per-dump — no restart needed.
+  { mkdir -p /etc/systemd/coredump.conf.d \
+      && printf '[Coredump]\nMaxUse=200M\n' > /etc/systemd/coredump.conf.d/00-size-cap.conf \
+      && say "→ coredump storage capped at 200M"; } \
+    || say "  (ignored failure: coredump cap)"
+
+  if command -v snap >/dev/null 2>&1; then
+    hr "durable cap: snap refresh.retain=2 (fewer old squashfs revisions)"
+    { snap set system refresh.retain=2 \
+        && say "→ snapd now keeps only 2 revisions per snap"; } \
+      || say "  (ignored failure: snap retain)"
   fi
 fi
 
@@ -214,6 +240,11 @@ for svc in blog-newsbot blog-backend; do
   say "$svc: $(systemctl is-active "$svc" 2>/dev/null || echo unknown)"
 done
 
+if [ "$HARDEN" -eq 1 ]; then
+  say "Hardening applied — journal/coredump/snap now self-cap. For hands-off"
+  say "upkeep of the slow growers (kernels, npm cache, logs), enable the weekly"
+  say "sweep timer: see deploy/CLEANUP.md \"Stopping it at the source\"."
+fi
 if [ "$APPLY" -eq 0 ]; then
   say "DRY-RUN complete. Re-run with --apply to reclaim the space above."
 else

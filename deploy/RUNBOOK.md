@@ -245,6 +245,11 @@ ssh blog 'bash -s' < deploy/vds-cleanup.sh             # diagnose (read-only)
 ssh blog 'bash -s -- --apply' < deploy/vds-cleanup.sh  # reclaim space
 ```
 
+To stop it recurring rather than sweeping by hand, make the box self-capping
+(two one-time steps): `vds-cleanup.sh --harden` pins journald/coredump/snap size
+limits, and `deploy/blog-cleanup.timer` runs the reclaim weekly. Steps in
+[CLEANUP.md](CLEANUP.md) → "Stopping it at the source".
+
 ---
 
 ## Bot Telegram commands (owner-only, @blog_talalaev_bot)
