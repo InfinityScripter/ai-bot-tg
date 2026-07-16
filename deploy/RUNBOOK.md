@@ -85,6 +85,12 @@ choices, so you don't re-derive them:
   the GitHub-hosted runner, not the VDS.
 - **Secret validation step** fails fast with a readable message if a secret is
   missing — that's what told us `VDS_SSH_PRIVATE_KEY` wasn't set.
+- **Deploy guard.** Before `npm ci` the deploy reclaims throwaway space
+  (`vds-cleanup.sh --alert --apply --threshold 90`) and aborts with less than
+  1 GiB free; after it, `npm ls --omit=dev` verifies the tree and the service
+  must still be active 8 s post-restart. A July 2026 deploy onto a 98%-full
+  disk had npm exit 0 with a missing production package (`unified`) and a
+  green CI run while the bot crash-looped — this guard turns that red.
 
 ---
 

@@ -35,6 +35,16 @@ jobs:
           script: |
             set -e
             cd /opt/blog-app/ai-bot-tg
+            # Deploy guard (July 2026 incident): a deploy onto a ~98%-full disk had
+            # npm ci exit 0 while silently dropping a production package (unified)
+            # → crash-looping bot behind a green CI run. Reclaim throwaway space
+            # first, then refuse to install without real headroom.
+            bash deploy/vds-cleanup.sh --alert --apply --threshold 90 || true
+            avail_kb=$(df -Pk / | awk 'NR==2{print $4}')
+            if [ "$avail_kb" -lt 1048576 ]; then
+              echo "Refusing to deploy: only $((avail_kb/1024)) MiB free on / after cleanup (need 1 GiB)"
+              exit 1
+            fi
             git fetch --all
             git reset --hard origin/main
             # Runtime-only install: the bot runs via tsx (no build step on the VDS),
@@ -44,5 +54,12 @@ jobs:
             # called!" OOM-adjacent teardown error. --omit=dev cuts the install to
             # ~92 packages (lint/test still run on the GitHub-hosted runner).
             npm ci --omit=dev --no-audit --no-fund
+            # npm on this box has exited 0 with an incomplete tree before — verify
+            # every production dep resolves BEFORE touching the running service.
+            npm ls --omit=dev --depth=0
             systemctl restart blog-newsbot
+            # `status` right after restart lies during a crash loop — give the bot
+            # a moment to die, then require it to still be active.
+            sleep 8
+            systemctl is-active blog-newsbot
             systemctl status blog-newsbot --no-pager
