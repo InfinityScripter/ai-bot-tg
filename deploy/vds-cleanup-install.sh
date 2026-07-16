@@ -6,8 +6,9 @@
 # makes the box maintain itself, so "disk at 92%, ssh barely usable" stops
 # recurring. Plain systemd units, NO extra packages:
 #
-#   1. journald size cap      drop-in pinning SystemMaxUse=200M — the #1
-#                             grower on a long-lived box can never regrow
+#   1. size caps              journald SystemMaxUse=200M, systemd-coredump
+#                             MaxUse=200M, snap refresh.retain=2 — the
+#                             unbounded growers can never balloon again
 #   2. vds-cleanup.timer      weekly full `vds-cleanup.sh --apply` (Sun 05:30)
 #   3. vds-disk-alert.timer   daily check (06:15): under the threshold it is a
 #                             silent no-op; at/over it runs the full cleanup
@@ -49,6 +50,7 @@ CLEANUP_SH="$BOT_DIR/deploy/vds-cleanup.sh"
 UNIT_DIR=/etc/systemd/system
 # Same file `vds-cleanup.sh --journal-cap` writes — one cap, two entry points.
 DROPIN=/etc/systemd/journald.conf.d/00-size-cap.conf
+COREDUMP_DROPIN=/etc/systemd/coredump.conf.d/00-size-cap.conf
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -99,6 +101,10 @@ if [ "$UNINSTALL" -eq 1 ]; then
     "$UNIT_DIR/vds-cleanup.service" "$UNIT_DIR/vds-cleanup.timer" \
     "$UNIT_DIR/vds-disk-alert.service" "$UNIT_DIR/vds-disk-alert.timer"
   run "remove journald cap" rm -f "$DROPIN"
+  run "remove coredump cap" rm -f "$COREDUMP_DROPIN"
+  if command -v snap >/dev/null 2>&1; then
+    run "snap: restore default refresh.retain" snap unset system refresh.retain
+  fi
   run "systemd daemon-reload" systemctl daemon-reload
   run "restart journald (drop the cap)" systemctl restart systemd-journald
   say "uninstall done."
@@ -115,6 +121,21 @@ write_file "$DROPIN" <<'EOF'
 SystemMaxUse=200M
 EOF
 run "restart systemd-journald (apply the cap)" systemctl restart systemd-journald
+
+# 1b) coredump cap — crash dumps are unbounded by default. systemd-coredump
+#     reads its config on every dump, so writing the drop-in is enough.
+write_file "$COREDUMP_DROPIN" <<'EOF'
+[Coredump]
+MaxUse=200M
+EOF
+
+# 1c) snap keeps 3 full squashfs images of every snap by default; 2 is plenty
+#     (current + one rollback). Persistent snapd setting, applied once.
+if command -v snap >/dev/null 2>&1; then
+  run "snap: keep only 2 revisions (refresh.retain=2)" snap set system refresh.retain=2
+else
+  say "[skip] snap not installed — no revision cap needed"
+fi
 
 # 2) weekly full cleanup
 write_file "$UNIT_DIR/vds-cleanup.service" <<EOF

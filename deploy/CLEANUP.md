@@ -84,7 +84,7 @@ What it installs:
 
 | Piece | Runs | Does |
 |---|---|---|
-| journald cap (`/etc/systemd/journald.conf.d/00-size-cap.conf`) | always on | pins the journal to `SystemMaxUse=200M`, so the #1 grower can never regrow |
+| size caps (journald + coredump drop-ins, `snap refresh.retain=2`) | always on | journal ≤ `200M`, coredumps ≤ `200M`, only 2 snap revisions kept — the unbounded growers can't balloon again |
 | `vds-cleanup.timer` | weekly, Sun ~05:30 | full `vds-cleanup.sh --apply` (everything in the table above) |
 | `vds-disk-alert.timer` | daily, ~06:15 | `vds-cleanup.sh --alert --apply --threshold 85`: under 85% → silent no-op; at/over → full cleanup **plus a Telegram DM to the owner** — ⚠️ «почистил до N%», or 🔴 «не помогло — смотреть руками» |
 
