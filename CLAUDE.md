@@ -52,13 +52,13 @@ Tests need no `.env`: `tests/setup.ts` populates required env vars (and forces
 with invalid env calls `process.exit(1)`. SQLite runs on `:memory:`. Any new test
 entrypoint / CLI must go through `src/config.ts` the same way.
 
-**Install gotcha**: `package-lock.json` resolves every package from
-`npm.yandex-team.ru` (the owner's mirror). Where that mirror is unreachable,
-`npm ci` fails with ECONNRESET / "Exit handler never called!", and
-`--replace-registry-host` does not help (the URLs carry a `?rbtorrent=` query
-that breaks rewriting). Workaround: temporarily move `package-lock.json` aside,
-`npm install --registry=https://registry.npmjs.org`, then restore the original
-lock file — do not commit a re-resolved lock.
+**Registry**: `package-lock.json` resolves every package from the public
+`registry.npmjs.org`, pinned by the committed `.npmrc` (fixed 2026-07-16: the
+lock used to point at `npm.yandex-team.ru` / `registry.npmmirror.com` mirrors,
+which made every VDS deploy depend on third-party mirrors and broke installs
+where they were unreachable). If you install through a corporate mirror
+locally, never commit a re-resolved lock — the resolved URLs must stay on
+`registry.npmjs.org`.
 
 ## Architecture
 

@@ -115,6 +115,15 @@ and a crash-looping bot behind a green CI run). Before installing, CI now runs
 than 1 GiB free, verifies the installed tree with `npm ls --omit=dev`, and
 fails unless the service is still active 8 s after restart.
 
+The **backend's** deploy (its CI lives in the blog-backend repo) still refills
+the yarn cache on every push. The timers above bound it — wiped weekly and
+whenever the daily check crosses the threshold — but to stop it at the source,
+add one line after `yarn install` in the backend's deploy script:
+
+```bash
+yarn cache clean
+```
+
 ## After cleanup
 
 Nothing needs restarting — only caches/logs are removed, not running state. The
