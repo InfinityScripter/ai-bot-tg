@@ -141,7 +141,8 @@ src/
 │   └── types.ts
 └── cli/
     ├── runCollection.ts   # npm run fetch — разовый сбор без polling
-    └── testModels.ts      # npm run test:models — доступность провайдеров с хоста
+    ├── testModels.ts      # npm run test:models — доступность провайдеров с хоста
+    └── backfillChannel.ts # npm run backfill:channel — разовый анонс бэк-каталога в TG-канал
 ```
 
 Конвенции: один модуль ≤ 200 строк кода (ESLint `max-lines`, error);
@@ -238,11 +239,21 @@ npm start            # бот без перезапуска
 npm run fetch        # разовый сбор из шелла и выход (без polling)
 npm run test:models  # какие провайдеры доступны с этого хоста (гео/сеть)
 
+npm run backfill:channel -- --dry-run   # план бэкфилла TG-канала (ничего не шлёт)
+
 npm test             # vitest (371 тест; сеть замокана, ключи не нужны)
 npm run ts           # tsc --noEmit
 npm run lint         # eslint (airbnb-base + perfectionist, max-lines=200)
 npm run fm:fix       # prettier
 ```
+
+`backfill:channel` — одноразовый ops-CLI: анонсирует **все** опубликованные
+посты блога в Telegram-канале (`TELEGRAM_CHANNEL_ID`, тот же env, что у
+автокросспоста новых постов), от старых к новым, с троттлингом под лимиты
+Telegram. Прогон **не идемпотентен** — повторный полный запуск задвоит анонсы.
+`--dry-run` печатает план без отправки; `--from N` возобновляет после обрыва,
+`--limit N` ограничивает пачку (при сбоях скрипт сам подсказывает безопасный
+`--from` для продолжения).
 
 Проверка end-to-end руками: поднять бэкенд блога на `:7272` (с `BOT_API_TOKEN`
 и `OWNER_EMAIL`), `npm run dev`, в Telegram `/fetch` → 🔄 на карточке → ✅ —
