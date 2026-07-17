@@ -7,7 +7,8 @@
 #   it). It runs two long-lived systemd services (blog-backend, blog-newsbot)
 #   plus Postgres and nginx, and a long-running box accumulates disk in a small
 #   set of predictable, throwaway places: the systemd journal, apt's .deb cache
-#   and superseded kernels, npm's cache, rotated logs, coredumps, stale /tmp.
+#   and superseded kernels, npm's and yarn's caches, stale VS Code Remote
+#   server builds, rotated logs, coredumps, stale /tmp.
 #   This script reports and reclaims exactly those — and NOTHING that holds
 #   state. It is the thing to run behind `ssh blog` when disk gets tight.
 #
@@ -96,7 +97,8 @@ apply_or_echo(){
 safe_rm_rf(){
   local p="$1"
   case "$p" in
-    */.npm/_cacache|/var/lib/systemd/coredump) ;;  # allow-list
+    */.npm/_cacache|*/.cache/yarn|/var/lib/systemd/coredump) ;;   # caches / dumps
+    */.vscode-server/bin/*|*/.vscode-server/cli/servers/*) ;;     # old editor servers
     *) say "  (refused unsafe rm: $p)"; return 0 ;;
   esac
   [ -e "$p" ] || return 0
@@ -170,14 +172,48 @@ if command -v apt-get >/dev/null 2>&1; then
     env DEBIAN_FRONTEND=noninteractive apt-get autoremove --purge -y
 fi
 
-# --- 3. npm caches (root + www-data) ---------------------------------------
+# --- 3. npm + yarn caches (root + www-data) ---------------------------------
 # Deploys run `npm ci --omit=dev`, whose download cache (~/.npm/_cacache) grows
-# unbounded. It is pure cache — npm refetches on the next install.
-hr "npm download caches"
+# unbounded. The blog backend additionally uses yarn, whose cache keeps SWC
+# binaries for every platform/arch — it alone hit 2 GB in the July 2026
+# incident. Both are pure caches; the next install refetches what it needs.
+hr "npm + yarn download caches"
 for u in root www-data; do
   home="$(getent passwd "$u" 2>/dev/null | cut -d: -f6)"
   [ -n "${home:-}" ] || continue
   safe_rm_rf "$home/.npm/_cacache"
+  safe_rm_rf "$home/.cache/yarn"
+done
+
+# --- 3b. stale VS Code Remote server builds ----------------------------------
+# Every VS Code Remote-SSH auto-update drops another ~580 MB server build under
+# ~/.vscode-server and never prunes old ones — 2.3 GB across 4 versions in the
+# July 2026 incident. Keep the newest per layout (bin/ = legacy, cli/servers/ =
+# current), prune the rest once a week old: deleting a dir can't break a live
+# session on Linux (open fds survive), and VS Code re-downloads on demand.
+prune_vscode(){
+  local base="$1" newest d
+  [ -d "$base" ] || return 0
+  newest="$(ls -1t "$base" 2>/dev/null | head -1)"
+  for d in "$base"/*/; do
+    d="${d%/}"
+    [ -d "$d" ] || continue
+    if [ "$(basename "$d")" = "$newest" ]; then
+      say "[keep] newest VS Code server: $d"
+      continue
+    fi
+    # -mtime +7: leave anything touched this week (could be mid-update)
+    [ -n "$(find "$d" -maxdepth 0 -mtime +7 2>/dev/null)" ] \
+      || { say "[keep] recent (<7d): $d"; continue; }
+    safe_rm_rf "$d"
+  done
+}
+hr "stale VS Code Remote server versions"
+for u in root www-data; do
+  home="$(getent passwd "$u" 2>/dev/null | cut -d: -f6)"
+  [ -n "${home:-}" ] || continue
+  prune_vscode "$home/.vscode-server/bin"
+  prune_vscode "$home/.vscode-server/cli/servers"
 done
 
 # --- 4. rotated / compressed logs ------------------------------------------

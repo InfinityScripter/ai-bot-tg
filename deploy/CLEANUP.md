@@ -32,7 +32,8 @@ deployed; `-- --apply` passes the flag to the piped script.
 |---|---|---|
 | 1 | **systemd journal** — `journalctl --vacuum` to ≤14d / ≤200M | Usually the biggest hog. Keeps a recent tail for debugging. |
 | 2 | **apt cache + old kernels** — `apt-get clean` + `autoremove --purge` | Cached `.deb`s refetch on demand; superseded kernels under `/boot` are dead weight. |
-| 3 | **npm cache** — `~/.npm/_cacache` for `root` + `www-data` | Pure download cache; `npm ci` refetches. Grows every deploy. |
+| 3 | **npm + yarn caches** — `~/.npm/_cacache`, `~/.cache/yarn` for `root` + `www-data` | Pure download caches; the next install refetches. npm grows every deploy; yarn (the backend uses it) kept multi-platform SWC binaries — 2 GB by Jul 2026. |
+| 3b | **stale VS Code Remote servers** — everything but the newest under `~/.vscode-server/bin` and `~/.vscode-server/cli/servers`, >7 days old | Remote-SSH auto-updates leave ~580 MB per version and never prune (2.3 GB / 4 versions by Jul 2026). VS Code re-downloads on demand. |
 | 4 | **rotated logs** — `*.gz` / `*.old` / `foo.log.1` older than 14d | Only clearly-rotated artifacts; live `*.log` is untouched. |
 | 5 | **coredumps** — `/var/lib/systemd/coredump/*` | Crash dumps, safe to drop. |
 | 6 | **old snap revisions** — disabled squashfs images | Only superseded revisions; active snap untouched. |
@@ -83,7 +84,7 @@ What it installs:
 
 | Piece | Runs | Does |
 |---|---|---|
-| journald cap (`/etc/systemd/journald.conf.d/00-size-cap.conf`) | always on | pins the journal to `SystemMaxUse=200M`, so the #1 grower can never regrow |
+| size caps (journald + coredump drop-ins, `snap refresh.retain=2`) | always on | journal ≤ `200M`, coredumps ≤ `200M`, only 2 snap revisions kept — the unbounded growers can't balloon again |
 | `vds-cleanup.timer` | weekly, Sun ~05:30 | full `vds-cleanup.sh --apply` (everything in the table above) |
 | `vds-disk-alert.timer` | daily, ~06:15 | `vds-cleanup.sh --alert --apply --threshold 85`: under 85% → silent no-op; at/over → full cleanup **plus a Telegram DM to the owner** — ⚠️ «почистил до N%», or 🔴 «не помогло — смотреть руками» |
 
@@ -106,6 +107,22 @@ ssh blog 'bash /opt/blog-app/ai-bot-tg/deploy/vds-cleanup.sh --alert --apply --t
 
 To change the threshold, re-run the installer with `--threshold N --apply`
 (units are overwritten in place).
+
+The deploy workflow is guarded too (July 2026 incident: a deploy onto a
+98%-full disk produced a silently-incomplete `npm ci` — missing `unified` —
+and a crash-looping bot behind a green CI run). Before installing, CI now runs
+`vds-cleanup.sh --alert --apply --threshold 90`, refuses to deploy with less
+than 1 GiB free, verifies the installed tree with `npm ls --omit=dev`, and
+fails unless the service is still active 8 s after restart.
+
+The **backend's** deploy (its CI lives in the blog-backend repo) still refills
+the yarn cache on every push. The timers above bound it — wiped weekly and
+whenever the daily check crosses the threshold — but to stop it at the source,
+add one line after `yarn install` in the backend's deploy script:
+
+```bash
+yarn cache clean
+```
 
 ## After cleanup
 
