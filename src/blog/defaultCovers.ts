@@ -15,8 +15,12 @@
  *   - ROTATED, not hashed: the picker indexes the pool by the candidate's
  *     monotonic id, so consecutive posts of a topic get DIFFERENT covers and the
  *     pool cycles fully before any repeat (a title hash collided too often);
- *   - a neutral UNIVERSAL pool is the fallback when no topical tag matches
- *     (e.g. политика / культура / a bare новости post).
+ *   - a LARGE UNIVERSAL pool is the fallback when no topical tag matches
+ *     (e.g. политика / культура / a bare новости post). This is the common case
+ *     — most news items carry only `новости` — so the universal pool must be big
+ *     or those posts all repeat a handful of covers. It draws from EVERY topical
+ *     pool (~90 de-duplicated images), not a hand-picked few (the earlier 10-image
+ *     subset was why the live blog showed the same cover on 7–11 posts).
  *
  * Every URL below was verified to return `200 image/*` from the Unsplash CDN
  * (images.unsplash.com — direct, hot-linkable file URLs, NOT the redirecting
@@ -152,22 +156,24 @@ const TECH_COVERS: readonly string[] = [
 
 /**
  * Neutral fallback for posts with no topical tag (политика / культура / a bare
- * новости item). A hand-picked cross-section of the topical pools — references,
- * not copies, so no URL string is duplicated in source; `.filter` keeps the type
- * `string[]` under noUncheckedIndexedAccess (every referenced index exists).
+ * новости item) — the MAJORITY of feed items. Draws from the full de-duplicated
+ * union of every topical pool (~90 images) instead of a hand-picked handful: a
+ * small universal pool was the main source of repeated covers on the live blog
+ * (10 images rotating → the same cover on ~10 posts). Every image is on-theme for
+ * an AI/tech portal, so any of them is a fine neutral cover. Spreads (not indexed
+ * access), so it stays `string[]` under noUncheckedIndexedAccess with no `.filter`.
  */
 const UNIVERSAL_COVERS: readonly string[] = [
-  TECH_COVERS[0],
-  TECH_COVERS[6],
-  TECH_COVERS[12],
-  AI_COVERS[0],
-  AI_COVERS[4],
-  SECURITY_COVERS[1],
-  SCIENCE_COVERS[0],
-  DEV_COVERS[0],
-  BUSINESS_COVERS[0],
-  GADGET_COVERS[0],
-].filter((url): url is string => Boolean(url));
+  ...new Set<string>([
+    ...TECH_COVERS,
+    ...AI_COVERS,
+    ...SCIENCE_COVERS,
+    ...BUSINESS_COVERS,
+    ...DEV_COVERS,
+    ...GADGET_COVERS,
+    ...SECURITY_COVERS,
+  ]),
+];
 
 /** Topical pools by id. `universal` is the fallback when no tag maps. */
 const COVER_POOLS: Record<string, readonly string[]> = {
