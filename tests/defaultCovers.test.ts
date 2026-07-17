@@ -83,6 +83,14 @@ describe("pickDefaultCover", () => {
     for (const cover of universal) expect(DEFAULT_COVERS).toContain(cover);
   });
 
+  it("uses a LARGE universal pool so bare новости posts do not repeat", () => {
+    // Untagged/новости items are the majority of the feed; a small universal
+    // pool made them cycle a handful of covers (the live-blog duplication:
+    // 7–11 posts sharing one image). Keep the fallback pool big.
+    const universal = coversForSeqRange(["политика"], 400);
+    expect(universal.size).toBeGreaterThan(40);
+  });
+
   it("tolerates negative, fractional and NaN seq", () => {
     for (const seq of [-1, -100, 3.7, Number.NaN]) {
       expect(DEFAULT_COVERS).toContain(pickDefaultCover(["ai"], seq));
