@@ -1,6 +1,7 @@
 import Parser from "rss-parser";
 
 import { collectImageUrls } from "./collectImages.js";
+import { ARTICLE_BODY_CHAR_LIMIT } from "./ingestArticle.js";
 import { truncate, stripHtml, dedupKeyFor } from "../utils.js";
 
 import type { RssItem } from "./types.js";
@@ -50,7 +51,7 @@ export function mapFeed(feed: Parser.Output<RssItem>): FeedItem[] {
     // path trims its own display copy separately.
     const snippet = truncate(
       stripHtml(item.contentEncoded || item.content || item.contentSnippet || ""),
-      4000,
+      ARTICLE_BODY_CHAR_LIMIT,
     );
     const imageUrl = extractImageUrl(item);
     // rss-parser normalizes the date to item.isoDate; fall back to pubDate.

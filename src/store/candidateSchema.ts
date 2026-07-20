@@ -38,6 +38,7 @@ export const SCHEMA = `
     dedup_key TEXT PRIMARY KEY,
     seen_at   TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE INDEX IF NOT EXISTS idx_candidates_state ON candidates(state);
 `;
 
 // Lightweight additive migrations for pre-existing DBs (ignore if present).
@@ -52,8 +53,9 @@ export const MIGRATIONS = [
   // (SQLite-safe on ADD COLUMN); no second migration or column needed.
   `ALTER TABLE candidates ADD COLUMN kind TEXT NOT NULL DEFAULT 'news'`,
 ];
-// The UNIQUE constraint on dedup_key already creates an index — no separate
-// CREATE INDEX needed.
+// The UNIQUE constraint on dedup_key already creates an index; state-запросы
+// (listByState / countsByState / claim / prune) кроет idx_candidates_state
+// из SCHEMA — CREATE INDEX IF NOT EXISTS безопасен для существующих БД.
 
 /** The single settings row holding the active provider/model override. */
 export const MODEL_OVERRIDE_KEY = "model_override";

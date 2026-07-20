@@ -23,8 +23,8 @@ export const DEFAULT_FEEDS: string[] = [
   "https://habr.com/ru/rss/hubs/artificial_intelligence/articles/?fl=ru", // ИИ, body ~210
   "https://www.opennet.ru/opennews/opennews_all_utf.rss", // open-source / безопасность, body ~470
   // EN AI-frontier — all live-verified parseable via rss-parser.
-  "http://export.arxiv.org/rss/cs.AI", // arXiv cs.AI abstracts, body ~1660
-  "http://export.arxiv.org/rss/cs.CL", // arXiv cs.CL (NLP/LLM) abstracts, body ~1610
+  "https://export.arxiv.org/rss/cs.AI", // arXiv cs.AI abstracts, body ~1660
+  "https://export.arxiv.org/rss/cs.CL", // arXiv cs.CL (NLP/LLM) abstracts, body ~1610
   "https://deepmind.google/blog/rss.xml", // Google DeepMind blog, headline-led
   "https://blog.google/technology/ai/rss/", // Google AI blog, ~20 items, body ~260
   "https://huggingface.co/blog/feed.xml", // Hugging Face blog, headline-led

@@ -101,6 +101,14 @@ function extractCover(html: string): string | null {
 }
 
 /**
+ * Максимум символов тела статьи, уходящих рерайтеру (RSS-body и скрейп).
+ * Прежний кап 4000 обрезал лонгриды до лида — рерайт получался тонким
+ * пересказом первых абзацев. 16k символов (~4-5k токенов) вмещает типичный
+ * лонгрид целиком и всё ещё держит промпт ограниченным.
+ */
+export const ARTICLE_BODY_CHAR_LIMIT = 16_000;
+
+/**
  * Strips the page chrome and non-content elements, then reduces the HTML to a
  * plain-text body. Not a full readability engine — drops the obvious noise
  * (scripts, styles, nav/header/footer/aside) and lets stripHtml flatten the
@@ -113,7 +121,7 @@ export function extractBody(html: string): string {
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
     .replace(/<(nav|header|footer|aside|form)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
-  return truncate(stripHtml(cleaned), 4000);
+  return truncate(stripHtml(cleaned), ARTICLE_BODY_CHAR_LIMIT);
 }
 
 /**
