@@ -172,14 +172,27 @@ if command -v apt-get >/dev/null 2>&1; then
     env DEBIAN_FRONTEND=noninteractive apt-get autoremove --purge -y
 fi
 
-# --- 3. npm + yarn caches (root + www-data) ---------------------------------
+# --- 3. npm + yarn caches (real homes + HOME-less orphan dirs) --------------
 # Deploys run `npm ci --omit=dev`, whose download cache (~/.npm/_cacache) grows
 # unbounded. The blog backend additionally uses yarn, whose cache keeps SWC
 # binaries for every platform/arch — it alone hit 2 GB in the July 2026
 # incident. Both are pure caches; the next install refetches what it needs.
+#
+# THE BLIND SPOT (fixed here): the backend deploy SSHes in non-login, so during
+# `yarn install` $HOME can be unset — yarn then falls back to a GLOBAL cache
+# under /usr/local/share, a path no getent-passwd home points at. That orphan
+# `/usr/local/share/.cache/yarn` grew to 1.8 GB and this sweep never saw it
+# (2026-07-23). We now also clean the well-known HOME-less fallback roots.
+# Source-side fix lives in the workflow (pins YARN_CACHE_FOLDER); this is the
+# belt-and-braces so a stray env can never silently refill the disk again.
 hr "npm + yarn download caches"
-for u in root www-data; do
-  home="$(getent passwd "$u" 2>/dev/null | cut -d: -f6)"
+cache_homes="$(for u in root www-data; do getent passwd "$u" 2>/dev/null | cut -d: -f6; done)"
+# HOME-less yarn/npm fallbacks + the / and /root shells non-login sessions land in
+cache_homes="$cache_homes
+/usr/local/share
+/usr/share
+/"
+printf '%s\n' "$cache_homes" | sort -u | while read -r home; do
   [ -n "${home:-}" ] || continue
   safe_rm_rf "$home/.npm/_cacache"
   safe_rm_rf "$home/.cache/yarn"
@@ -188,9 +201,13 @@ done
 # --- 3b. stale VS Code Remote server builds ----------------------------------
 # Every VS Code Remote-SSH auto-update drops another ~580 MB server build under
 # ~/.vscode-server and never prunes old ones — 2.3 GB across 4 versions in the
-# July 2026 incident. Keep the newest per layout (bin/ = legacy, cli/servers/ =
-# current), prune the rest once a week old: deleting a dir can't break a live
-# session on Linux (open fds survive), and VS Code re-downloads on demand.
+# July 2026 incident, and 1.8 GB across 3 versions by 2026-07-23 (none older
+# than a week, so the old >7d gate kept ALL of them on a 9.6 GB box). Keep the
+# newest per layout (bin/ = legacy, cli/servers/ = current) — that's the one an
+# active session uses — and prune every OLDER build after 2 days: deleting a
+# non-current dir can't break a live session on Linux (open fds survive), and
+# VS Code re-downloads on demand. VSCODE_KEEP_DAYS overrides the age.
+VSCODE_KEEP_DAYS="${VSCODE_KEEP_DAYS:-2}"
 prune_vscode(){
   local base="$1" newest d
   [ -d "$base" ] || return 0
@@ -202,9 +219,10 @@ prune_vscode(){
       say "[keep] newest VS Code server: $d"
       continue
     fi
-    # -mtime +7: leave anything touched this week (could be mid-update)
-    [ -n "$(find "$d" -maxdepth 0 -mtime +7 2>/dev/null)" ] \
-      || { say "[keep] recent (<7d): $d"; continue; }
+    # newest is already kept above; only superseded builds reach here. Leave one
+    # touched within VSCODE_KEEP_DAYS (a just-superseded update may still settle).
+    [ -n "$(find "$d" -maxdepth 0 -mtime "+${VSCODE_KEEP_DAYS}" 2>/dev/null)" ] \
+      || { say "[keep] recent (<${VSCODE_KEEP_DAYS}d): $d"; continue; }
     safe_rm_rf "$d"
   done
 }
