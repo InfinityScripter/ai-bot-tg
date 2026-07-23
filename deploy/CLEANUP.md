@@ -32,8 +32,8 @@ deployed; `-- --apply` passes the flag to the piped script.
 |---|---|---|
 | 1 | **systemd journal** — `journalctl --vacuum` to ≤14d / ≤200M | Usually the biggest hog. Keeps a recent tail for debugging. |
 | 2 | **apt cache + old kernels** — `apt-get clean` + `autoremove --purge` | Cached `.deb`s refetch on demand; superseded kernels under `/boot` are dead weight. |
-| 3 | **npm + yarn caches** — `~/.npm/_cacache`, `~/.cache/yarn` for `root` + `www-data` | Pure download caches; the next install refetches. npm grows every deploy; yarn (the backend uses it) kept multi-platform SWC binaries — 2 GB by Jul 2026. |
-| 3b | **stale VS Code Remote servers** — everything but the newest under `~/.vscode-server/bin` and `~/.vscode-server/cli/servers`, >7 days old | Remote-SSH auto-updates leave ~580 MB per version and never prune (2.3 GB / 4 versions by Jul 2026). VS Code re-downloads on demand. |
+| 3 | **npm + yarn caches** — `.npm/_cacache` + `.cache/yarn` for `root`/`www-data` **and the HOME-less fallback roots** `/usr/local/share`, `/usr/share`, `/` | Pure download caches; the next install refetches. yarn (backend) keeps multi-platform SWC binaries — 2 GB by Jul 2026. **The disk hit 90% on 2026-07-23 because the backend's non-login `yarn install` had `$HOME` unset and yarn cached to `/usr/local/share/.cache/yarn` (1.8 GB) — a path no user home covers, so the old sweep missed it.** Now swept explicitly; source-side fix pins `YARN_CACHE_FOLDER` in the backend workflow. |
+| 3b | **stale VS Code Remote servers** — everything but the newest under `~/.vscode-server/bin` and `~/.vscode-server/cli/servers`, older than `VSCODE_KEEP_DAYS` (2d) | Remote-SSH auto-updates leave ~580 MB per version and never prune (2.3 GB / 4 versions by Jul 2026; 1.8 GB / 3 versions by 2026-07-23 — all <7d, so the old >7d gate kept every one). The newest is always kept (an active session uses it); VS Code re-downloads on demand. |
 | 4 | **rotated logs** — `*.gz` / `*.old` / `foo.log.1` older than 14d | Only clearly-rotated artifacts; live `*.log` is untouched. |
 | 5 | **coredumps** — `/var/lib/systemd/coredump/*` | Crash dumps, safe to drop. |
 | 6 | **old snap revisions** — disabled squashfs images | Only superseded revisions; active snap untouched. |
@@ -115,14 +115,14 @@ and a crash-looping bot behind a green CI run). Before installing, CI now runs
 than 1 GiB free, verifies the installed tree with `npm ls --omit=dev`, and
 fails unless the service is still active 8 s after restart.
 
-The **backend's** deploy (its CI lives in the blog-backend repo) still refills
-the yarn cache on every push. The timers above bound it — wiped weekly and
-whenever the daily check crosses the threshold — but to stop it at the source,
-add one line after `yarn install` in the backend's deploy script:
-
-```bash
-yarn cache clean
-```
+The **backend's** deploy (its CI lives in the blog-backend repo,
+`.github/workflows/backend-cicd.yml`) is fixed at the source as of 2026-07-23:
+it exports `HOME=/root` and `YARN_CACHE_FOLDER=/root/.cache/yarn` before
+`yarn install`, so the cache lands in a path this sweep prunes instead of
+orphaning under `/usr/local/share`. Pinning the dir (rather than a post-install
+`yarn cache clean`) lets each deploy reuse the cache while keeping it bounded by
+the timers above. If a future env change unsets it again, step 3 now sweeps the
+HOME-less fallback roots as a backstop.
 
 ## After cleanup
 
