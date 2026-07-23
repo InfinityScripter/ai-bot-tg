@@ -8,6 +8,7 @@ import { autoRetry } from "./autoRetry.js";
 import { createIngest } from "./createIngest.js";
 import { createDigestFlow } from "./digestFlow.js";
 import { createHandlers } from "./createHandlers.js";
+import { createAutoPublish } from "./createAutoPublish.js";
 import { renderHealth, collectHealth } from "../health/index.js";
 import { helpText, menuIntro, menuKeyboard, nativeCommands, parseMenuCallback } from "./menu.js";
 
@@ -34,8 +35,13 @@ export function createBot(
   // Preferred over proactive throttling — the bot only messages one chat.
   bot.api.config.use(autoRetry());
 
-  const { onCallback, drain } = createHandlers(store, bot);
+  const { onCallback, drain: drainHandlers } = createHandlers(store, bot);
   const { ingestMessage, sendRawCard, notifyNeedsVerification } = createIngest(store, bot);
+  const {
+    autoPublishCandidate,
+    notifyAutomaticFailures,
+    drain: drainAutoPublish,
+  } = createAutoPublish(store, bot);
   const { runDigest, onDigestCallback, isDigestCallback, isAwaitingVerdict, submitVerdict } =
     createDigestFlow(bot, store);
 
@@ -169,7 +175,18 @@ export function createBot(
     // eslint-disable-next-line no-console
     .catch((err) => console.warn(`[bot] setMyCommands failed: ${String(err)}`));
 
-  return { bot, sendRawCard, notifyNeedsVerification, drain };
+  const drain = async (): Promise<void> => {
+    await Promise.all([drainHandlers(), drainAutoPublish()]);
+  };
+
+  return {
+    bot,
+    sendRawCard,
+    autoPublishCandidate,
+    notifyAutomaticFailures,
+    notifyNeedsVerification,
+    drain,
+  };
 }
 
 export type BotBundle = ReturnType<typeof createBot>;

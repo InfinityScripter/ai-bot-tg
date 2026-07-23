@@ -36,3 +36,14 @@ export interface DigestSendResult {
   sent: number;
   failed: number;
 }
+
+/**
+ * The two auto-publish master switches, read from the blog admin settings. When
+ * false, the matching candidate kind is diverted to the owner's manual approval
+ * instead of auto-publishing. Read fail-closed: any read failure yields both
+ * false (see fetchAutoPublishFlags).
+ */
+export interface AutoPublishFlags {
+  releases: boolean;
+  news: boolean;
+}

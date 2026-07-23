@@ -6,6 +6,7 @@ export type { ControlProviderName } from "./providers.js";
 export { classifyRelevance } from "./classifyRelevance.js";
 export { pingModel, listModels } from "./modelRegistry.js";
 export { MODEL_PRICES, modelPriceLabel } from "./modelPrices.js";
+export { GateFailure, assertPublishable } from "./qualityGate.js";
 export { rewriteToPost, finalizeRewrite } from "./rewriteToPost.js";
 export { extractJson, completeChatJson } from "./chatCompletion.js";
 export { VENDOR_MARKERS, RELEASE_MARKERS } from "./releaseMarkers.js";

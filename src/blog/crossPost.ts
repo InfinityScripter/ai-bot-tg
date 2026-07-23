@@ -6,6 +6,8 @@ import { truncate, escapeMarkdown } from "../utils.js";
 
 import type { LoadedExtraction, CrossPostContent } from "../bot/types.js";
 
+type TelegramAbortSignal = Parameters<Api["sendMessage"]>[3];
+
 /**
  * Auto cross-post to the Telegram channel on publish (bet #3 / distribution
  * layer): the news-bot already publishes to the blog, but the posts otherwise
@@ -74,6 +76,7 @@ export async function crossPostToChannel(
   api: Api,
   content: CrossPostContent,
   publishedId: string,
+  signal?: TelegramAbortSignal,
 ): Promise<boolean> {
   const channel = CONFIG.TELEGRAM_CHANNEL_ID;
   if (!channel) return false;
@@ -83,17 +86,26 @@ export async function crossPostToChannel(
 
   if (isUsableImageUrl(content.coverUrl)) {
     try {
-      await api.sendPhoto(channel, content.coverUrl, { caption, parse_mode: "Markdown" });
+      const options = { caption, parse_mode: "Markdown" as const };
+      await (signal
+        ? api.sendPhoto(channel, content.coverUrl, options, signal)
+        : api.sendPhoto(channel, content.coverUrl, options));
       return true;
     } catch {
       // Cover URL was shaped like a URL but Telegram couldn't use it as a photo
       // (non-image page, 404, blocked host) — degrade to text rather than drop.
-      await api.sendMessage(channel, caption, { parse_mode: "Markdown" });
+      const options = { parse_mode: "Markdown" as const };
+      await (signal
+        ? api.sendMessage(channel, caption, options, signal)
+        : api.sendMessage(channel, caption, options));
       return true;
     }
   }
 
-  await api.sendMessage(channel, caption, { parse_mode: "Markdown" });
+  const options = { parse_mode: "Markdown" as const };
+  await (signal
+    ? api.sendMessage(channel, caption, options, signal)
+    : api.sendMessage(channel, caption, options));
   return true;
 }
 

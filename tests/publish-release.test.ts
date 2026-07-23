@@ -35,6 +35,7 @@ function created(id: string): Response {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("toReleaseBody", () => {
@@ -128,13 +129,33 @@ describe("publishRelease", () => {
     await expect(publishRelease(RELEASE)).rejects.toThrow(/id/i);
   });
 
-  it("throws PublishError(maybePosted=false) when it cannot connect", async () => {
+  it("treats a transport rejection as uncertain because the body may have arrived", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
         throw new Error("ECONNREFUSED");
       }),
     );
-    await expect(publishRelease(RELEASE)).rejects.toMatchObject({ maybePosted: false });
+    await expect(publishRelease(RELEASE)).rejects.toMatchObject({ maybePosted: true });
+  });
+
+  it("treats a publish timeout as uncertain", async () => {
+    const controller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url, init) => {
+        const signal = init?.signal;
+        if (!signal) return Promise.reject(new Error("missing timeout signal"));
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason));
+        });
+      }),
+    );
+
+    const result = publishRelease(RELEASE);
+    controller.abort(new DOMException("timed out", "TimeoutError"));
+
+    await expect(result).rejects.toMatchObject({ maybePosted: true });
   });
 });

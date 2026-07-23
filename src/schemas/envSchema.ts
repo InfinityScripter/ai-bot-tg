@@ -27,7 +27,10 @@ export const EnvSchema = z
      * defaults to the well-known prod site so an existing deploy keeps working;
      * override for staging/local. Distinct from BLOG_API_URL (the backend API).
      */
-    BLOG_PUBLIC_URL: z.string().url("BLOG_PUBLIC_URL must be a URL").default("https://aifirst.us.com"),
+    BLOG_PUBLIC_URL: z
+      .string()
+      .url("BLOG_PUBLIC_URL must be a URL")
+      .default("https://aifirst.us.com"),
     /**
      * Target channel/chat for auto cross-posting a post on publish (a @username
      * or a numeric -100… id). OPTIONAL: when unset, cross-posting is DISABLED and

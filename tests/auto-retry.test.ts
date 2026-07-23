@@ -66,4 +66,16 @@ describe("autoRetry transformer", () => {
     expect(res).toBe(bad);
     expect(prev).toHaveBeenCalledTimes(1);
   });
+
+  it("does not start or retry after its signal is aborted", async () => {
+    const ok = { ok: true, result: "sent" };
+    const prev = prevReturning([ok]);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      autoRetry()(prev as never, "sendMessage", {} as never, controller.signal as never),
+    ).rejects.toThrow();
+    expect(prev).not.toHaveBeenCalled();
+  });
 });

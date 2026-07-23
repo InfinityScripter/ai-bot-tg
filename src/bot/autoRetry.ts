@@ -2,6 +2,8 @@ import type { Transformer } from "grammy";
 
 import { HttpError } from "grammy";
 
+type RetrySignal = Parameters<Transformer>[3];
+
 /**
  * A tiny, dependency-free grammY API transformer that mirrors the essential
  * behavior of @grammyjs/auto-retry: on a 429, wait the Bot API's `retry_after`
@@ -15,8 +17,23 @@ import { HttpError } from "grammy";
 const ONE_HOUR_S = 3600;
 const INITIAL_BACKOFF_S = 3;
 
-function pause(seconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 1000 * seconds));
+function throwIfAborted(signal: RetrySignal): void {
+  if (signal?.aborted) throw new Error("Telegram request aborted");
+}
+
+function pause(seconds: number, signal: RetrySignal): Promise<void> {
+  throwIfAborted(signal);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error("Telegram request aborted"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, 1000 * seconds);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export function autoRetry(): Transformer {
@@ -26,11 +43,12 @@ export function autoRetry(): Transformer {
     // Retry the call itself on a network HttpError (with backoff).
     async function call(): Promise<Awaited<ReturnType<typeof prev>>> {
       for (;;) {
+        throwIfAborted(signal);
         try {
           return await prev(method, payload, signal);
         } catch (err) {
           if (err instanceof HttpError) {
-            await pause(nextBackoff);
+            await pause(nextBackoff, signal);
             nextBackoff = Math.min(ONE_HOUR_S, nextBackoff * 2);
             continue;
           }
@@ -40,17 +58,18 @@ export function autoRetry(): Transformer {
     }
 
     for (;;) {
+      throwIfAborted(signal);
       const result = await call();
       const retryAfter = result.parameters?.retry_after;
       if (typeof retryAfter === "number") {
         // 429: wait exactly as long as Telegram asks, then resubmit.
-        await pause(retryAfter);
+        await pause(retryAfter, signal);
         nextBackoff = INITIAL_BACKOFF_S;
         continue;
       }
       if (!result.ok && result.error_code >= 500) {
         // Transient server error: back off and retry.
-        await pause(nextBackoff);
+        await pause(nextBackoff, signal);
         nextBackoff = Math.min(ONE_HOUR_S, nextBackoff * 2);
         continue;
       }

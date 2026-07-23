@@ -21,6 +21,7 @@ export const SCHEMA = `
     snippet       TEXT,
     image_urls    TEXT,
     kind          TEXT NOT NULL DEFAULT 'news',
+    auto_publish  INTEGER NOT NULL DEFAULT 0,
     state         TEXT NOT NULL,
     rewrite_json  TEXT,
     tg_message_id INTEGER,
@@ -52,6 +53,7 @@ export const MIGRATIONS = [
   // by kind. NOT NULL DEFAULT 'news' back-fills every existing row in one statement
   // (SQLite-safe on ADD COLUMN); no second migration or column needed.
   `ALTER TABLE candidates ADD COLUMN kind TEXT NOT NULL DEFAULT 'news'`,
+  `ALTER TABLE candidates ADD COLUMN auto_publish INTEGER NOT NULL DEFAULT 0`,
 ];
 // The UNIQUE constraint on dedup_key already creates an index; state-запросы
 // (listByState / countsByState / claim / prune) кроет idx_candidates_state
@@ -79,6 +81,7 @@ export function mapRow(row: CandidateRow): Candidate {
     snippet: row.snippet,
     imageUrls: row.image_urls,
     kind: toKind(row.kind),
+    autoPublish: row.auto_publish === 1,
     state: row.state as CandidateState,
     rewriteJson: row.rewrite_json,
     tgMessageId: row.tg_message_id,

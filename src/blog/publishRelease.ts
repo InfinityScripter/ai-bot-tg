@@ -1,5 +1,5 @@
 import { CONFIG } from "../config.js";
-import { PublishError } from "./publishPost.js";
+import { PublishError, PUBLISH_TIMEOUT_MS } from "./publishPost.js";
 
 import type { ReleaseResult, CreateReleasePayload } from "../types.js";
 
@@ -44,10 +44,12 @@ export async function publishRelease(
   idempotencyKey?: string,
 ): Promise<string> {
   const url = `${CONFIG.BLOG_API_URL.replace(/\/$/, "")}/api/changelog/new`;
+  const signal = AbortSignal.timeout(PUBLISH_TIMEOUT_MS);
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${CONFIG.BOT_API_TOKEN}`,
@@ -56,8 +58,8 @@ export async function publishRelease(
       body: JSON.stringify(toReleaseBody(release)),
     });
   } catch (err) {
-    // Could not even send the request → the release definitely was not created.
-    throw new PublishError(`Не удалось связаться с блогом: ${String(err)}`, false);
+    // Any transport rejection may happen after the server accepted the body.
+    throw new PublishError(`Не удалось связаться с блогом: ${String(err)}`, true);
   }
 
   if (response.status !== 201) {

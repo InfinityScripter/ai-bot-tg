@@ -113,7 +113,9 @@ async function main(): Promise<void> {
     // Some non-terminal item failed → the safe resume point is the last fully
     // contiguous index; the gaps must be retried individually.
     log(`Resume the rest with --from ${result.lastContigDone}.`);
-    log(`Retry the failures individually: ${result.failedIdx.map((n) => `--from ${n} --limit 1`).join("  |  ")}`);
+    log(
+      `Retry the failures individually: ${result.failedIdx.map((n) => `--from ${n} --limit 1`).join("  |  ")}`,
+    );
   }
   process.exit(result.failedIdx.length > 0 ? 1 : 0);
 }

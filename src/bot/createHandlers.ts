@@ -4,15 +4,18 @@ import { CONFIG } from "../config.js";
 import { escapeMarkdown } from "../utils.js";
 import { CARD_CALLBACK } from "../consts.js";
 import { CandidateState } from "../enums.js";
+import { renderRewriting } from "./render.js";
 import { parseCallback } from "./modelPick.js";
-import { enrichItemBody } from "../feeds/index.js";
 import { handleModelCallback } from "./modelMenu.js";
 import { ackSilently, logEditError } from "./edit.js";
+import { crossPostPublished } from "../blog/index.js";
 import { rawKeyboard, previewKeyboard } from "./keyboards.js";
-import { isModelNotFound, renderRewriting } from "./render.js";
-import { PublishError, crossPostPublished } from "../blog/index.js";
-import { runExtraction, loadExtraction } from "./candidateActions.js";
-import { PROVIDERS, hasActiveOverride, resolveActiveProvider } from "../llm/index.js";
+import {
+  activeModelLabel,
+  runClaimedExtraction,
+  MissingExtractionError,
+  publishClaimedCandidate,
+} from "./candidateActions.js";
 
 import type { Candidate } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
@@ -100,22 +103,8 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
       await ackSilently(ctx, { text: "Публикую…" });
       await ctx.editMessageReplyMarkup().catch(logEditError("publish clear markup"));
 
-      const extracted = loadExtraction(store, candidate);
-      if (!extracted) {
-        // No saved extraction (corrupt/missing JSON) — send back to rewrite_failed
-        // with a usable retry keyboard rather than a dead, button-less card.
-        store.setState(id, CandidateState.RewriteFailed, "Нет сохранённых данных.");
-        await ctx
-          .editMessageText("⚠️ Нет данных для публикации — переработайте заново.", {
-            reply_markup: rawKeyboard(id),
-          })
-          .catch(logEditError("publish missing-extraction text"));
-        return;
-      }
-
       try {
-        const postId = await extracted.publish();
-        store.setPublished(id, postId);
+        const { extracted, postId } = await publishClaimedCandidate(store, candidate);
         await ctx
           .editMessageText(`✅ Опубликовано: *${escapeMarkdown(extracted.title)}*`, {
             parse_mode: "Markdown",
@@ -127,12 +116,14 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
         await crossPostPublished(bot.api, ctx, extracted, postId);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // If the POST may have reached the blog (5xx / unreadable 201 / timeout),
-        // the post could already be live — route to needs_verification so the
-        // owner is warned before re-publishing, instead of a silent duplicate.
-        const maybePosted = err instanceof PublishError && err.maybePosted;
-        if (maybePosted) {
-          store.setState(id, CandidateState.NeedsVerification, message);
+        const state = store.get(id)?.state;
+        if (err instanceof MissingExtractionError) {
+          await ctx
+            .editMessageText("⚠️ Нет данных для публикации — переработайте заново.", {
+              reply_markup: rawKeyboard(id),
+            })
+            .catch(logEditError("publish missing-extraction text"));
+        } else if (state === CandidateState.NeedsVerification) {
           await ctx
             .editMessageText(
               `❓ Публикация не подтверждена: ${message}\n\n_Пост МОГ опубликоваться — проверьте блог перед повтором._`,
@@ -140,8 +131,6 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
             )
             .catch(logEditError("publish maybe-posted text"));
         } else {
-          // Definitely did not post — safe to re-offer publish/regenerate.
-          store.setState(id, CandidateState.PendingReview, message);
           await ctx
             .editMessageText(`⚠️ Не удалось опубликовать: ${message}`, {
               reply_markup: previewKeyboard(id),
@@ -173,8 +162,7 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
     inFlight += 1;
     try {
       await ackSilently(ctx, { text: "Перерабатываю…" });
-      const active = resolveActiveProvider(store);
-      const modelLabel = `${PROVIDERS[active.provider].label} / ${active.model}`;
+      const modelLabel = activeModelLabel(store);
 
       // Visible "in progress" state: replace the card with a placeholder (no
       // buttons) so the owner sees the rewrite is running, not a frozen card.
@@ -188,17 +176,10 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
         // to the stored snippet on any scrape failure (never aborts the rewrite).
         // runExtraction branches on the candidate's kind: a news item is
         // rewritten to a post, a release item is extracted to a ModelRelease.
-        const item = await enrichItemBody(store.getFeedItem(candidate));
-        const preview = await runExtraction(store, id, item, candidate, modelLabel);
+        const preview = await runClaimedExtraction(store, id, candidate, modelLabel);
         await editOrResend(ctx, id, preview, previewKeyboard(id), "rewrite preview");
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        store.setState(id, CandidateState.RewriteFailed, message);
-        // A model-not-found on the active override means that model is dead;
-        // clear the override so the env default is used next.
-        if (isModelNotFound(message) && hasActiveOverride(store)) {
-          store.clearModelOverride();
-        }
         await editOrResend(
           ctx,
           id,
@@ -246,14 +227,10 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
     }
   }
 
-  /**
-   * Resolves once no publish handler is in flight (or a timeout elapses).
-   * Shutdown awaits this before closing the store so a callback mid-publish
-   * isn't cut off with a closed database.
-   */
+  /** Best-effort drain; legacy manual Telegram calls can otherwise retry forever. */
   async function drain(timeoutMs = 10_000): Promise<void> {
-    const start = Date.now();
-    while (inFlight > 0 && Date.now() - start < timeoutMs) {
+    const startedAt = Date.now();
+    while (inFlight > 0 && Date.now() - startedAt < timeoutMs) {
       await new Promise((r) => setTimeout(r, 100));
     }
   }

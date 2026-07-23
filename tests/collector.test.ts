@@ -58,24 +58,24 @@ afterEach(() => {
   emitRelevanceDecisions.mockImplementation(async () => {});
 });
 
-describe("runCollection — raw cards, no rewrite at collection", () => {
-  it("does NOT rewrite; inserts collected and sends one raw card per fresh item", async () => {
+describe("runCollection — injected fresh-candidate processing", () => {
+  it("does NOT rewrite itself; inserts and hands every fresh item to the processor", async () => {
     const store = new CandidateStore(":memory:");
     fetchAllFeeds.mockResolvedValue([
       feedItem({ dedupKey: "k1", url: "https://ex.com/1" }),
       feedItem({ dedupKey: "k2", url: "https://ex.com/2" }),
     ]);
     const sent: number[] = [];
-    const sendRawCard = vi.fn(async (c: { id: number; state: string }) => {
+    const processCandidate = vi.fn(async (c: { id: number; state: string }) => {
       sent.push(c.id);
       expect(c.state).toBe("collected"); // card shows the RAW item
     });
 
-    const summary = await runCollection(store, sendRawCard, 0);
+    const summary = await runCollection(store, processCandidate, 0);
 
     expect(rewriteToPost).not.toHaveBeenCalled();
     expect(summary.fresh).toBe(2);
-    expect(summary.sent).toBe(2);
+    expect(summary.published).toBe(2);
     expect(sent).toHaveLength(2);
     store.close();
   });
@@ -118,6 +118,26 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     store.close();
   });
 
+  it("does not persist later batch items before the current item is processed", async () => {
+    const store = new CandidateStore(":memory:");
+    fetchAllFeeds.mockResolvedValue([
+      feedItem({ dedupKey: "first", url: "https://ex/first", publishedAt: 2 }),
+      feedItem({ dedupKey: "second", url: "https://ex/second", publishedAt: 1 }),
+    ]);
+
+    const seenBeforeProcessing: boolean[] = [];
+    await runCollection(
+      store,
+      async () => {
+        seenBeforeProcessing.push(store.isSeen("second"));
+      },
+      0,
+    );
+
+    expect(seenBeforeProcessing[0]).toBe(false);
+    store.close();
+  });
+
   it("reports afterFilter=0 + filterActive when an include filter hides everything", async () => {
     vi.stubEnv("FILTER_INCLUDE", "zzz-no-match");
     vi.resetModules();
@@ -141,18 +161,18 @@ describe("runCollection — raw cards, no rewrite at collection", () => {
     vi.resetModules();
   });
 
-  it("counts a DM failure without aborting the run", async () => {
+  it("counts a processor failure without aborting the run", async () => {
     const store = new CandidateStore(":memory:");
     fetchAllFeeds.mockResolvedValue([feedItem()]);
     const summary = await runCollection(
       store,
       async () => {
-        throw new Error("telegram down");
+        throw new Error("publish down");
       },
       0,
     );
     expect(summary.failed).toBe(1);
-    expect(summary.sent).toBe(0);
+    expect(summary.published).toBe(0);
     store.close();
   });
 

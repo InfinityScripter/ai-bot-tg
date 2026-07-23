@@ -2,7 +2,12 @@ import { CONFIG } from "./config.js";
 import { createBot } from "./bot/index.js";
 import { CandidateStore } from "./store/index.js";
 import { NOTIFY_LABELS, COLLECTION_LABELS } from "./labels.js";
-import { runCollection, scheduleDaily, startControlServer } from "./server/index.js";
+import {
+  runCollection,
+  scheduleDaily,
+  startControlServer,
+  createProcessCandidate,
+} from "./server/index.js";
 
 /**
  * Entrypoint. Wires the store, bot, collector, and scheduler together, then
@@ -12,25 +17,48 @@ import { runCollection, scheduleDaily, startControlServer } from "./server/index
 async function main() {
   const store = new CandidateStore();
 
-  // The bot owns sendRawCard; the collector run closes over it. createBot's
-  // onFetch is invoked by /fetch and runs the same cycle as the cron. It returns
-  // a short status note so /fetch can reply with it — in particular when a
-  // keyword filter hid everything (otherwise the owner can't tell a misconfigured
-  // filter from a genuine "no news today").
-  const run = async (): Promise<string> => {
-    const s = await runCollection(store, (candidate) => sendRawCard(candidate));
+  // The bot owns autoPublishCandidate + sendRawCard; the collector run builds a
+  // deciding processCandidate over both, gated on the blog's auto-publish flags
+  // (read once per run). createBot's onFetch is invoked by /fetch and runs the
+  // same cycle as the cron. It returns a short status note so /fetch can reply
+  // with it — in particular when a keyword filter hid everything (otherwise the
+  // owner can't tell a misconfigured filter from a genuine "no news today").
+  let acceptingCollections = true;
+  let activeCollection: Promise<string> | null = null;
+  const runOnce = async (): Promise<string> => {
+    const processCandidate = await createProcessCandidate(store, {
+      autoPublish: autoPublishCandidate,
+      sendRawCard,
+    });
+    const s = await runCollection(store, processCandidate);
     if (s.filterActive && s.fetched > 0 && s.afterFilter === 0) {
       return COLLECTION_LABELS.filterBlocked(s.fetched);
     }
-    if (s.fresh === 0) return COLLECTION_LABELS.noNews(s.fetched);
-    return COLLECTION_LABELS.done(s.fresh, s.sent, s.failed);
+    if (s.fresh === 0 && s.published === 0 && s.failed === 0) {
+      return COLLECTION_LABELS.noNews(s.fetched);
+    }
+    return COLLECTION_LABELS.done(s.fresh, s.published, s.failed);
+  };
+  const run = (): Promise<string> => {
+    if (!acceptingCollections) return Promise.resolve("Сервис останавливается, сбор не запущен.");
+    if (activeCollection) return activeCollection;
+    const current = runOnce().finally(() => {
+      if (activeCollection === current) activeCollection = null;
+    });
+    activeCollection = current;
+    return current;
   };
   // Declared before createBot so /health can read the next cron run via a lazy
   // getter; the actual job is assigned below (after the bot/notify wiring exists).
   let job: ReturnType<typeof scheduleDaily> | null = null;
-  const { bot, sendRawCard, notifyNeedsVerification, drain } = createBot(store, run, {
-    nextRun: () => job?.nextRun() ?? null,
-  });
+  const {
+    bot,
+    sendRawCard,
+    autoPublishCandidate,
+    notifyAutomaticFailures,
+    notifyNeedsVerification,
+    drain,
+  } = createBot(store, run, { nextRun: () => job?.nextRun() ?? null });
 
   // Best-effort DM to the owner (used to alert on a failed scheduled run).
   const notifyOwner = async (text: string): Promise<void> => {
@@ -91,6 +119,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    acceptingCollections = false;
     // eslint-disable-next-line no-console
     console.log(`[index] ${signal} received, shutting down…`);
     let code = 0;
@@ -98,6 +127,7 @@ async function main() {
       job?.stop();
       if (controlServer) await controlServer.close();
       await bot.stop(); // grammy: stops polling; does not drain handlers
+      if (activeCollection) await activeCollection;
       await drain(); // wait for any in-flight publish to finish its DB writes
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -118,6 +148,7 @@ async function main() {
       console.log(`[index] bot @${info.username} polling.`);
       // Warn the owner about any post-crash rows whose publish status is unknown.
       void notifyNeedsVerification();
+      void notifyAutomaticFailures();
     },
   });
 }

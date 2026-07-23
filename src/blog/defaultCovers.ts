@@ -211,9 +211,7 @@ const TAG_TO_POOL: Record<string, string> = {
  * re-uses topical URLs). Exported so tests can assert `pickDefaultCover` only
  * ever returns a known, verified image.
  */
-export const DEFAULT_COVERS: readonly string[] = [
-  ...new Set(Object.values(COVER_POOLS).flat()),
-];
+export const DEFAULT_COVERS: readonly string[] = [...new Set(Object.values(COVER_POOLS).flat())];
 
 /**
  * Resolves the topical cover pool for a post from its normalized tags. The first
@@ -221,7 +219,8 @@ export const DEFAULT_COVERS: readonly string[] = [
  * with no topical tag it falls back to the neutral universal pool.
  */
 function poolFor(tags: readonly string[]): readonly string[] {
-  const poolId = tags.map((tag) => TAG_TO_POOL[tag.toLowerCase().trim()]).find(Boolean) ?? "universal";
+  const poolId =
+    tags.map((tag) => TAG_TO_POOL[tag.toLowerCase().trim()]).find(Boolean) ?? "universal";
   return COVER_POOLS[poolId] ?? UNIVERSAL_COVERS;
 }
 

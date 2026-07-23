@@ -26,9 +26,7 @@ const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
  */
 function hasMarker(item: FeedItem, markers: string[]): boolean {
   const hay = haystack(item);
-  return markers.some((m) =>
-    new RegExp(`(?<![${WORD_CHAR}])${escapeRe(m)}`).test(hay),
-  );
+  return markers.some((m) => new RegExp(`(?<![${WORD_CHAR}])${escapeRe(m)}`).test(hay));
 }
 
 /** Computes the decision for one item (stages A then B). Pure aside from classify. */

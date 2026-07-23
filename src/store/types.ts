@@ -26,6 +26,7 @@ export interface CandidateRow {
   snippet: string | null;
   image_urls: string | null;
   kind: string;
+  auto_publish: number;
   state: string;
   rewrite_json: string | null;
   tg_message_id: number | null;

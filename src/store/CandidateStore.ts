@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 
 import { CONFIG } from "../config.js";
 import * as settings from "./storeSettings.js";
+import * as queries from "./candidateQueries.js";
 import * as mutations from "./candidateMutations.js";
 import { CandidateKind, CandidateState } from "../enums.js";
 import { SCHEMA, mapRow, MIGRATIONS } from "./candidateSchema.js";
@@ -36,23 +37,16 @@ export class CandidateStore {
     for (const sql of MIGRATIONS) {
       try {
         this.db.exec(sql);
-      } catch {
-        /* column already present */
+      } catch (err) {
+        if (err instanceof Error && /duplicate column name/i.test(err.message)) continue;
+        throw err;
       }
     }
-    this.recoverInFlight();
-  }
-
-  /**
-   * Resets rows stuck in a transient in-flight state back to a retryable one.
-   * A crash or deploy (systemd SIGTERM on CI auto-deploy) mid-rewrite/publish
-   * leaves a row in 'rewriting'/'publishing' — a state none of the bot's button
-   * guards accept, so the card would be permanently dead. On startup we move
-   * those back: 'rewriting' → 'collected' (re-offer the 🔄 card), 'publishing'
-   * → 'needs_verification' (POST may have reached the blog — warn before re-publish).
-   * Idempotent; runs once per process.
-   */
-  private recoverInFlight(): void {
+    // Recover rows stuck in a transient in-flight state from a crash/deploy
+    // (systemd SIGTERM on CI auto-deploy) mid-rewrite/publish: 'rewriting' →
+    // 'collected' (re-offer the 🔄 card), 'publishing' → 'needs_verification'
+    // (POST may have reached the blog — warn before re-publish). Idempotent;
+    // runs once per process, on construction.
     mutations.recoverInFlight(this.db);
   }
 
@@ -60,7 +54,7 @@ export class CandidateStore {
    * Inserts a freshly-collected feed item as state 'collected'. Returns the new
    * candidate id, or null if the dedup_key already exists (already seen — skip).
    */
-  insertCollected(item: FeedItem): number | null {
+  insertCollected(item: FeedItem, autoPublish = false): number | null {
     // A pruned-but-seen key lives only in seen_keys; honor it so an old
     // published/skipped article isn't re-collected after its row was deleted.
     const prunedSeen = this.db
@@ -71,8 +65,8 @@ export class CandidateStore {
     const info = this.db
       .prepare(
         `INSERT OR IGNORE INTO candidates
-           (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, kind, state)
-         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, @kind, @state)`,
+           (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, kind, auto_publish, state)
+         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, @kind, @autoPublish, @state)`,
       )
       .run({
         dedupKey: item.dedupKey,
@@ -85,6 +79,7 @@ export class CandidateStore {
         // The item carries its kind (decided by runCollection from the release
         // markers before insert); an unset kind defaults to 'news'.
         kind: item.kind ?? CandidateKind.News,
+        autoPublish: autoPublish ? 1 : 0,
         state: CandidateState.Collected,
       });
     return info.changes === 1 ? Number(info.lastInsertRowid) : null;
@@ -122,10 +117,17 @@ export class CandidateStore {
 
   /** Returns all candidates in a given state (e.g. needs_verification on boot). */
   listByState(state: CandidateState): Candidate[] {
-    const rows = this.db
-      .prepare("SELECT * FROM candidates WHERE state = ? ORDER BY id")
-      .all(state) as CandidateRow[];
-    return rows.map(mapRow);
+    return queries.listByState(this.db, state);
+  }
+
+  /** Automatic candidates recovered from a crash before their publish request. */
+  listRecoveredAutomatic(): Candidate[] {
+    return queries.listRecoveredAutomatic(this.db);
+  }
+
+  /** Automatic failures whose Telegram recovery card may need replaying on boot. */
+  listAutomaticFailures(): Candidate[] {
+    return queries.listAutomaticFailures(this.db);
   }
 
   /** Candidate count per state (one GROUP BY) — for the /health queue summary. */
@@ -215,6 +217,11 @@ export class CandidateStore {
    */
   attachRelease(id: number, release: ReleaseResult): void {
     mutations.attachExtraction(this.db, id, release);
+  }
+
+  /** Clears the auto_publish flag (1 → 0) so a diverted item leaves the automatic lane. */
+  clearAutoPublish(id: number): void {
+    mutations.clearAutoPublish(this.db, id);
   }
 
   /** Records the Telegram message id of the approval DM. */

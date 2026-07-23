@@ -28,21 +28,31 @@ describe("fetchAllPosts", () => {
     expect(all.map((p) => p.id)).toEqual(["1", "2", "3"]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     // page numbers are 1-based and increment.
-    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining("page=1"), expect.anything());
-    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining("page=2"), expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("page=1"),
+      expect.anything(),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("page=2"),
+      expect.anything(),
+    );
   });
 
   it("returns posts oldest-first by createdAt", async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(
-      page(
-        [
-          post({ id: "new", createdAt: "2026-03-01T00:00:00Z" }),
-          post({ id: "old", createdAt: "2026-01-01T00:00:00Z" }),
-          post({ id: "mid", createdAt: "2026-02-01T00:00:00Z" }),
-        ],
-        false,
-      ),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        page(
+          [
+            post({ id: "new", createdAt: "2026-03-01T00:00:00Z" }),
+            post({ id: "old", createdAt: "2026-01-01T00:00:00Z" }),
+            post({ id: "mid", createdAt: "2026-02-01T00:00:00Z" }),
+          ],
+          false,
+        ),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     const all = await fetchAllPosts();

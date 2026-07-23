@@ -55,6 +55,8 @@ export interface Candidate {
    * column DEFAULT.
    */
   kind: CandidateKind;
+  /** True for candidates created by the scheduled or /fetch automatic batch. */
+  autoPublish: boolean;
   state: CandidateState;
   /**
    * The stored extracted entity, JSON-encoded: a RewriteResult for kind='news'

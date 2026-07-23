@@ -102,6 +102,19 @@ export function attachRewrite(db: Database.Database, id: number, rewrite: Rewrit
   attachExtraction(db, id, rewrite);
 }
 
+/**
+ * Clears the auto_publish flag on a candidate (1 → 0). Used by the divert-to-manual
+ * path: when the master switch for this kind is off, an item collected with
+ * auto_publish=1 (insertCollected hardcodes it) must be dropped from the automatic
+ * lane, or crash-recovery (listRecoveredAutomatic selects auto_publish=1) would
+ * re-divert the same row on every boot. Idempotent; leaves state untouched.
+ */
+export function clearAutoPublish(db: Database.Database, id: number): void {
+  db.prepare(
+    `UPDATE candidates SET auto_publish = 0, updated_at = datetime('now') WHERE id = ?`,
+  ).run(id);
+}
+
 /** Records the Telegram message id of the approval DM. */
 export function setTelegramMessage(db: Database.Database, id: number, messageId: number): void {
   db.prepare(

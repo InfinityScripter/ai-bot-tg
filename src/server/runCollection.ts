@@ -6,7 +6,7 @@ import { filterRelevant, VENDOR_MARKERS, RELEASE_MARKERS } from "../llm/index.js
 
 import type { FeedItem } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
-import type { RunSummary, SendRawCard } from "./types.js";
+import type { RunSummary, ProcessCandidate } from "./types.js";
 
 /**
  * True when a feed item looks like an AI-model release announcement: a release
@@ -26,33 +26,50 @@ function isReleaseItem(item: FeedItem): boolean {
 const SEND_SPACING_MS = 0;
 
 /**
- * Runs one collection cycle: fetch feeds → dedup-insert the RAW item → DM the
- * owner a raw card. The LLM rewrite no longer happens here — it runs later, on
- * the owner's "🔄 Переработать" tap, with the model active at that moment (see
- * the bot's rewrite handler). Caps new candidates per run (MAX_PER_RUN).
+ * Runs one collection cycle: fetch feeds → dedup-insert → invoke the configured
+ * action for every fresh item. Production wires automatic rewrite + publish;
+ * keeping that action injected leaves filtering/dedup independently testable.
+ * Caps new candidates per run (MAX_PER_RUN).
  *
  * Both the daily cron and the /fetch command call this.
  */
 export async function runCollection(
   store: CandidateStore,
-  sendRawCard: SendRawCard,
+  processCandidate: ProcessCandidate,
   spacingMs: number = SEND_SPACING_MS,
 ): Promise<RunSummary> {
-  const items = await fetchAllFeeds();
-  const include = parseKeywords(CONFIG.FILTER_INCLUDE);
-  const exclude = parseKeywords(CONFIG.FILTER_EXCLUDE);
-  const filterActive = include.length > 0 || exclude.length > 0;
   const summary: RunSummary = {
-    fetched: items.length,
+    fetched: 0,
     afterFilter: 0,
     afterDedup: 0,
     afterRelevance: 0,
     droppedRelevance: 0,
     fresh: 0,
-    sent: 0,
+    published: 0,
     failed: 0,
-    filterActive,
+    filterActive: false,
   };
+
+  // A crash during rewrite is recovered to `collected`. Resume only rows that
+  // were explicitly created by an automatic batch; manual drafts share the
+  // same state and must keep their approval flow.
+  const recovered = store.listRecoveredAutomatic().slice(0, CONFIG.MAX_PER_RUN);
+  for (const candidate of recovered) {
+    try {
+      await processCandidate(candidate);
+      summary.published += 1;
+    } catch (err) {
+      summary.failed += 1;
+      // eslint-disable-next-line no-console
+      console.warn(`[collector] failed to resume #${candidate.id}: ${String(err)}`);
+    }
+  }
+
+  const items = await fetchAllFeeds();
+  const include = parseKeywords(CONFIG.FILTER_INCLUDE);
+  const exclude = parseKeywords(CONFIG.FILTER_EXCLUDE);
+  summary.fetched = items.length;
+  summary.filterActive = include.length > 0 || exclude.length > 0;
 
   // Filter by optional keywords, then order newest-first, so the MAX_PER_RUN cap
   // keeps the freshest relevant items instead of feed-concatenation order.
@@ -81,34 +98,29 @@ export async function runCollection(
   summary.afterRelevance = kept.length;
   summary.droppedRelevance = toClassify.length - kept.length;
 
-  // Insert fresh (deduped) items, capped per run. The full raw item (snippet,
-  // imageUrls) is persisted so the deferred rewrite can run from the row alone.
-  // Decide kind (news vs release) BEFORE insert: dedup is one table, so a URL
-  // first seen as 'news' would block it ever being re-collected as a 'release'.
-  const fresh: number[] = [];
-  for (const item of kept) {
-    if (fresh.length >= CONFIG.MAX_PER_RUN) break;
+  // Insert and process one item at a time. Persisting the whole batch first is
+  // unsafe: a restart during candidate #1 would leave #2…N marked seen but never
+  // processed. Decide kind BEFORE insert because news/release share one dedup key.
+  const remaining = Math.max(0, CONFIG.MAX_PER_RUN - recovered.length);
+  for (let i = 0; i < kept.length && summary.fresh < remaining; i += 1) {
+    const item = kept[i]!;
     const kind = isReleaseItem(item) ? CandidateKind.Release : CandidateKind.News;
-    const id = store.insertCollected({ ...item, kind });
-    if (id !== null) fresh.push(id);
-  }
-  summary.fresh = fresh.length;
-
-  for (let i = 0; i < fresh.length; i += 1) {
-    const id = fresh[i]!;
+    const id = store.insertCollected({ ...item, kind }, true);
+    if (id === null) continue;
+    summary.fresh += 1;
     const candidate = store.get(id);
     if (!candidate) continue;
     try {
-      await sendRawCard(candidate);
-      summary.sent += 1;
+      await processCandidate(candidate);
+      summary.published += 1;
     } catch (err) {
       summary.failed += 1;
       // eslint-disable-next-line no-console
-      console.warn(`[collector] failed to DM raw card for #${id}: ${String(err)}`);
+      console.warn(`[collector] failed to process #${id}: ${String(err)}`);
     }
     // Telegram allows ~1 msg/sec to one chat; space the burst so a full
     // MAX_PER_RUN batch doesn't trip 429. No delay after the last one.
-    if (spacingMs > 0 && i < fresh.length - 1) {
+    if (spacingMs > 0 && i < kept.length - 1) {
       await new Promise((r) => setTimeout(r, spacingMs));
     }
   }
@@ -118,7 +130,7 @@ export async function runCollection(
     `[collector] run done: fetched=${summary.fetched} afterFilter=${summary.afterFilter} ` +
       `afterDedup=${summary.afterDedup} afterRelevance=${summary.afterRelevance} ` +
       `droppedRelevance=${summary.droppedRelevance} ` +
-      `fresh=${summary.fresh} sent=${summary.sent} failed=${summary.failed}`,
+      `fresh=${summary.fresh} published=${summary.published} failed=${summary.failed}`,
   );
 
   // Mirror the relevance decisions into the backend audit log. Mode 'off'

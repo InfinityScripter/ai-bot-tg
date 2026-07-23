@@ -1,19 +1,23 @@
 import { createBot } from "../bot/index.js";
-import { runCollection } from "../server/index.js";
 import { CandidateStore } from "../store/index.js";
+import { runCollection, createProcessCandidate } from "../server/index.js";
 
 /**
  * One-shot collection run from the shell (`npm run fetch`), without starting
- * the long-polling loop. Uses the bot API only to send raw cards, then exits.
- * Handy for testing the pipeline end-to-end on demand.
+ * the long-polling loop. Runs the same flag-gated auto-publish/divert path as
+ * cron and /fetch (deciding processCandidate over autoPublish + sendRawCard).
  */
 async function main() {
   const store = new CandidateStore();
-  const { bot, sendRawCard } = createBot(store, async () => {});
-  // No bot.start() — we only use bot.api.sendMessage to DM raw cards.
+  const { bot, autoPublishCandidate, sendRawCard } = createBot(store, async () => {});
+  // No bot.start() — bot.api is still used for progress cards and cross-posts.
   void bot;
 
-  const summary = await runCollection(store, sendRawCard);
+  const processCandidate = await createProcessCandidate(store, {
+    autoPublish: autoPublishCandidate,
+    sendRawCard,
+  });
+  const summary = await runCollection(store, processCandidate);
   // eslint-disable-next-line no-console
   console.log("[cli] summary:", summary);
 

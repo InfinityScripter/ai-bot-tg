@@ -30,16 +30,16 @@ export interface RunSummary {
   /** Items the relevance filter actually dropped (only > 0 when mode='on'). */
   droppedRelevance: number;
   fresh: number;
-  /** Raw cards successfully DM'd to the owner. */
-  sent: number;
-  /** Cards that failed to DM. */
+  /** Fresh candidates fully processed by the configured batch action. */
+  published: number;
+  /** Candidates whose batch action failed. */
   failed: number;
   /** True if a keyword filter (include/exclude) was active this run. */
   filterActive: boolean;
 }
 
-/** Sends the owner a "raw" review card for a freshly-collected candidate. */
-export type SendRawCard = (candidate: Candidate) => Promise<void>;
+/** Processes one freshly-collected candidate (automatic publish in production). */
+export type ProcessCandidate = (candidate: Candidate) => Promise<void>;
 
 export interface ControlServerOptions {
   port: number;

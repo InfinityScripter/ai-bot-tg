@@ -66,9 +66,21 @@ describe("filterRelevant — stage A blocklist (mode on)", () => {
     // "спорт" ⊂ "экспорт/транспорт", "футбол" in a metaphor, "мода" ⊂ "модальность".
     const classify = vi.fn().mockResolvedValue(4);
     const items = [
-      item({ url: "https://ex/1", title: "ИИ снова закрывается", snippet: "заблокировать экспорт GLM и Qwen" }),
-      item({ url: "https://ex/2", title: "Инженерная эволюция платформы", snippet: "данных, транспорта, оркестрации" }),
-      item({ url: "https://ex/3", title: "Мультимодальность в LLM", snippet: "работа с модальностью изображений" }),
+      item({
+        url: "https://ex/1",
+        title: "ИИ снова закрывается",
+        snippet: "заблокировать экспорт GLM и Qwen",
+      }),
+      item({
+        url: "https://ex/2",
+        title: "Инженерная эволюция платформы",
+        snippet: "данных, транспорта, оркестрации",
+      }),
+      item({
+        url: "https://ex/3",
+        title: "Мультимодальность в LLM",
+        snippet: "работа с модальностью изображений",
+      }),
     ];
     const { decisions } = await filterRelevant(items, STORE, {
       classify,

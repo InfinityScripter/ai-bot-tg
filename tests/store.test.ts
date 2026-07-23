@@ -212,14 +212,18 @@ describe("CandidateStore", () => {
       const tmp = `${process.cwd()}/.tmp-recover-${process.pid}.db`;
       rmSync(tmp, { force: true });
       const s1 = new CandidateStore(tmp);
-      const id = s1.insertCollected(item())!;
+      const id = s1.insertCollected(item(), true)!;
       s1.setState(id, CandidateState.Rewriting); // simulate a crash mid-rewrite
+      const manualId = s1.insertCollected(item({ dedupKey: "manual" }))!;
+      s1.setState(manualId, CandidateState.Rewriting);
       const pid = s1.insertCollected(item({ dedupKey: "pub" }))!;
       s1.setState(pid, CandidateState.Publishing);
       s1.close();
 
       const s2 = new CandidateStore(tmp); // constructor runs recoverInFlight
       expect(s2.get(id)?.state).toBe(CandidateState.Collected); // rewriting → collected
+      expect(s2.listRecoveredAutomatic().map((candidate) => candidate.id)).toEqual([id]);
+      expect(s2.get(manualId)?.state).toBe(CandidateState.Collected);
       // publishing → needs_verification (NOT pending_review — avoids a silent
       // duplicate post if the POST had already reached the blog).
       expect(s2.get(pid)?.state).toBe(CandidateState.NeedsVerification);

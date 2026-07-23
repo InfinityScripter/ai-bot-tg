@@ -4,12 +4,14 @@ import { coverSeed, pickDefaultCover } from "./defaultCovers.js";
 
 import type { BlogPostBody, RewriteResult } from "../types.js";
 
+export const PUBLISH_TIMEOUT_MS = 30_000;
+
 /**
  * A publish failure that also reports whether the POST MAY have reached the
  * blog. `maybePosted` is true when the request was sent but the outcome is
  * unknown (5xx, a non-201 after send, or an unreadable 201 body) — the caller
  * must then NOT silently re-offer Publish (it could duplicate). It is false only
- * when the post definitely did not happen (could not connect, or a clear 4xx).
+ * when the post definitely did not happen (a clear 4xx).
  */
 export class PublishError extends Error {
   readonly maybePosted: boolean;
@@ -61,10 +63,12 @@ export async function publishToBlog(
   idempotencyKey?: string,
 ): Promise<string> {
   const url = `${CONFIG.BLOG_API_URL.replace(/\/$/, "")}/api/post/new`;
+  const signal = AbortSignal.timeout(PUBLISH_TIMEOUT_MS);
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${CONFIG.BOT_API_TOKEN}`,
@@ -73,8 +77,9 @@ export async function publishToBlog(
       body: JSON.stringify(toBlogPostBody(rewrite, coverUrl)),
     });
   } catch (err) {
-    // Could not even send the request → the post definitely did not happen.
-    throw new PublishError(`Не удалось связаться с блогом: ${String(err)}`, false);
+    // Any transport rejection may happen after the server accepted the body
+    // (connection reset, timeout, broken response). Never silently retry it.
+    throw new PublishError(`Не удалось связаться с блогом: ${String(err)}`, true);
   }
 
   if (response.status !== 201) {

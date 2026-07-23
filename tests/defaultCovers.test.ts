@@ -72,7 +72,9 @@ describe("pickDefaultCover", () => {
   });
 
   it("uses the first topical tag and skips новости", () => {
-    expect(pickDefaultCover(["новости", "ai", "безопасность"], 3)).toBe(pickDefaultCover(["ai"], 3));
+    expect(pickDefaultCover(["новости", "ai", "безопасность"], 3)).toBe(
+      pickDefaultCover(["ai"], 3),
+    );
   });
 
   it("falls back to the universal pool for non-topical tags", () => {

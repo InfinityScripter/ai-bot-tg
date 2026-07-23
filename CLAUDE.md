@@ -5,14 +5,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Telegram news bot for the blog `aifirst.us.com`. Once a day (croner) it collects
-items from curated RSS feeds, dedups them in SQLite, and DMs the owner **raw**
-cards. Rewriting into a unique post happens **on demand** — only when the owner
-presses 🔄 — using the active LLM provider (GLM / DeepSeek / OpenRouter / Claude /
-Gemini, switchable at runtime via `/model`). After ✅ the post is published to the
-blog over its HTTP API, and optionally cross-posted to a Telegram channel. Release
-announcements are detected by markers and go through a separate structured
-extraction into the blog changelog. There is also a weekly email digest flow and
-manual ingest (owner sends a URL or text).
+items from curated RSS feeds, dedups them in SQLite, and processes each fresh item
+**automatically** — rewrite (active LLM: GLM / DeepSeek / OpenRouter / Claude /
+Gemini, switchable at runtime via `/model`) then publish to the blog over its HTTP
+API, optionally cross-posted to a Telegram channel. Release announcements are
+detected by markers and go through a separate structured extraction into the blog
+changelog. There is also a weekly email digest flow and manual ingest (owner
+sends a URL or text).
+
+Automatic publishing is gated by two **master switches in the blog admin**
+(`autoPublishReleases`, `autoPublishNews`, read per run — see below) and by a
+**quality gate**. When a switch is off, or an item fails the gate, the item is
+**diverted to manual**: the owner gets the RAW card and publishes on demand
+(🔄 rewrite → ✅ publish). Manual URL/text ingest always uses this manual flow.
+Nothing is ever dropped — off/failed just means "owner decides".
 
 The README.md (Russian) is the primary project doc — it has the full per-file map
 of `src/`, the bot command table, filter semantics, and the control-server API.
@@ -65,12 +71,27 @@ locally, never commit a re-resolved lock — the resolved URLs must stay on
 ### Pipeline (the one flow everything serves)
 
 ```
-cron / manual URL-or-text ─► feeds ─► keyword filter (FILTER_*) ─► relevance filter
-  ─► dedup (SQLite) ─► RAW card in owner DM ─► 🔄 rewrite (active LLM) ─► PREVIEW card
-  ─► ✅ publish:  news → POST {BLOG_API_URL}/api/post/new
-                  release → POST {BLOG_API_URL}/api/changelog/new
+cron / npm run fetch ─► feeds ─► keyword filter (FILTER_*) ─► relevance filter
+  ─► dedup (SQLite) ─► per candidate, read auto-publish flags (once/run, fail-closed):
+     ├─ switch ON  ─► rewrite/extract ─► quality gate ─► publish
+     │                                      └─ gate fails ─┐
+     └─ switch OFF ─────────────────────────────────────► divert to manual
+        divert = clear auto_publish + RAW card in owner DM ─► 🔄 rewrite ─► ✅ publish
+  publish:  news → POST {BLOG_API_URL}/api/post/new
+            release → POST {BLOG_API_URL}/api/changelog/new
   ─► optional cross-post to TELEGRAM_CHANNEL_ID (soft-fail: never breaks publish)
+
+manual URL-or-text ─► always the RAW → 🔄 → ✅ manual flow (never auto)
 ```
+
+Flags: `fetchAutoPublishFlags` reads `autoPublishReleases` / `autoPublishNews`
+from the blog admin (`GET /api/admin/settings`, at `data.data.flags`) once per
+run. **Fail-closed** — any read error yields both false, so a blog outage diverts
+everything to manual instead of auto-publishing. The deciding callback is
+`src/server/createProcessCandidate.ts`; the gate is `src/llm/qualityGate.ts`
+(`assertPublishable` throws `GateFailure`, which `runAutomaticPublish` catches and
+turns into a manual card). The flag toggle lives in the **backend** admin, not the
+bot.
 
 The bot talks to the blog **only** over HTTP (Bearer `BOT_API_TOKEN`) and owns
 exactly one piece of state: a single SQLite file (dedup ledger + candidate
@@ -183,3 +204,7 @@ Details and rollback: `deploy/RUNBOOK.md` and `deploy/DEPLOY.md`.
 `docs/plans/` and `docs/superpowers/{plans,specs}/` hold dated design documents
 for shipped features — the decision record. Add a dated spec there for any
 substantial feature, matching the existing naming (`YYYY-MM-DD-<topic>.md`).
+
+`docs/security-llm-checklist.md` — OWASP LLM Top 10 mapped to this bot's real
+surfaces (feeds are untrusted prompt input, publish path, control server). Run
+through it when touching `src/llm/`, prompts, or adding a provider/tool.

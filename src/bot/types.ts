@@ -53,6 +53,12 @@ export interface LoadedExtraction {
   crossPost: CrossPostContent;
 }
 
+/** Result of one claimed blog publish, reused by manual and automatic flows. */
+export interface PublishedCandidate {
+  extracted: LoadedExtraction;
+  postId: string;
+}
+
 /**
  * The kind-specific pieces needed to build a channel announcement for a
  * published item. `linkFor(id)` turns the freshly-created id into a public URL
