@@ -3,7 +3,7 @@ import { enrichItemBody } from "../feeds/index.js";
 import { renderReleasePreview } from "./renderRelease.js";
 import { CandidateKind, CandidateState } from "../enums.js";
 import { renderPreview, isModelNotFound } from "./render.js";
-import { PublishError, publishToBlog, publishRelease, pickDefaultCover } from "../blog/index.js";
+import { PublishError, publishToBlog, publishRelease } from "../blog/index.js";
 import {
   PROVIDERS,
   rewriteToPost,
@@ -49,19 +49,19 @@ export function loadExtraction(
     };
     return {
       title,
-      publish: () => publishRelease(release, candidate.dedupKey),
+      publish: async () => ({ postId: await publishRelease(release, candidate.dedupKey) }),
       crossPost,
     };
   }
   const rewrite = store.getRewrite(candidate);
   if (!rewrite) return null;
-  // Decide the cover ONCE for both the blog post and the channel card: the feed
-  // image if the source had one, else a themed default ROTATED by the candidate
-  // id, so covers cycle through the topical pool instead of repeating. Keyed on
-  // the stable id (not the title), so a publish retry and the cross-post agree
-  // on the same image and an imageless post still gets a fitting photo card.
+  // Only the article's OWN image is decided here. When it has none we send no
+  // cover at all and the blog assigns one no other post uses — the bot can't
+  // know which images are still free (it doesn't see hand-written posts and its
+  // SQLite can be reset), and guessing is what made covers repeat. The stored
+  // cover comes back from publish() and lands on the channel card below.
   const sourceImage = store.getFeedItem(candidate).imageUrls[0];
-  const cover = candidate.imageUrl || sourceImage || pickDefaultCover(rewrite.tags, candidate.id);
+  const cover = candidate.imageUrl || sourceImage || null;
   const crossPost: CrossPostContent = {
     title: rewrite.title,
     description: rewrite.description,
@@ -126,6 +126,23 @@ export async function runClaimedExtraction(
 /** Missing/corrupt saved extraction needs a fresh rewrite, not another publish attempt. */
 export class MissingExtractionError extends Error {}
 
+/**
+ * Puts the cover the blog stored on the channel card. Blog-assigned covers can
+ * be site-relative ("/assets/images/cover/cover-7.webp"); Telegram needs an
+ * absolute URL (isUsableImageUrl rejects relative ones and the card silently
+ * degrades to text), so those are resolved against the blog host.
+ */
+function withPublishedCover(
+  extracted: LoadedExtraction,
+  coverUrl?: string | null,
+): LoadedExtraction {
+  if (!coverUrl) return extracted;
+  const absolute = coverUrl.startsWith("/")
+    ? `${CONFIG.BLOG_API_URL.replace(/\/$/, "")}${coverUrl}`
+    : coverUrl;
+  return { ...extracted, crossPost: { ...extracted.crossPost, coverUrl: absolute } };
+}
+
 /** Publishes a previously claimed candidate and preserves duplicate-safety states. */
 export async function publishClaimedCandidate(
   store: CandidateStore,
@@ -139,9 +156,11 @@ export async function publishClaimedCandidate(
   }
 
   try {
-    const postId = await extracted.publish();
+    const { postId, coverUrl } = await extracted.publish();
     store.setPublished(candidate.id, postId);
-    return { extracted, postId };
+    // The blog is the authority on the cover (it assigns one for imageless
+    // items), so the channel card follows it instead of the pre-publish guess.
+    return { extracted: withPublishedCover(extracted, coverUrl), postId };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const maybePosted = err instanceof PublishError && err.maybePosted;

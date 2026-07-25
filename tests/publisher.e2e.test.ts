@@ -3,8 +3,6 @@ import type { AddressInfo } from "node:net";
 import http from "node:http";
 import { it, vi, expect, afterAll, describe, beforeAll } from "vitest";
 
-import { DEFAULT_COVERS } from "../src/blog/defaultCovers.js";
-
 import type { RewriteResult } from "../src/types.js";
 
 // Live e2e for the bot's publisher: instead of mocking fetch, it sends a REAL
@@ -48,9 +46,15 @@ beforeAll(async () => {
         contentType: req.headers["content-type"],
         body: raw ? JSON.parse(raw) : null,
       };
-      // Mimic the backend's success envelope.
+      // Mimic the backend's success envelope, including the cover it assigned
+      // to this coverless post — the publisher must read it back.
       res.writeHead(201, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ success: true, post: { id: "e2e-post-1" } }));
+      res.end(
+        JSON.stringify({
+          success: true,
+          post: { id: "e2e-post-1", coverUrl: "https://images.unsplash.com/photo-assigned" },
+        }),
+      );
     });
   });
 
@@ -73,18 +77,21 @@ describe("E2E: publishToBlog sends the real request over the wire", () => {
     vi.resetModules();
     const { publishToBlog } = await import("../src/blog/publishPost.js");
 
-    const id = await publishToBlog(REWRITE);
-    expect(id).toBe("e2e-post-1");
+    const outcome = await publishToBlog(REWRITE);
+    expect(outcome.postId).toBe("e2e-post-1");
+    // The blog assigns the cover for a coverless post and reports it back; the
+    // channel card renders THAT image, so the two can never diverge.
+    expect(outcome.coverUrl).toBe("https://images.unsplash.com/photo-assigned");
 
     expect(captured).not.toBeNull();
     expect(captured!.method).toBe("POST");
     expect(captured!.authorization).toBe("Bearer test-bot-api-token-value");
     expect(captured!.contentType).toBe("application/json");
-    // No cover passed → publisher always fills a themed default keyed off title.
+    // No source image → the field is absent entirely, which is what makes the
+    // blog assign a cover no other post uses.
     const body = captured!.body as Record<string, unknown>;
-    expect(DEFAULT_COVERS).toContain(body.coverUrl);
-    const { coverUrl: _coverUrl, ...rest } = body;
-    expect(rest).toEqual({
+    expect("coverUrl" in body).toBe(false);
+    expect(body).toEqual({
       title: "E2E новость",
       description: "Краткое резюме",
       content: "# Тело\n\nАбзац. Источник: Feed",

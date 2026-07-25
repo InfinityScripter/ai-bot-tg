@@ -1,3 +1,4 @@
+import type { PublishOutcome } from "../blog/types.js";
 import type { MenuAction, ProviderName, CallbackKind } from "../enums.js";
 
 /**
@@ -49,7 +50,7 @@ export type ParsedCallback =
  */
 export interface LoadedExtraction {
   title: string;
-  publish: () => Promise<string>;
+  publish: () => Promise<PublishOutcome>;
   crossPost: CrossPostContent;
 }
 

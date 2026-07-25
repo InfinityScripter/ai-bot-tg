@@ -1,7 +1,7 @@
 import { CONFIG } from "../config.js";
 import { PublishStatus } from "../enums.js";
-import { coverSeed, pickDefaultCover } from "./defaultCovers.js";
 
+import type { PublishOutcome } from "./types.js";
 import type { BlogPostBody, RewriteResult } from "../types.js";
 
 export const PUBLISH_TIMEOUT_MS = 30_000;
@@ -24,14 +24,17 @@ export class PublishError extends Error {
 }
 
 /**
- * Builds the blog post body from a rewrite result and an optional cover image
- * URL (the feed image or scraped og:image). We ALWAYS send a coverUrl now: when
- * the source had no image we pick a themed default BY MEANING — the post's tags
- * choose a topical image pool (AI / security / dev / …) — so bot posts never
- * fall back to the backend's generic placeholder (the "all bot posts look mock"
- * problem). The production publish path passes the id-rotated cover in via
- * `coverUrl`; the title-seeded default here is only a fallback for a caller that
- * has no cover at all. metaKeywords reuse the normalized tags — the clean set.
+ * Builds the blog post body from a rewrite result and the article's own image
+ * (the feed image or scraped og:image), when it has one.
+ *
+ * When the source has NO image the field is OMITTED on purpose, and the blog
+ * assigns a cover no other post uses (blog-app-mui-backend
+ * src/services/cover-assign.ts). The bot used to carry its own stock pool and
+ * pick `pool[candidateId % poolSize]` — pure rotation with no memory of what was
+ * already taken, so covers repeated as soon as the topical pool (19 images for
+ * everything AI-tagged) was smaller than the post count. Only the blog can know
+ * which images are free, so only the blog decides.
+ * metaKeywords reuse the normalized tags — the clean set.
  */
 export function toBlogPostBody(rewrite: RewriteResult, coverUrl?: string | null): BlogPostBody {
   return {
@@ -42,15 +45,17 @@ export function toBlogPostBody(rewrite: RewriteResult, coverUrl?: string | null)
     metaTitle: rewrite.metaTitle,
     metaDescription: rewrite.metaDescription,
     metaKeywords: rewrite.tags,
-    coverUrl: coverUrl || pickDefaultCover(rewrite.tags, coverSeed(rewrite.title)),
+    ...(coverUrl ? { coverUrl } : {}),
     publish: PublishStatus.Published,
   };
 }
 
 /**
  * Publishes a rewritten post to the blog via the service-token path. Returns
- * the new blog post id on success; throws with a readable message otherwise so
- * the caller can surface it in the Telegram DM and mark publish_failed.
+ * the new blog post id AND the cover the blog stored — for an imageless item
+ * that cover is assigned server-side, and the channel card must show the same
+ * image as the post. Throws with a readable message otherwise so the caller can
+ * surface it in the Telegram DM and mark publish_failed.
  *
  * `idempotencyKey` (the candidate's stable dedup key) is sent as an
  * `Idempotency-Key` header so a future backend can dedupe a retried POST and
@@ -61,7 +66,7 @@ export async function publishToBlog(
   rewrite: RewriteResult,
   coverUrl?: string | null,
   idempotencyKey?: string,
-): Promise<string> {
+): Promise<PublishOutcome> {
   const url = `${CONFIG.BLOG_API_URL.replace(/\/$/, "")}/api/post/new`;
   const signal = AbortSignal.timeout(PUBLISH_TIMEOUT_MS);
   let response: Response;
@@ -92,9 +97,9 @@ export async function publishToBlog(
 
   // 201 received: the post WAS created. If we then can't read the id, the post
   // is live but we don't have its id — maybe-posted, never silently re-publish.
-  let data: { post?: { id?: string; _id?: string } };
+  let data: { post?: { id?: string; _id?: string; coverUrl?: string } };
   try {
-    data = (await response.json()) as { post?: { id?: string; _id?: string } };
+    data = (await response.json()) as typeof data;
   } catch {
     throw new PublishError("Блог вернул 201, но тело ответа нечитаемо.", true);
   }
@@ -102,5 +107,5 @@ export async function publishToBlog(
   if (!postId) {
     throw new PublishError("Блог вернул 201 без id поста.", true);
   }
-  return postId;
+  return { postId, coverUrl: data.post?.coverUrl ?? null };
 }

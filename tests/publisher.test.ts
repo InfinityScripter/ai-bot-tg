@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe("toBlogPostBody", () => {
-  it("maps a rewrite into the publish body with published status and a cover", () => {
+  it("maps a rewrite into the publish body with published status", () => {
     const body = toBlogPostBody(REWRITE);
     expect(body).toMatchObject({
       title: "New title",
@@ -32,22 +32,19 @@ describe("toBlogPostBody", () => {
       metaKeywords: ["t1", "t2"],
       publish: PublishStatus.Published,
     });
-    // We always send a cover now (themed default when the source had none), so
-    // bot posts never fall back to the backend placeholder.
-    expect(typeof body.coverUrl).toBe("string");
-    expect(body.coverUrl).toMatch(/^https?:\/\//);
   });
 
-  it("includes the provided coverUrl when an image is given", () => {
+  it("includes the provided coverUrl when the article has its own image", () => {
     const body = toBlogPostBody(REWRITE, "https://cdn.example.com/p.jpg");
     expect(body.coverUrl).toBe("https://cdn.example.com/p.jpg");
   });
 
-  it("falls back to a deterministic themed default when image is null", () => {
-    const a = toBlogPostBody(REWRITE, null);
-    const b = toBlogPostBody(REWRITE, null);
-    expect(a.coverUrl).toMatch(/^https?:\/\//);
-    expect(a.coverUrl).toBe(b.coverUrl); // same title → same cover
+  it("omits coverUrl entirely when there is no image, so the blog assigns one", () => {
+    // The bot no longer owns a stock pool: sending nothing is what makes the
+    // blog hand out a cover no other post uses (see cover-assign.ts there).
+    expect("coverUrl" in toBlogPostBody(REWRITE)).toBe(false);
+    expect("coverUrl" in toBlogPostBody(REWRITE, null)).toBe(false);
+    expect("coverUrl" in toBlogPostBody(REWRITE, "")).toBe(false);
   });
 });
 
@@ -59,8 +56,8 @@ describe("publishToBlog", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const id = await publishToBlog(REWRITE);
-    expect(id).toBe("post-9");
+    const { postId } = await publishToBlog(REWRITE);
+    expect(postId).toBe("post-9");
 
     const call = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(call[0])).toBe("http://localhost:7272/api/post/new");
@@ -139,7 +136,29 @@ describe("publishToBlog", () => {
         async () => new Response(JSON.stringify({ post: { _id: "mongo-id" } }), { status: 201 }),
       ),
     );
-    expect(await publishToBlog(REWRITE)).toBe("mongo-id");
+    expect((await publishToBlog(REWRITE)).postId).toBe("mongo-id");
+  });
+
+  it("reports the cover the blog stored, so the channel card matches the post", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ post: { id: "p", coverUrl: "/assets/images/cover/cover-7.webp" } }),
+            { status: 201 },
+          ),
+      ),
+    );
+    expect((await publishToBlog(REWRITE)).coverUrl).toBe("/assets/images/cover/cover-7.webp");
+  });
+
+  it("reports a null cover when the blog response carries none", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ post: { id: "p" } }), { status: 201 })),
+    );
+    expect((await publishToBlog(REWRITE)).coverUrl).toBeNull();
   });
 
   it("throws on a non-201 response", async () => {

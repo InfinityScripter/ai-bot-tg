@@ -24,6 +24,18 @@ export interface RecentPost {
   publish?: string;
 }
 
+/**
+ * What a successful publish tells the caller. `coverUrl` is what the blog
+ * ACTUALLY stored: for an item with no image of its own the blog assigns a cover
+ * nobody used before, and the channel card has to show that same image instead
+ * of guessing one (which is how the bot used to repeat covers). Null for a
+ * release — the changelog has no per-item cover.
+ */
+export interface PublishOutcome {
+  postId: string;
+  coverUrl?: string | null;
+}
+
 /** The paginated list response shape from /api/post/list?page&limit. */
 export interface PostListPage {
   posts: RecentPost[];

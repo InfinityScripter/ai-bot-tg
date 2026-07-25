@@ -32,7 +32,8 @@ Prompt eval ловит шаблонные тексты, новые числа/ц
 croner / /fetch ─► RSS ─► filters ─► dedup ─► rewrite/extract ─► publish
                                                 │                 ├─ news → /api/post/new
                                                 │                 └─ release → /api/changelog/new
-                                                └─ cover: RSS/OG → article <img> → default pool
+                                                └─ cover: RSS/OG → article <img> → нет картинки:
+                                                   coverUrl не шлём, блог сам выдаёт неиспользованную
 
 manual URL / text ─► RAW card ─► 🔄 rewrite ─► PREVIEW ─► ✅ publish
 ```
@@ -113,13 +114,15 @@ src/
 │   ├── storeSettings.ts   # runtime-переопределения модели и mock
 │   └── types.ts
 ├── blog/             # HTTP-клиент блога
-│   ├── publishPost.ts     # POST /api/post/new (+PublishError с maybePosted)
+│   ├── publishPost.ts     # POST /api/post/new (+PublishError с maybePosted);
+│   │                      # без картинки статьи coverUrl не отправляется —
+│   │                      # блог выдаёт обложку, которой нет ни у кого, и
+│   │                      # возвращает её для карточки в канал
 │   ├── publishRelease.ts  # POST /api/changelog/new
 │   ├── sendDigest.ts      # POST /api/newsletter/send
 │   ├── fetchRecentPosts.ts# GET /api/post/list для дайджеста
 │   ├── fetchAutoPublishFlags.ts # GET /api/admin/settings → флаги автопубликации (fail-closed)
 │   ├── normalizeTags.ts   # белый список тегов
-│   ├── defaultCovers.ts   # дефолтные обложки по темам (подбор по тегам поста)
 │   └── types.ts
 ├── health/           # /health и проверка моделей
 │   ├── collectHealth.ts   # отчёт готовности: процесс, крон, LLM, блог, очередь
