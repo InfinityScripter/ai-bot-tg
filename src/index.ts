@@ -141,6 +141,28 @@ async function main() {
   process.once("SIGINT", () => void shutdown("SIGINT"));
   process.once("SIGTERM", () => void shutdown("SIGTERM"));
 
+  // A throw outside a handler, or a rejection nobody awaited, ends the process:
+  // systemd (Restart=always, RestartSec=5) brings it straight back, so the bot
+  // heals itself — but Node's default death skips store.close(), leaving the
+  // SQLite WAL uncheckpointed, and prints the reason without the [index] prefix
+  // the rest of the journal is grepped by. Handle it to log and checkpoint, then
+  // exit anyway: swallowing the fault would keep a process alive in a state we
+  // know nothing about, which is strictly worse than a five-second restart.
+  const crash = (label: string, reason: unknown) => {
+    console.error(`[index] ${label}:`, reason);
+    if (!shuttingDown) {
+      shuttingDown = true;
+      try {
+        store.close();
+      } catch (err) {
+        console.error(`[index] store close after ${label} failed: ${String(err)}`);
+      }
+    }
+    process.exit(1);
+  };
+  process.on("uncaughtException", (err) => crash("uncaught exception", err));
+  process.on("unhandledRejection", (reason) => crash("unhandled rejection", reason));
+
   // Blocks until stopped.
   await bot.start({
     onStart: (info) => {
