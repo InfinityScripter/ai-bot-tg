@@ -304,20 +304,24 @@ describe("checkFactuality", () => {
     expect(erroredOn(checkFactuality(result, item), "facts.numbers")).toBe(false);
   });
 
-  it("errors on a long quote absent from the source", () => {
+  it("warns on a long quote absent from the source", () => {
     const result = {
       ...goodResult(),
       content: "Разработчики заявили: «Эта модель полностью изменит рынок уже завтра».",
     };
-    expect(erroredOn(checkFactuality(result, ITEM), "facts.quotes")).toBe(true);
+    const findings = checkFactuality(result, ITEM);
+    expect(warnedOn(findings, "facts.quotes")).toBe(true);
+    // Warn, not error: rhetorical guillemets are normal RU prose, so this must
+    // stay visible without failing the case.
+    expect(erroredOn(findings, "facts.quotes")).toBe(false);
   });
 
-  it("errors on an unsupported long quote in the description", () => {
+  it("warns on an unsupported long quote in the description", () => {
     const result = {
       ...goodResult(),
       description: "Разработчики обещают: «Эта модель полностью изменит рынок уже завтра».",
     };
-    expect(erroredOn(checkFactuality(result, ITEM), "facts.quotes")).toBe(true);
+    expect(warnedOn(checkFactuality(result, ITEM), "facts.quotes")).toBe(true);
   });
 });
 

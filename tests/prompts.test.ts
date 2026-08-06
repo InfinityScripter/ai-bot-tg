@@ -75,6 +75,22 @@ describe("REWRITE prompt high-stakes rules", () => {
     expect(REWRITE_SYSTEM_PROMPT).toMatch(/перепиши слабые места/i);
   });
 
+  it("keeps the reader-first template skeleton (role/context/task/limits/format)", () => {
+    // The task criterion is the load-bearing line of the template: it is what
+    // separates a post from a retelling of the headline.
+    expect(REWRITE_SYSTEM_PROMPT).toMatch(/главный вывод, который нельзя\s+получить из заголовка/);
+    // Phone-reading context is stated as a REASON, so the model generalises it
+    // to the rest of the layout instead of following one literal rule.
+    expect(REWRITE_SYSTEM_PROMPT).toMatch(/читают с телефона/i);
+    expect(REWRITE_SYSTEM_PROMPT).toMatch(/абзацы короткими/i);
+    // Limitations get their own block, and the closing question stays BEFORE
+    // the Источник line (which ensureSourceLine requires to be last).
+    expect(REWRITE_SYSTEM_PROMPT).toMatch(/блок с ограничениями/i);
+    expect(REWRITE_SYSTEM_PROMPT).toMatch(/вопрос читателю/i);
+    // Free/paid must stay conditioned on the source, or the model invents prices.
+    expect(REWRITE_SYSTEM_PROMPT).toMatch(/только те, что\s+есть в источнике/);
+  });
+
   it("treats source text as untrusted data inside explicit delimiters", () => {
     const item: FeedItem = {
       dedupKey: "manual",
