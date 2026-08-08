@@ -19,6 +19,7 @@
     "fm:fix": "prettier --write \"{src,tests,evals}/**/*.ts\"",
     "fetch": "tsx src/cli/runCollection.ts",
     "backfill:channel": "tsx src/cli/backfillChannel.ts",
+    "import:catalog": "tsx src/cli/runCatalogImport.ts",
     "test:models": "tsx src/cli/testModels.ts",
     "eval": "tsx evals/runEval.ts"
   },

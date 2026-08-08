@@ -1,6 +1,7 @@
 import { CONFIG } from "./config.js";
 import { createBot } from "./bot/index.js";
 import { CandidateStore } from "./store/index.js";
+import { importCatalog } from "./catalog/index.js";
 import { NOTIFY_LABELS, COLLECTION_LABELS } from "./labels.js";
 import {
   runCollection,
@@ -92,6 +93,32 @@ async function main() {
 
   job = scheduleDaily(scheduledRun);
 
+  // The changelog catalog import runs on its own schedule and is registered only
+  // when the expression is configured. Unset = no import job, bot unchanged — so
+  // deploying this code before the env vars are added is a no-op. The import
+  // itself is gated on the same autoPublishReleases flag as the RSS pipeline and
+  // fails closed, so a live schedule still publishes nothing while it's off.
+  const catalogRun = async (): Promise<void> => {
+    try {
+      const summary = await importCatalog();
+      // eslint-disable-next-line no-console
+      console.log("[index] catalog import:", summary);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`[index] catalog import failed: ${String(err)}`);
+      await notifyOwner(NOTIFY_LABELS.catalogImportFailed(err));
+    }
+  };
+  const catalogJob = CONFIG.CATALOG_CRON_SCHEDULE
+    ? scheduleDaily(catalogRun, CONFIG.CATALOG_CRON_SCHEDULE)
+    : null;
+  // eslint-disable-next-line no-console
+  console.log(
+    catalogJob
+      ? `[index] catalog import scheduled: ${CONFIG.CATALOG_CRON_SCHEDULE} (${CONFIG.CRON_TZ})`
+      : "[index] catalog import disabled (CATALOG_CRON_SCHEDULE unset)",
+  );
+
   // The admin control server is started only when a token is configured. Unset
   // = no control server, bot still runs/publishes — so deploying this code
   // before the env var is added can never crash the pipeline.
@@ -125,6 +152,7 @@ async function main() {
     let code = 0;
     try {
       job?.stop();
+      catalogJob?.stop();
       if (controlServer) await controlServer.close();
       await bot.stop(); // grammy: stops polling; does not drain handlers
       if (activeCollection) await activeCollection;

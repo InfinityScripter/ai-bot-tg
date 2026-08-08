@@ -13,4 +13,6 @@ export const COLLECTION_LABELS = {
 export const NOTIFY_LABELS = {
   scheduledRunFailed: (err: unknown) =>
     `⚠️ Ежедневный сбор новостей упал с ошибкой:\n${String(err)}`,
+  catalogImportFailed: (err: unknown) =>
+    `⚠️ Импорт каталога моделей упал с ошибкой:\n${String(err)}`,
 } as const;

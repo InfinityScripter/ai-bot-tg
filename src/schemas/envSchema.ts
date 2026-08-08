@@ -52,6 +52,30 @@ export const EnvSchema = z
     SQLITE_PATH: z.string().default("./data/candidates.db"),
     CRON_SCHEDULE: z.string().default("0 9 * * *"),
     CRON_TZ: z.string().default("Europe/Moscow"),
+    /**
+     * Artificial Analysis API key for the changelog catalog import. OPTIONAL:
+     * unset = the import publishes nothing and reports why, so deploying this
+     * code without the var added changes no behavior. A free key covers it —
+     * the import reads only creator, model name, release date and price.
+     */
+    AA_API_KEY: z.string().optional(),
+    /**
+     * Cron expression for the catalog import, in CRON_TZ. OPTIONAL: unset = the
+     * import is NOT scheduled and only runs on demand via `npm run
+     * import:catalog`. Kept separate from CRON_SCHEDULE because the two jobs
+     * differ in kind — the collection run costs LLM calls, this one is a cheap
+     * catalog sweep and can run later in the day, after vendors have shipped.
+     */
+    CATALOG_CRON_SCHEDULE: z.string().min(1).optional(),
+    /**
+     * How many days back the catalog import looks. A model is often added to the
+     * catalog days after the release date it is filed under, so a narrow window
+     * silently loses it: the sweep that could see it looks at the wrong dates,
+     * and by the time it appears the window has moved past. A week of overlap
+     * costs only repeated POSTs that the backend answers with 409 on a slug it
+     * already has — so the window errs wide on purpose.
+     */
+    CATALOG_IMPORT_DAYS: z.coerce.number().int().positive().default(7),
     /** Optional CSV override of the default feed list. */
     RSS_FEEDS: z.string().optional(),
     /**
