@@ -31,8 +31,25 @@ export const DEFAULT_FEEDS: string[] = [
   "https://www.microsoft.com/en-us/research/feed/", // Microsoft Research, body ~26k
   "https://simonwillison.net/atom/everything/", // Simon Willison — LLM/AI eng, Atom
   "https://hnrss.org/newest?q=AI+OR+LLM", // Hacker News newest matching AI/LLM, body ~400
+  // EN AI newsrooms — feed the daily digest's Hot/Новости sections. All probed
+  // live 2026-08-18: HTTP 200 + valid XML via plain fetch.
+  "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", // The Verge AI
+  "https://techcrunch.com/category/artificial-intelligence/feed/", // TechCrunch AI
+  "https://venturebeat.com/category/ai/feed/", // VentureBeat AI
+  "https://arstechnica.com/ai/feed/", // Ars Technica AI
+  "https://www.technologyreview.com/topic/artificial-intelligence/feed", // MIT Tech Review AI
+  // EN analysis / materials — the digest's «Полезные материалы» pool.
+  "https://news.mit.edu/topic/mitartificial-intelligence2-rss.xml", // MIT News AI
+  "https://github.blog/ai-and-ml/feed/", // GitHub Blog AI/ML
+  "https://importai.substack.com/feed", // Import AI (Jack Clark)
+  "https://www.latent.space/feed", // Latent Space
+  "https://lastweekin.ai/feed", // Last Week in AI
+  "https://www.interconnects.ai/feed", // Interconnects (Nathan Lambert)
+  // Discussions — Reddit sometimes rate-limits bots; per-feed fail-soft covers it.
+  "https://www.reddit.com/r/LocalLLaMA/.rss", // r/LocalLLaMA
   // OpenAI news RSS dropped: serves gzip that rss-parser can't decode (parse error).
   // Anthropic (anthropic.com/rss.xml) and Meta (ai.meta.com/blog/rss/) return HTML, not RSS.
+  // Ollama/Mistral: no RSS (404); Stability returns HTML — all rechecked 2026-08-18.
 ];
 
 /** Resolves the active feed list: RSS_FEEDS override, else the defaults. */
