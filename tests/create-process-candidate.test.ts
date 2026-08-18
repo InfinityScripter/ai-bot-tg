@@ -10,7 +10,7 @@ vi.mock("../src/blog/index.js", async (importOriginal) => {
   return { ...actual, fetchAutoPublishFlags: () => fetchAutoPublishFlags() };
 });
 
-const { CandidateKind } = await import("../src/enums.js");
+const { CandidateKind, CandidateState } = await import("../src/enums.js");
 const { CandidateStore } = await import("../src/store/index.js");
 const { createProcessCandidate } = await import("../src/server/createProcessCandidate.js");
 
@@ -133,6 +133,36 @@ describe("createProcessCandidate — flag-gated auto-vs-divert", () => {
     // Flag NOT cleared → the row is still picked up by crash-recovery.
     expect(store.get(candidate.id)!.autoPublish).toBe(true);
     expect(store.listRecoveredAutomatic().map((c) => c.id)).toContain(candidate.id);
+  });
+
+  it("digest mode: a news item is queued (no publish, no card), flags untouched per item", async () => {
+    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: true });
+    const autoPublish = vi.fn(async () => {});
+    const sendRawCard = vi.fn(async () => {});
+    const news = insertAuto(store, CandidateKind.News);
+
+    const process = await createProcessCandidate(store, { autoPublish, sendRawCard }, true);
+    await process(news);
+
+    expect(autoPublish).not.toHaveBeenCalled();
+    expect(sendRawCard).not.toHaveBeenCalled();
+    const row = store.get(news.id)!;
+    expect(row.state).toBe(CandidateState.DigestQueued);
+    // auto_publish cleared in the queue transition → invisible to crash-recovery.
+    expect(row.autoPublish).toBe(false);
+  });
+
+  it("digest mode: releases keep the per-item flag-gated path", async () => {
+    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: false });
+    const autoPublish = vi.fn(async () => {});
+    const sendRawCard = vi.fn(async () => {});
+    const release = insertAuto(store, CandidateKind.Release);
+
+    const process = await createProcessCandidate(store, { autoPublish, sendRawCard }, true);
+    await process(release);
+
+    expect(autoPublish).toHaveBeenCalledWith(release);
+    expect(sendRawCard).not.toHaveBeenCalled();
   });
 
   it("fail-closed: both flags off (blog outage shape) diverts every kind", async () => {

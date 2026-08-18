@@ -55,6 +55,7 @@ async function main() {
   const {
     bot,
     sendRawCard,
+    runDigestPost,
     autoPublishCandidate,
     notifyAutomaticFailures,
     notifyNeedsVerification,
@@ -84,6 +85,10 @@ async function main() {
       // Only ping the owner on the cron when something needs attention (a filter
       // hid everything) — a normal run stays quiet to avoid daily noise.
       if (note.startsWith("⚠️")) await notifyOwner(note);
+      // Daily digest post: with DIGEST_POSTS=on the collection above queued the
+      // fresh news; assemble and publish (or preview) today's digest right
+      // after. Idempotent per day, so a /fetch earlier the same day is fine.
+      if (CONFIG.DIGEST_POSTS === "on") await runDigestPost();
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(`[index] scheduled run failed: ${String(err)}`);

@@ -22,6 +22,15 @@ export function listRecoveredAutomatic(db: Database.Database): Candidate[] {
   );
 }
 
+/** The daily-digest queue, newest first (the digest caps to the freshest N). */
+export function listDigestQueue(db: Database.Database): Candidate[] {
+  return list(
+    db,
+    "SELECT * FROM candidates WHERE state = ? ORDER BY id DESC",
+    CandidateState.DigestQueued,
+  );
+}
+
 export function listAutomaticFailures(db: Database.Database): Candidate[] {
   return list(
     db,

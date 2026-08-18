@@ -1,3 +1,4 @@
+import { CONFIG } from "../config.js";
 import { CandidateKind } from "../enums.js";
 import { fetchAutoPublishFlags } from "../blog/index.js";
 
@@ -46,6 +47,7 @@ interface ProcessDeps {
 export async function createProcessCandidate(
   store: CandidateStore,
   deps: ProcessDeps,
+  digestNews: boolean = CONFIG.DIGEST_POSTS === "on",
 ): Promise<ProcessCandidate> {
   const flags: AutoPublishFlags = await fetchAutoPublishFlags();
 
@@ -55,6 +57,16 @@ export async function createProcessCandidate(
   };
 
   return async (candidate: Candidate): Promise<void> => {
+    // Daily-digest mode: a news item is parked in the digest queue instead of
+    // the per-item lane — no LLM call, no card. queueForDigest clears
+    // auto_publish in the same UPDATE, so crash-recovery can't resurrect it.
+    // The autoPublishNews flag is NOT consulted here: it decides at digest
+    // time (auto-publish vs owner preview), not per item. Releases keep the
+    // per-item flag-gated path unchanged.
+    if (digestNews && candidate.kind === CandidateKind.News) {
+      store.queueForDigest(candidate.id);
+      return;
+    }
     const wantAuto = candidate.kind === CandidateKind.Release ? flags.releases : flags.news;
     if (wantAuto) {
       await deps.autoPublish(candidate);

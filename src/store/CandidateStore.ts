@@ -3,11 +3,11 @@ import { mkdirSync } from "node:fs";
 import Database from "better-sqlite3";
 
 import { CONFIG } from "../config.js";
+import { CandidateState } from "../enums.js";
 import * as settings from "./storeSettings.js";
 import * as queries from "./candidateQueries.js";
 import * as mutations from "./candidateMutations.js";
-import { CandidateKind, CandidateState } from "../enums.js";
-import { SCHEMA, mapRow, MIGRATIONS } from "./candidateSchema.js";
+import { SCHEMA, mapRow, MIGRATIONS, DIGEST_LAST_DATE_KEY } from "./candidateSchema.js";
 
 import type { CandidateRow, MockOverride, ModelOverride } from "./types.js";
 import type { FeedItem, Candidate, RewriteResult, ReleaseResult } from "../types.js";
@@ -55,34 +55,7 @@ export class CandidateStore {
    * candidate id, or null if the dedup_key already exists (already seen — skip).
    */
   insertCollected(item: FeedItem, autoPublish = false): number | null {
-    // A pruned-but-seen key lives only in seen_keys; honor it so an old
-    // published/skipped article isn't re-collected after its row was deleted.
-    const prunedSeen = this.db
-      .prepare("SELECT 1 FROM seen_keys WHERE dedup_key = ?")
-      .get(item.dedupKey);
-    if (prunedSeen) return null;
-
-    const info = this.db
-      .prepare(
-        `INSERT OR IGNORE INTO candidates
-           (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, kind, auto_publish, state)
-         VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, @kind, @autoPublish, @state)`,
-      )
-      .run({
-        dedupKey: item.dedupKey,
-        url: item.url,
-        title: item.title,
-        feedTitle: item.feedTitle,
-        imageUrl: item.imageUrl,
-        snippet: item.snippet,
-        imageUrls: JSON.stringify(item.imageUrls ?? []),
-        // The item carries its kind (decided by runCollection from the release
-        // markers before insert); an unset kind defaults to 'news'.
-        kind: item.kind ?? CandidateKind.News,
-        autoPublish: autoPublish ? 1 : 0,
-        state: CandidateState.Collected,
-      });
-    return info.changes === 1 ? Number(info.lastInsertRowid) : null;
+    return mutations.insertCollected(this.db, item, autoPublish);
   }
 
   /**
@@ -130,6 +103,43 @@ export class CandidateStore {
     return queries.listAutomaticFailures(this.db);
   }
 
+  // --- daily digest queue (DIGEST_POSTS=on) --------------------------------
+
+  /** Parks a collected news candidate in the digest queue (see mutation doc). */
+  queueForDigest(id: number): boolean {
+    return mutations.queueForDigest(this.db, id);
+  }
+
+  /** The digest queue, newest first. */
+  listDigestQueue(): Candidate[] {
+    return queries.listDigestQueue(this.db);
+  }
+
+  /** Expires queue rows older than `hours` to 'skipped'; returns the count. */
+  expireDigestQueue(hours: number): number {
+    return mutations.expireDigestQueue(this.db, hours);
+  }
+
+  /** Atomically claims a digest batch (digest_queued → publishing); returns the claimed count. */
+  claimDigestBatch(ids: number[]): number {
+    return mutations.claimDigestBatch(this.db, ids);
+  }
+
+  /** Returns a claimed batch to the queue after a CLEAR (4xx) publish failure. */
+  requeueDigestBatch(ids: number[]): void {
+    mutations.requeueDigestBatch(this.db, ids);
+  }
+
+  /** The YYYY-MM-DD of the last published daily digest, or null. */
+  getDigestLastDate(): string | null {
+    return settings.getRawSetting(this.db, DIGEST_LAST_DATE_KEY);
+  }
+
+  /** Records the day (YYYY-MM-DD in CRON_TZ) a daily digest was published. */
+  setDigestLastDate(date: string): void {
+    settings.setRawSetting(this.db, DIGEST_LAST_DATE_KEY, date);
+  }
+
   /** Candidate count per state (one GROUP BY) — for the /health queue summary. */
   countsByState(): Record<string, number> {
     const rows = this.db
@@ -157,30 +167,7 @@ export class CandidateStore {
    * candidates table over a multi-year process. Returns the number pruned.
    */
   pruneOld(days = 90): number {
-    const offset = `-${Math.max(1, Math.floor(days))} days`;
-    // Resolve the cutoff to a single fixed timestamp string, so the INSERT and
-    // DELETE compare against the IDENTICAL boundary — datetime('now') re-evaluated
-    // per-statement could otherwise let a row be deleted without its key copied.
-    const { cutoff } = this.db.prepare("SELECT datetime('now', ?) AS cutoff").get(offset) as {
-      cutoff: string;
-    };
-    const tx = this.db.transaction(() => {
-      this.db
-        .prepare(
-          `INSERT OR IGNORE INTO seen_keys (dedup_key)
-             SELECT dedup_key FROM candidates
-             WHERE state IN (?, ?) AND updated_at < ?`,
-        )
-        .run(CandidateState.Published, CandidateState.Skipped, cutoff);
-      const info = this.db
-        .prepare(
-          `DELETE FROM candidates
-             WHERE state IN (?, ?) AND updated_at < ?`,
-        )
-        .run(CandidateState.Published, CandidateState.Skipped, cutoff);
-      return info.changes;
-    });
-    return tx() as number;
+    return mutations.pruneOld(this.db, days);
   }
 
   get(id: number): Candidate | null {

@@ -8,6 +8,7 @@ import { autoRetry } from "./autoRetry.js";
 import { createIngest } from "./createIngest.js";
 import { createDigestFlow } from "./digestFlow.js";
 import { createHandlers } from "./createHandlers.js";
+import { createDigestPostFlow } from "./digestPostFlow.js";
 import { createAutoPublish } from "./createAutoPublish.js";
 import { renderHealth, collectHealth } from "../health/index.js";
 import { helpText, menuIntro, menuKeyboard, nativeCommands, parseMenuCallback } from "./menu.js";
@@ -44,6 +45,10 @@ export function createBot(
   } = createAutoPublish(store, bot);
   const { runDigest, onDigestCallback, isDigestCallback, isAwaitingVerdict, submitVerdict } =
     createDigestFlow(bot, store);
+  const { runDigestPost, onDigestPostCallback, isDigestPostCallback } = createDigestPostFlow(
+    bot,
+    store,
+  );
 
   // Global error boundary: grammy rethrows an uncaught handler error out of the
   // polling loop, which exits the process (systemd then restart-loops). This
@@ -118,6 +123,10 @@ export function createBot(
   bot.command("fetch", runFetch);
   bot.command("model", runModel);
   bot.command("digest", runDigest);
+  bot.command("digestpost", async (ctx) => {
+    await ctx.reply("Собираю дневной дайджест…");
+    await runDigestPost(true);
+  });
 
   // Dispatch table from a menu button's MenuAction to its command action.
   const MENU_ACTIONS: Record<MenuAction, (ctx: Context) => Promise<void>> = {
@@ -165,6 +174,10 @@ export function createBot(
       await onDigestCallback(ctx);
       return;
     }
+    if (isDigestPostCallback(data)) {
+      await onDigestPostCallback(ctx);
+      return;
+    }
     await onCallback(ctx);
   });
 
@@ -182,6 +195,7 @@ export function createBot(
   return {
     bot,
     sendRawCard,
+    runDigestPost,
     autoPublishCandidate,
     notifyAutomaticFailures,
     notifyNeedsVerification,

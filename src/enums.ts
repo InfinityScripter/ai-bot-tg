@@ -33,6 +33,13 @@ export enum CandidateState {
    * silent duplicate article.
    */
   NeedsVerification = "needs_verification",
+  /**
+   * Waiting to be included in the daily digest post (DIGEST_POSTS=on): a fresh
+   * 'news' candidate is parked here instead of the per-item rewrite/publish
+   * lane. Leaves via the digest publish (→ published), the 48h expiry
+   * (→ skipped), or a clear publish failure (publishing → back here).
+   */
+  DigestQueued = "digest_queued",
 }
 
 /** Which backend rewrites a feed item into a post. Value = env/db provider id. */

@@ -7,9 +7,46 @@
 
 import type Database from "better-sqlite3";
 
-import { CandidateState } from "../enums.js";
+import { CandidateKind, CandidateState } from "../enums.js";
 
-import type { RewriteResult, ReleaseResult } from "../types.js";
+import type { FeedItem, RewriteResult, ReleaseResult } from "../types.js";
+
+/**
+ * Inserts a freshly-collected feed item as state 'collected'. Returns the new
+ * candidate id, or null if the dedup key is already known (a live candidate —
+ * INSERT OR IGNORE — or a pruned-but-seen key in seen_keys, honored so an old
+ * published/skipped article isn't re-collected after its row was deleted).
+ */
+export function insertCollected(
+  db: Database.Database,
+  item: FeedItem,
+  autoPublish = false,
+): number | null {
+  const prunedSeen = db.prepare("SELECT 1 FROM seen_keys WHERE dedup_key = ?").get(item.dedupKey);
+  if (prunedSeen) return null;
+
+  const info = db
+    .prepare(
+      `INSERT OR IGNORE INTO candidates
+         (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, kind, auto_publish, state)
+       VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, @kind, @autoPublish, @state)`,
+    )
+    .run({
+      dedupKey: item.dedupKey,
+      url: item.url,
+      title: item.title,
+      feedTitle: item.feedTitle,
+      imageUrl: item.imageUrl,
+      snippet: item.snippet,
+      imageUrls: JSON.stringify(item.imageUrls ?? []),
+      // The item carries its kind (decided by runCollection from the release
+      // markers before insert); an unset kind defaults to 'news'.
+      kind: item.kind ?? CandidateKind.News,
+      autoPublish: autoPublish ? 1 : 0,
+      state: CandidateState.Collected,
+    });
+  return info.changes === 1 ? Number(info.lastInsertRowid) : null;
+}
 
 /**
  * Resets rows stuck in a transient in-flight state back to a retryable one. A
@@ -113,6 +150,104 @@ export function clearAutoPublish(db: Database.Database, id: number): void {
   db.prepare(
     `UPDATE candidates SET auto_publish = 0, updated_at = datetime('now') WHERE id = ?`,
   ).run(id);
+}
+
+/**
+ * Parks a freshly-collected news candidate in the daily-digest queue:
+ * collected → digest_queued, clearing auto_publish in the SAME statement so
+ * crash-recovery (listRecoveredAutomatic selects collected + auto_publish=1)
+ * can never pull a queued row back into the per-item automatic lane. Guarded
+ * on state='collected' so a double call (or a row the owner already acted on)
+ * is a no-op. Returns whether the row was queued.
+ */
+export function queueForDigest(db: Database.Database, id: number): boolean {
+  const info = db
+    .prepare(
+      `UPDATE candidates SET state = ?, auto_publish = 0, updated_at = datetime('now')
+       WHERE id = ? AND state = ?`,
+    )
+    .run(CandidateState.DigestQueued, id, CandidateState.Collected);
+  return info.changes === 1;
+}
+
+/**
+ * Atomically claims a digest batch for publishing: digest_queued → publishing
+ * for every given id still in the queue, in ONE statement. Returns how many
+ * rows were claimed — the caller compares against ids.length; a shortfall
+ * means another actor touched a row (skip/publish race) and the batch should
+ * be rebuilt from a fresh queue read rather than published blind.
+ */
+export function claimDigestBatch(db: Database.Database, ids: number[]): number {
+  if (ids.length === 0) return 0;
+  const placeholders = ids.map(() => "?").join(", ");
+  const info = db
+    .prepare(
+      `UPDATE candidates SET state = ?, updated_at = datetime('now')
+       WHERE id IN (${placeholders}) AND state = ?`,
+    )
+    .run(CandidateState.Publishing, ...ids, CandidateState.DigestQueued);
+  return info.changes;
+}
+
+/**
+ * Returns a claimed-but-unpublished digest batch to the queue (publishing →
+ * digest_queued) after a CLEAR publish failure (4xx — the POST definitely did
+ * not create a post). A maybe-posted failure must use needs_verification
+ * instead, never this.
+ */
+export function requeueDigestBatch(db: Database.Database, ids: number[]): void {
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => "?").join(", ");
+  db.prepare(
+    `UPDATE candidates SET state = ?, updated_at = datetime('now')
+     WHERE id IN (${placeholders}) AND state = ?`,
+  ).run(CandidateState.DigestQueued, ...ids, CandidateState.Publishing);
+}
+
+/**
+ * Expires digest-queued rows older than `hours` to 'skipped' — stale news
+ * must not headline tomorrow's digest. updated_at is the queueing time (the
+ * queue transition touches it), so the window measures time in the queue.
+ * Returns the number expired.
+ */
+export function expireDigestQueue(db: Database.Database, hours: number): number {
+  const offset = `-${Math.max(1, Math.floor(hours))} hours`;
+  const info = db
+    .prepare(
+      `UPDATE candidates SET state = ?, updated_at = datetime('now')
+       WHERE state = ? AND updated_at < datetime('now', ?)`,
+    )
+    .run(CandidateState.Skipped, CandidateState.DigestQueued, offset);
+  return info.changes;
+}
+
+/**
+ * Prunes terminal candidates (published/skipped) older than `days`, preserving
+ * their dedup_key in seen_keys so they're never re-collected. The cutoff is
+ * resolved to ONE fixed timestamp so the INSERT and DELETE compare against the
+ * identical boundary — datetime('now') re-evaluated per-statement could let a
+ * row be deleted without its key copied. Returns the number pruned.
+ */
+export function pruneOld(db: Database.Database, days = 90): number {
+  const offset = `-${Math.max(1, Math.floor(days))} days`;
+  const { cutoff } = db.prepare("SELECT datetime('now', ?) AS cutoff").get(offset) as {
+    cutoff: string;
+  };
+  const tx = db.transaction(() => {
+    db.prepare(
+      `INSERT OR IGNORE INTO seen_keys (dedup_key)
+         SELECT dedup_key FROM candidates
+         WHERE state IN (?, ?) AND updated_at < ?`,
+    ).run(CandidateState.Published, CandidateState.Skipped, cutoff);
+    const info = db
+      .prepare(
+        `DELETE FROM candidates
+           WHERE state IN (?, ?) AND updated_at < ?`,
+      )
+      .run(CandidateState.Published, CandidateState.Skipped, cutoff);
+    return info.changes;
+  });
+  return tx() as number;
 }
 
 /** Records the Telegram message id of the approval DM. */

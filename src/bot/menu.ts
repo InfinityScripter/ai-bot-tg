@@ -35,6 +35,11 @@ export const COMMANDS: CommandSpec[] = [
     description: "собрать и отправить еженедельный email-дайджест подписчикам",
   },
   {
+    command: "digestpost",
+    buttonTitle: undefined,
+    description: "собрать дневной дайджест-пост из очереди новостей (DIGEST_POSTS=on)",
+  },
+  {
     command: "health",
     buttonTitle: "🩺 Проверка",
     action: MenuAction.Health,

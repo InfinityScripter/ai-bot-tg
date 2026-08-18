@@ -30,6 +30,17 @@
   подписчикам.
 - **Ручной ввод** — владелец кидает боту ссылку или текст, и материал идёт по
   тому же конвейеру рерайта и публикации.
+- **Дневной дайджест-пост** (`DIGEST_POSTS=on`) — вместо поста на каждую
+  новость собранные news-кандидаты копятся в очереди (`digest_queued`), и раз
+  в день один LLM-вызов собирает ЕДИНЫЙ пост-сводку по секциям 🔥 Hot /
+  ➡️ Новости / ➡️ Полезные материалы / ➡️ Обсуждения и кейсы, каждая строка —
+  ссылка на первоисточник (модель возвращает только данные, Markdown рендерит
+  код; ссылки не из входных новостей отбрасываются). Флаг `autoPublishNews`
+  из админки блога решает: авто-публикация или превью-карточка владельцу
+  (✅ / 🔄 / ❌; отмена оставляет пункты в очереди на завтра). Публикация
+  идемпотентна по дню; пункты старше 48 часов уходят в skipped. Релизы и
+  ручной ввод работают как раньше. Спека:
+  `docs/plans/2026-08-18-daily-digest-post.md`.
 
 ```
 croner / /fetch ─► RSS ─► filters ─► dedup ─► rewrite/extract ─► publish
@@ -37,6 +48,10 @@ croner / /fetch ─► RSS ─► filters ─► dedup ─► rewrite/extract �
                                                 │                 └─ release → /api/changelog/new
                                                 └─ cover: RSS/OG → article <img> → нет картинки:
                                                    coverUrl не шлём, блог сам выдаёт неиспользованную
+
+DIGEST_POSTS=on: news ─► digest_queued ─► (раз в день) LLM-сводка ─► autoPublishNews?
+                                              ├─ on  → /api/post/new (один пост) + канал
+                                              └─ off → превью-карточка ─► ✅ publish
 
 manual URL / text ─► RAW card ─► 🔄 rewrite ─► PREVIEW ─► ✅ publish
 ```
@@ -68,7 +83,7 @@ src/
 ├── labels.ts         # строки статусов/уведомлений владельцу
 ├── utils.ts          # canonicalizeUrl/dedupKey, stripHtml, truncate, escapeMarkdown
 ├── auditEmit.ts      # зеркалирование решений фильтра в audit-log бэкенда
-├── schemas/          # zod-схемы: envSchema, rewriteSchema, releaseSchema
+├── schemas/          # zod-схемы: envSchema, rewriteSchema, releaseSchema, digestPostSchema
 ├── bot/              # весь Telegram-слой
 │   ├── createBot.ts       # фабрика бота: команды, owner-lock, роутинг callback'ов
 │   ├── createHandlers.ts  # кнопки карточек: rewrite / publish / skip
@@ -77,6 +92,7 @@ src/
 │   ├── candidateActions.ts# ветвление news/release: extraction + publish
 │   ├── digestFlow.ts      # флоу /digest: превью → вердикт → рассылка
 │   ├── digestVerdict.ts   # плейсхолдер {{ВЕРДИКТ}} и его заполнение
+│   ├── digestPostFlow.ts  # дневной дайджест-пост: очередь → сводка → publish/превью
 │   ├── menu.ts            # единый список команд: /help, кнопки, setMyCommands
 │   ├── modelMenu.ts       # интерактив /model (пинг модели перед сохранением)
 │   ├── modelPick.ts       # кодек callback-данных /model, кнопки, статус
@@ -104,6 +120,9 @@ src/
 │   ├── sanitizeMarkdown.ts # AST allow-list для ссылок/картинок, запрет HTML
 │   ├── extractRelease.ts  # анонс → структурированный релиз (анти-галлюцинации)
 │   ├── buildDigest.ts     # посты недели → письмо дайджеста
+│   ├── buildDigestPost.ts # очередь новостей → дневной дайджест (allow-list ссылок)
+│   ├── digestPostPrompt.ts# системный промпт дневного дайджеста
+│   ├── renderDigestPost.ts# детерминированный Markdown-рендер дайджеста
 │   ├── classifyRelevance.ts / filterRelevant.ts  # фильтр релевантности (0–4)
 │   ├── relevanceMarkers.ts / releaseMarkers.ts   # keyword-маркеры (данные)
 │   ├── qualityGate.ts     # гейт автопубликации: assertPublishable → GateFailure
@@ -175,6 +194,7 @@ collected ──🔄──► rewriting ──► pending_review ──✅──
 | `/fetch`          | собрать и автоматически опубликовать свежие новости сейчас                                                                                  |
 | `/model`          | сменить провайдера/модель на лету; пингует модель перед сохранением; переключатель 🧪 Mock (публикация копии без LLM); «↩️ Сбросить на env» |
 | `/digest`         | собрать e-mail-дайджест за неделю → превью → вердикт → рассылка                                                                             |
+| `/digestpost`     | собрать дневной дайджест-пост из очереди новостей сейчас (при `DIGEST_POSTS=on`; идемпотентно по дню)                                       |
 | `/health`         | готовность: процесс, следующий запуск, активная LLM (live-пинг), блог API, очередь                                                          |
 | `/ping`           | `pong` — быстрая проверка живости                                                                                                           |
 | ссылка/текст      | ручной кандидат: URL скрейпится, текст берётся как статья                                                                                   |

@@ -65,6 +65,13 @@ export const MODEL_OVERRIDE_KEY = "model_override";
 /** The single settings row holding the runtime mock ("без LLM") override. */
 export const MOCK_OVERRIDE_KEY = "mock_override";
 
+/**
+ * The settings row holding the YYYY-MM-DD (in CRON_TZ) of the last published
+ * daily digest post — the idempotency guard that keeps cron + a manual
+ * /digestpost from posting two digests in one day.
+ */
+export const DIGEST_LAST_DATE_KEY = "digest_post_last_date";
+
 /** Narrows a stored `kind` string to the enum; anything unexpected → News. */
 function toKind(value: string): CandidateKind {
   return value === CandidateKind.Release ? CandidateKind.Release : CandidateKind.News;

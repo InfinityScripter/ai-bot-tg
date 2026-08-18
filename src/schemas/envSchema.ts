@@ -139,6 +139,19 @@ export const EnvSchema = z
     /** Max candidates surfaced per run, to cap Claude spend on a noisy day. */
     MAX_PER_RUN: z.coerce.number().int().positive().default(15),
     /**
+     * Daily digest post mode. 'on' → collected news candidates are queued and
+     * published as ONE daily digest post (sections Hot / Новости / Материалы /
+     * Кейсы) instead of one post per item; releases keep their changelog path.
+     * OPTIONAL, default 'off' — deploying this code without the var added
+     * changes no behavior (repo convention). The blog-admin autoPublishNews
+     * master switch still decides auto-publish vs an owner preview card.
+     */
+    DIGEST_POSTS: z.enum(["on", "off"]).default("off"),
+    /** Max queued items included in one daily digest (newest first). */
+    DIGEST_MAX_ITEMS: z.coerce.number().int().positive().default(16),
+    /** Fewer queued items than this → no digest today; items stay queued. */
+    DIGEST_MIN_ITEMS: z.coerce.number().int().positive().default(3),
+    /**
      * Optional CSV keyword filters applied to title+snippet (case-insensitive)
      * before items enter the review queue. INCLUDE: if set, keep only items
      * matching at least one keyword. EXCLUDE: drop items matching any keyword.

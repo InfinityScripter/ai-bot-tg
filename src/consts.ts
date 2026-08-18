@@ -60,3 +60,19 @@ export const DIGEST_CALLBACK = {
   VERDICT: "digest_verdict",
   CANCEL: "digest_cancel",
 } as const;
+
+/**
+ * Callback-data values for the DAILY DIGEST POST preview card (DIGEST_POSTS=on,
+ * autoPublishNews off → the owner approves the day's digest before it posts).
+ * Complete distinct tokens like DIGEST_CALLBACK — one pending digest at a time.
+ * Prefixed `dpost_` so they collide with nothing above (digest_* is the weekly
+ * email digest).
+ *   dpost_publish → publish the pending digest post to the blog
+ *   dpost_rebuild → rebuild it from the current queue (overwrites the pending one)
+ *   dpost_cancel  → drop the draft; queued items stay for the next digest
+ */
+export const DIGEST_POST_CALLBACK = {
+  PUBLISH: "dpost_publish",
+  REBUILD: "dpost_rebuild",
+  CANCEL: "dpost_cancel",
+} as const;
