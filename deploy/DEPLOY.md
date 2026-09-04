@@ -61,7 +61,7 @@ OWNER_TELEGRAM_ID=<your numeric Telegram chat id>
 ANTHROPIC_API_KEY=<Claude API key>
 REWRITE_MODEL=claude-haiku-4-5
 
-# Co-located with the backend → use localhost. (Public API is https://api.talalaev.su:8444)
+# Co-located with the backend → use localhost. (Public API is https://api.aifirst.us.com:8444)
 BLOG_API_URL=http://localhost:7272
 BOT_API_TOKEN=<MUST equal the backend's BOT_API_TOKEN from step 1>
 
@@ -131,7 +131,7 @@ Then in Telegram, from the owner account:
    (un-rewritten: source title + snippet + [🔄 Переработать][❌ Пропустить])
 3. Tap **🔄 Переработать** → the active model (see `/model`) rewrites the item
    and the card becomes a preview with [🔄 Заново][✅ Опубликовать][❌ Пропустить]
-4. Tap **✅ Опубликовать** → the post appears on `https://talalaev.su`, authored
+4. Tap **✅ Опубликовать** → the post appears on `https://aifirst.us.com`, authored
    by you, and the card edits to "✅ Опубликовано".
 
 ## 6. Manual update
