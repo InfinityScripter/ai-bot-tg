@@ -86,12 +86,20 @@ export const EnvSchema = z
      */
     RELEASE_WATCH_CRON: z.string().min(1).optional(),
     /**
-     * Cron expression (in CRON_TZ) for the channel sweep: retell one post from
-     * the source Telegram channels. The expression is also the time window
-     * (prod: "15 10-21 * * *"). Must not coincide with RELEASE_WATCH_CRON ticks:
-     * a busy slot skips, so the hour would be lost. OPTIONAL: unset = no sweep.
+     * Cron expression (in CRON_TZ) for the channel sweep: read the source
+     * Telegram channels and queue fresh posts for the digest (the sweep
+     * publishes nothing). The expression is also the time window (prod:
+     * "15 8-22 * * *"). Must not coincide with RELEASE_WATCH_CRON ticks: a
+     * busy slot skips, so the hour would be lost. OPTIONAL: unset = no sweep.
      */
     CHANNEL_WATCH_CRON: z.string().min(1).optional(),
+    /**
+     * Cron expression (in CRON_TZ) for the channel digest issue: the queue goes
+     * out as one rich article (prod: "0 11,19 * * *"; before 15:00 it is the
+     * morning issue, after it the evening one). Runs outside the shared watch
+     * slot. OPTIONAL: unset = no issue; posts only queue and age out after 24 h.
+     */
+    CHANNEL_DIGEST_CRON: z.string().min(1).optional(),
     /** Optional CSV override of the default feed list. */
     RSS_FEEDS: z.string().optional(),
     /**

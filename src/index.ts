@@ -63,6 +63,7 @@ async function main() {
     bot,
     sendRawCard,
     runDigestPost,
+    runChannelIssue,
     autoPublishCandidate,
     notifyAutomaticFailures,
     notifyNeedsVerification,
@@ -177,7 +178,7 @@ async function main() {
       : "[index] release watch disabled (RELEASE_WATCH_CRON unset)",
   );
 
-  const channelJob = scheduleChannelWatch({ store, inWatchSlot, notifyOwner });
+  const channelJobs = scheduleChannelWatch({ store, inWatchSlot, notifyOwner, runChannelIssue });
 
   // The admin control server is started only when a token is configured. Unset
   // = no control server, bot still runs/publishes — so deploying this code
@@ -214,11 +215,12 @@ async function main() {
       job?.stop();
       catalogJob?.stop();
       watchJob?.stop();
-      channelJob?.stop();
+      channelJobs.stop();
       if (controlServer) await controlServer.close();
       await bot.stop(); // grammy: stops polling; does not drain handlers
       if (activeCollection) await activeCollection;
       if (activeWatch) await activeWatch;
+      await channelJobs.idle();
       await drain(); // wait for any in-flight publish to finish its DB writes
     } catch (err) {
       // eslint-disable-next-line no-console

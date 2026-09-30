@@ -76,3 +76,14 @@ export const DIGEST_POST_CALLBACK = {
   REBUILD: "dpost_rebuild",
   CANCEL: "dpost_cancel",
 } as const;
+
+/**
+ * Callback-data prefixes of the channel digest preview (autoPublishChannels
+ * off). Followed by the issue slot key, e.g. `cdig_publish:2026-10-01/morning`
+ * (at most 64 bytes), so a button under an older preview cannot publish a newer
+ * issue. `cdig_` collides with none of the prefixes above.
+ */
+export const CHANNEL_DIGEST_CALLBACK = {
+  PUBLISH: "cdig_publish:",
+  SKIP: "cdig_skip:",
+} as const;

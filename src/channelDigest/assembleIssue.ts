@@ -54,14 +54,14 @@ async function writeItems(store: CandidateStore, picked: QueuedPost[]): Promise<
  * for the next issue. Nothing is claimed or sent here (claiming is
  * publishIssue's job, right before the send), so a restart while the cards
  * are being written strands nothing. `slot` and `now` are fixed by the caller
- * for the whole run. `assembled` is null when fewer than 3 cards came out;
- * `notify` then gets one short note for the owner.
+ * for the whole run. `assembled` is null when fewer than 3 cards came out; then
+ * `written` counts the cards that fit the article, and telling the owner is
+ * the caller's job.
  */
 export async function assembleIssue(
   store: CandidateStore,
   slot: IssueSlot,
   now: number,
-  notify?: (text: string) => Promise<void>,
 ): Promise<{ assembled: AssembledIssue | null; picked: number; written: number }> {
   const expired = store.channelQueue.expire(now, QUEUE_MAX_AGE_MS);
   if (expired > 0) console.log(`[digest-issue] ${expired} queued posts older than 24 h skipped`);
@@ -93,10 +93,7 @@ export async function assembleIssue(
   if (!article || article.items.length < ISSUE_MIN_ITEMS) {
     const ready = article?.items.length ?? counts.written;
     console.warn(`[digest-issue] ${slot.key}: ${ready} of ${counts.picked} cards, not enough`);
-    await notify?.(
-      `⚠️ Выпуск «${slot.title}» не собран: готово ${ready} из ${counts.picked}, нужно не меньше ${ISSUE_MIN_ITEMS}. Новости остались в очереди.`,
-    ).catch((err) => console.warn(`[digest-issue] owner note failed: ${String(err)}`));
-    return { assembled: null, ...counts };
+    return { assembled: null, picked: counts.picked, written: ready };
   }
   const fallbackText = buildFallbackText(slot.title, article.items);
   return { assembled: { slot, article, fallbackText }, ...counts };

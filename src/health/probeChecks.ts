@@ -1,5 +1,6 @@
 import { CONFIG } from "../config.js";
 import { lastChannelWatch } from "../server/runChannelWatch.js";
+import { lastChannelIssue } from "../channelDigest/issueStatus.js";
 import {
   pingModel,
   PROVIDERS,
@@ -11,6 +12,7 @@ import {
 
 import type { HealthCheck } from "./types.js";
 import type { CandidateStore } from "../store/index.js";
+import type { IssueStatus } from "../channelDigest/types.js";
 
 /** Formats a second count as e.g. "2д 3ч 4м" / "5м 12с". */
 export function formatUptime(totalSec: number): string {
@@ -123,8 +125,18 @@ export function describeChannelWatch(last: ReturnType<typeof lastChannelWatch>):
   };
 }
 
+/** The sweep row plus the last issue's outcome; a failed issue turns the row red. */
+export function withIssue(check: HealthCheck, issue: IssueStatus | null): HealthCheck {
+  if (!issue) return check;
+  return {
+    ...check,
+    ok: check.ok && issue.ok,
+    detail: `${check.detail}; выпуск ${issue.slot}: ${issue.outcome}`,
+  };
+}
+
 export function checkChannels(): HealthCheck {
   if (!CONFIG.CHANNEL_WATCH_CRON)
     return { name: "Каналы", ok: true, detail: "выключено (CHANNEL_WATCH_CRON не задан)" };
-  return describeChannelWatch(lastChannelWatch());
+  return withIssue(describeChannelWatch(lastChannelWatch()), lastChannelIssue());
 }

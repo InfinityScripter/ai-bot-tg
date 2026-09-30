@@ -10,6 +10,7 @@ import { createDigestFlow } from "./digestFlow.js";
 import { createHandlers } from "./createHandlers.js";
 import { createDigestPostFlow } from "./digestPostFlow.js";
 import { createAutoPublish } from "./createAutoPublish.js";
+import { createChannelDigestFlow } from "./channelDigestFlow.js";
 import { renderHealth, collectHealth } from "../health/index.js";
 import { helpText, menuIntro, menuKeyboard, nativeCommands, parseMenuCallback } from "./menu.js";
 
@@ -49,6 +50,8 @@ export function createBot(
     bot,
     store,
   );
+  const { runChannelIssue, onChannelDigestCallback, isChannelDigestCallback } =
+    createChannelDigestFlow(bot, store);
 
   // Global error boundary: grammy rethrows an uncaught handler error out of the
   // polling loop, which exits the process (systemd then restart-loops). This
@@ -178,6 +181,10 @@ export function createBot(
       await onDigestPostCallback(ctx);
       return;
     }
+    if (isChannelDigestCallback(data)) {
+      await onChannelDigestCallback(ctx);
+      return;
+    }
     await onCallback(ctx);
   });
 
@@ -196,6 +203,7 @@ export function createBot(
     bot,
     sendRawCard,
     runDigestPost,
+    runChannelIssue,
     autoPublishCandidate,
     notifyAutomaticFailures,
     notifyNeedsVerification,

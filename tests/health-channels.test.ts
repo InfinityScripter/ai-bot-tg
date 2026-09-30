@@ -1,6 +1,6 @@
 import { it, expect, describe } from "vitest";
 
-import { describeChannelWatch } from "../src/health/probeChecks.js";
+import { withIssue, describeChannelWatch } from "../src/health/probeChecks.js";
 
 import type { ChannelWatchSummary } from "../src/server/types.js";
 
@@ -54,5 +54,38 @@ describe("describeChannelWatch", () => {
     const check = describeChannelWatch(last({ summary: s }));
     expect(check.ok).toBe(false);
     expect(check.detail).toContain("не прочитались: a, b, c, d, e, f");
+  });
+});
+
+describe("withIssue", () => {
+  const row = { name: "Каналы", ok: true, detail: "страниц 12, подходящих 5, в очередь 2" };
+
+  it("leaves the row alone before the first issue", () => {
+    expect(withIssue(row, null)).toEqual(row);
+  });
+
+  it("adds the last issue outcome and turns red when it failed", () => {
+    const issue = {
+      at: 0,
+      slot: "2026-10-01/morning",
+      ok: false,
+      outcome: "не подтверждён, проверьте канал",
+    };
+    expect(withIssue(row, issue)).toEqual({
+      name: "Каналы",
+      ok: false,
+      detail:
+        "страниц 12, подходящих 5, в очередь 2; выпуск 2026-10-01/morning: не подтверждён, проверьте канал",
+    });
+  });
+
+  it("keeps a green row green for a good outcome", () => {
+    const issue = {
+      at: 0,
+      slot: "2026-10-01/evening",
+      ok: true,
+      outcome: "опубликован (5 новостей)",
+    };
+    expect(withIssue(row, issue)).toMatchObject({ ok: true });
   });
 });

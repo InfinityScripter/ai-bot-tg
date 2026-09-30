@@ -91,32 +91,18 @@ describe("assembleIssue", () => {
     for (const id of [a, c, d, e]) expect(store.get(id!)!.state).toBe(CandidateState.DigestQueued);
   });
 
-  it("builds nothing when fewer than 3 cards come out, leaves the posts queued and tells the owner once", async () => {
+  it("builds nothing when fewer than 3 cards come out, leaves the posts queued", async () => {
     const ids = ["a", "b", "c"].map((ch) => queue(ch));
     writeDigestItem
       .mockResolvedValueOnce(card("Первая"))
       .mockRejectedValueOnce(new Error("boom"))
       .mockRejectedValueOnce(new Error("boom"));
-    const notify = vi.fn(async (_text: string) => {});
 
-    const result = await assembleIssue(store, SLOT, NOW, notify);
+    const result = await assembleIssue(store, SLOT, NOW);
 
     expect(result).toEqual({ assembled: null, picked: 3, written: 1 });
     for (const id of ids)
       expect(store.get(id)).toMatchObject({ state: CandidateState.DigestQueued });
-    expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify.mock.calls[0]![0]).toContain(SLOT.title);
-    expect(notify.mock.calls[0]![0]).toContain("1 из 3");
-  });
-
-  it("stays quiet when the issue is built", async () => {
-    ["a", "b", "c"].forEach((ch) => queue(ch));
-    writeDigestItem.mockImplementation(async () => card("Карточка"));
-    const notify = vi.fn(async (_text: string) => {});
-
-    await assembleIssue(store, SLOT, NOW, notify);
-
-    expect(notify).not.toHaveBeenCalled();
   });
 
   it("ages out posts published more than 24 h ago before picking", async () => {
