@@ -37,6 +37,19 @@ export function withSourceLine(text: string, item: FeedItem): string {
   return `${text}\n\nИсточник: ${item.feedTitle} — ${item.url}`;
 }
 
+/** Links are allowed only via the code-built credit line; the prompt alone is not a control. */
+export function stripLinks(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("Источник:"))
+    .join("\n")
+    .replace(/(?:https?:\/\/|www\.|\bt\.me\/)\S*/gi, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /**
  * Retells a channel post with the active model, then the humanizer pass. The
  * humanized text is kept only while it stays within RETELL_MAX, otherwise the
@@ -61,5 +74,5 @@ export async function retellChannelPost(
         ).text;
   const humanized = (await humanizeText(body)).trim();
   const text = humanized && humanized.length <= RETELL_MAX ? humanized : body;
-  return { text: withSourceLine(text, item) };
+  return { text: withSourceLine(stripLinks(text), item) };
 }
