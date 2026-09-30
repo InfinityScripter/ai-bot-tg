@@ -10,6 +10,8 @@ vi.stubEnv("TELEGRAM_CHANNEL_ID", "@ai_first_news");
 const { createBot } = await import("../src/bot/index.js");
 const { CandidateStore } = await import("../src/store/index.js");
 const { publishToChannel } = await import("../src/blog/index.js");
+const { GateFailure } = await import("../src/llm/index.js");
+const { assertRetellPublishable } = await import("../src/bot/channelExtraction.js");
 import { CandidateKind, CandidateState } from "../src/enums.js";
 
 import type { FeedItem } from "../src/types.js";
@@ -144,6 +146,32 @@ describe("publishToChannel", () => {
   });
 });
 
+describe("assertRetellPublishable allow-list", () => {
+  const retell = (body: string) => ({
+    text: `${body}\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/184`,
+  });
+  const BODY = "Команда выпустила новую модель и подробно объяснила, что в ней поменялось";
+  const SOURCE = "Пост: OpenAI выложила модель, детали на OpenAI.com, автор @sama_alt";
+
+  it("rejects a domain the source post never mentioned", () => {
+    expect(() => assertRetellPublishable(retell(`${BODY}, подробнее на evil.com`), SOURCE)).toThrow(
+      GateFailure,
+    );
+  });
+
+  it("accepts a domain and a handle that are in the source post", () => {
+    expect(() =>
+      assertRetellPublishable(retell(`${BODY}, детали на openai.com от @Sama_alt`), SOURCE),
+    ).not.toThrow();
+  });
+
+  it("rejects an @handle the source post never mentioned", () => {
+    expect(() => assertRetellPublishable(retell(`${BODY}, пишите @scam`), SOURCE)).toThrow(
+      GateFailure,
+    );
+  });
+});
+
 describe("automatic channel retelling", () => {
   it("retells, posts to the channel only and never calls the blog", async () => {
     const store = new CandidateStore(":memory:");
@@ -207,6 +235,23 @@ describe("automatic channel retelling", () => {
     const id = store.insertCollected(item("tg:ai_for_devs/185"), true)!;
     retellChannelPost.mockResolvedValue({ text: "д".repeat(1100) });
     const fetchMock = vi.fn(async () => tgOk(91));
+    vi.stubGlobal("fetch", fetchMock);
+    const { autoPublishCandidate } = makeBot(store);
+
+    await autoPublishCandidate(store.get(id)!).catch(() => {});
+
+    expect(store.get(id)!.state).toBe(CandidateState.PendingReview);
+    expect(fetchMock).not.toHaveBeenCalled();
+    store.close();
+  });
+
+  it("sends a retelling with a link the source post never had to the owner", async () => {
+    const store = new CandidateStore(":memory:");
+    const id = store.insertCollected(item("tg:ai_for_devs/189"), true)!;
+    retellChannelPost.mockResolvedValue({
+      text: `Команда выпустила новую модель, все подробности и скидки на evil.com прямо сейчас.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/189`,
+    });
+    const fetchMock = vi.fn(async () => tgOk(93));
     vi.stubGlobal("fetch", fetchMock);
     const { autoPublishCandidate } = makeBot(store);
 
