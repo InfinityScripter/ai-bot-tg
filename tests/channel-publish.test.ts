@@ -210,6 +210,50 @@ describe("publishToChannel", () => {
     expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendPhoto", "sendMessage"]);
   });
 
+  it.each([
+    [429, "Too Many Requests: retry after 5"],
+    [403, "Forbidden: bot is not a member of the channel chat"],
+    [400, "Bad Request: can't parse entities: unclosed start tag"],
+  ])(
+    "rethrows a %i on the photo send instead of posting text only",
+    async (status, description) => {
+      const fetchMock = route(
+        () => new Response(JSON.stringify({ ok: false, description }), { status }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(publishToChannel(TEXT, [IMG_A])).rejects.toMatchObject({ maybePosted: false });
+      expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendPhoto"]);
+    },
+  );
+
+  it("retries a rejected album as one photo, then as text", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const reject = () =>
+      new Response(
+        JSON.stringify({ ok: false, description: "Bad Request: PHOTO_INVALID_DIMENSIONS" }),
+        {
+          status: 400,
+        },
+      );
+    const once = route((method) => (method === "sendMediaGroup" ? reject() : tgOk(83)));
+    vi.stubGlobal("fetch", once);
+
+    await expect(publishToChannel(TEXT, [IMG_A, IMG_B])).resolves.toEqual({ postId: "tg:83" });
+    expect(telegramCalls(once).map((c) => c.method)).toEqual(["sendMediaGroup", "sendPhoto"]);
+    expect((telegramCalls(once)[1]?.body as FormData).get("caption")).toBe(TEXT);
+
+    const twice = route((method) => (method === "sendMessage" ? tgOk(84) : reject()));
+    vi.stubGlobal("fetch", twice);
+
+    await expect(publishToChannel(TEXT, [IMG_A, IMG_B])).resolves.toEqual({ postId: "tg:84" });
+    expect(telegramCalls(twice).map((c) => c.method)).toEqual([
+      "sendMediaGroup",
+      "sendPhoto",
+      "sendMessage",
+    ]);
+  });
+
   it("treats an unreadable photo reply as maybe-posted, not as a reason to resend as text", async () => {
     const fetchMock = route(() => new Response("null", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

@@ -12,6 +12,24 @@ const SEND_TIMEOUT_MS = 20_000;
 /** An album upload carries up to 10 photos: a timeout here means "maybe posted". */
 const UPLOAD_TIMEOUT_MS = 60_000;
 
+/**
+ * Telegram's 400 descriptions for a photo it cannot take (PHOTO_INVALID_DIMENSIONS,
+ * IMAGE_PROCESS_FAILED, wrong file, MEDIA_CAPTION_TOO_LONG). Only these justify
+ * dropping photos; 429, 403 or bad markup would hit the text send just the same.
+ */
+const MEDIA_REJECTION_RE = /photo|image|file|media|dimension/i;
+
+/** A Bot API refusal: keeps the status and description so callers can tell why. */
+class TelegramApiError extends PublishError {
+  constructor(
+    method: string,
+    readonly status: number,
+    readonly description: string,
+  ) {
+    super(`Telegram ${method} ответил ${status}: ${description}`, status >= 500 || status < 300);
+  }
+}
+
 interface SentMessage {
   message_id?: number;
 }
@@ -48,10 +66,22 @@ async function call(method: string, body: Record<string, unknown> | FormData): P
   const data = ((await res.json().catch(() => null)) ?? {}) as TelegramReply;
   const messageId = (Array.isArray(data.result) ? data.result[0] : data.result)?.message_id;
   if (res.ok && data.ok && typeof messageId === "number") return messageId;
-  throw new PublishError(
-    `Telegram ${method} ответил ${res.status}: ${data.description ?? "без описания"}`,
-    res.status >= 500 || res.ok,
-  );
+  throw new TelegramApiError(method, res.status, data.description ?? "без описания");
+}
+
+/** The message id, or null when Telegram refused the photos themselves (logged). */
+async function sendPhotos(method: string, form: FormData): Promise<number | null> {
+  try {
+    return await call(method, form);
+  } catch (err) {
+    const media =
+      err instanceof TelegramApiError &&
+      err.status === 400 &&
+      MEDIA_REJECTION_RE.test(err.description);
+    if (!media) throw err;
+    console.warn(`[channels] ${method} rejected the photos: ${err.message}`);
+    return null;
+  }
 }
 
 const fileName = (name: string, photo: Blob) => `${name}.${photo.type.split("/")[1] ?? "jpg"}`;
@@ -80,8 +110,8 @@ function photoRequest(chatId: string, html: string, photos: Blob[]): [string, Fo
 /**
  * Posts a retelling (Telegram HTML) to the channel: the source post's photos
  * uploaded as files with the retelling as caption, else a text message. Photos
- * that fail to download are dropped; a photo send Telegram clearly rejected
- * degrades to text. Every fallback is logged.
+ * that fail to download are dropped; photos Telegram rejected as media
+ * degrade to one photo, then to text. Every fallback is logged.
  */
 export async function publishToChannel(html: string, imageUrls: string[]): Promise<PublishOutcome> {
   const chatId = CONFIG.TELEGRAM_CHANNEL_ID;
@@ -89,15 +119,13 @@ export async function publishToChannel(html: string, imageUrls: string[]): Promi
   const photos = (await Promise.all(imageUrls.slice(0, MAX_PHOTOS).map(downloadImage))).filter(
     (photo): photo is Blob => photo !== null,
   );
-  if (photos.length > 0) {
-    const [method, form] = photoRequest(chatId, html, photos);
-    try {
-      return { postId: `tg:${await call(method, form)}` };
-    } catch (err) {
-      if (err instanceof PublishError && err.maybePosted) throw err;
-      console.warn(`[channels] ${method} rejected, sending text: ${String(err)}`);
-    }
-  } else if (imageUrls.length > 0) {
+  // An album Telegram refused goes out with its first photo before giving up on photos.
+  const attempts = photos.length > 1 ? [photos, photos.slice(0, 1)] : [photos];
+  for (const attempt of attempts.filter((list) => list.length > 0)) {
+    const id = await sendPhotos(...photoRequest(chatId, html, attempt));
+    if (id !== null) return { postId: `tg:${id}` };
+  }
+  if (imageUrls.length > 0 && photos.length === 0) {
     console.warn(`[channels] none of ${imageUrls.length} photos usable, sending text`);
   }
   const id = await call("sendMessage", {
