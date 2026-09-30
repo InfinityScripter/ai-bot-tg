@@ -6,6 +6,7 @@ import type { PublishStatus, CandidateKind, CandidateState } from "./enums.js";
 // result types are re-exported here so "./types.js" stays the one type hub.
 export type { RewriteResult } from "./schemas/rewriteSchema.js";
 export type { ReleaseResult } from "./schemas/releaseSchema.js";
+export type { ChannelRetell } from "./schemas/channelRetellSchema.js";
 
 /**
  * What a release candidate stores: the full blog post about the new model and,
