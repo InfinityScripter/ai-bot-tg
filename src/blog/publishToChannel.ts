@@ -15,10 +15,10 @@ const UPLOAD_TIMEOUT_MS = 60_000;
 
 /**
  * Telegram's 400 descriptions for a photo it cannot take (PHOTO_INVALID_DIMENSIONS,
- * IMAGE_PROCESS_FAILED, wrong file, MEDIA_CAPTION_TOO_LONG). Only these justify
- * dropping photos; 429, 403 or bad markup would hit the text send just the same.
+ * IMAGE_PROCESS_FAILED, wrong file, "group send failed" for an album). Only these
+ * justify dropping photos; 429, 403 or bad markup would hit the text send just the same.
  */
-const MEDIA_REJECTION_RE = /photo|image|file|media|dimension/i;
+const MEDIA_REJECTION_RE = /photo|image|file|media|dimension|group send/i;
 
 /** A Bot API refusal: keeps the status and description so callers can tell why. */
 class TelegramApiError extends PublishError {

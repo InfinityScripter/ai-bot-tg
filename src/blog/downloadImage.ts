@@ -48,7 +48,11 @@ function isTelegramCdn(url: string): boolean {
 export async function downloadImage(url: string): Promise<Blob | null> {
   if (!isTelegramCdn(url)) return skip(url, "not an https Telegram CDN URL");
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+    // A redirect would take the download past the CDN check above.
+    const res = await fetch(url, {
+      redirect: "error",
+      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+    });
     if (!res.ok) return skip(url, `HTTP ${res.status}`);
     const type = (res.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
     if (!type.startsWith("image/")) return skip(url, `not an image: ${type || "no type"}`);

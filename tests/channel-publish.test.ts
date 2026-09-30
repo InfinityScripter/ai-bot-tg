@@ -280,6 +280,34 @@ describe("publishToChannel", () => {
     ]);
   });
 
+  it("retries an album Telegram refused as a group with its first photo", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = route((method) =>
+      method === "sendMediaGroup"
+        ? new Response(
+            JSON.stringify({ ok: false, description: "Bad Request: group send failed" }),
+            {
+              status: 400,
+            },
+          )
+        : tgOk(87),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(publishToChannel(TEXT, [IMG_A, IMG_B])).resolves.toEqual({ postId: "tg:87" });
+    expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendMediaGroup", "sendPhoto"]);
+  });
+
+  it("does not follow a photo redirect off the checked URL", async () => {
+    const fetchMock = route(() => tgOk(88));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await publishToChannel(TEXT, [IMG_A]);
+
+    const download = fetchMock.mock.calls.find(([u]) => String(u) === IMG_A);
+    expect(download?.[1]?.redirect).toBe("error");
+  });
+
   it("sends a retelling over the caption limit as text without downloading photos", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fetchMock = route(() => tgOk(85));
