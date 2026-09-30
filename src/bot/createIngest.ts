@@ -4,8 +4,8 @@ import { CONFIG } from "../config.js";
 import { renderRaw } from "./render.js";
 import { logEditError } from "./edit.js";
 import { escapeMarkdown } from "../utils.js";
-import { InputKind, CandidateState } from "../enums.js";
 import { rawKeyboard, previewKeyboard } from "./keyboards.js";
+import { InputKind, CandidateKind, CandidateState } from "../enums.js";
 import { fetchArticle, classifyInput, feedItemFromText } from "../feeds/index.js";
 
 import type { FeedItem, Candidate } from "../types.js";
@@ -71,18 +71,20 @@ export function createIngest(store: CandidateStore, bot: Bot) {
   /**
    * On startup, warn the owner about any candidate left in needs_verification by
    * a crash/deploy mid-publish — the post MIGHT already be live. The owner should
-   * check the blog before re-publishing. Each gets a card with a publish button
-   * (to finish if it never posted) and a skip button (to dismiss if it did).
+   * check the blog (the Telegram channel for a channel row) before re-publishing.
+   * Each gets a card with a publish button (to finish if it never posted) and a
+   * skip button (to dismiss if it did).
    */
   async function notifyNeedsVerification(): Promise<void> {
     for (const c of store.listByState(CandidateState.NeedsVerification)) {
+      const channel = c.kind === CandidateKind.Channel;
       const text = [
         `❓ *Статус публикации неизвестен* (был сбой во время публикации).`,
         "",
         escapeMarkdown(c.sourceTitle ?? c.sourceUrl),
         "",
-        "_Проверьте блог: пост мог уже опубликоваться._",
-        "_«Опубликовать» — если поста нет; «Пропустить» — если он уже на сайте._",
+        `_Проверьте ${channel ? "канал" : "блог"}: пост мог уже опубликоваться._`,
+        `_«Опубликовать» — если поста нет; «Пропустить» — если он уже ${channel ? "в канале" : "на сайте"}._`,
       ].join("\n");
       try {
         const msg = await bot.api.sendMessage(CONFIG.OWNER_TELEGRAM_ID, text, {

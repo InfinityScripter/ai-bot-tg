@@ -187,6 +187,21 @@ describe("automatic channel retelling", () => {
     store.close();
   });
 
+  it("the startup needs-verification card for a channel row points at the channel", async () => {
+    const store = new CandidateStore(":memory:");
+    const id = store.insertCollected(item("tg:ai_for_devs/188"), true)!;
+    store.setState(id, CandidateState.NeedsVerification);
+    const { notifyNeedsVerification, texts } = makeBot(store);
+
+    await notifyNeedsVerification();
+
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain("канал");
+    expect(texts[0]).not.toContain("блог");
+    expect(texts[0]).not.toContain("сайте");
+    store.close();
+  });
+
   it("sends a retelling over the caption limit to the owner instead of the channel", async () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/185"), true)!;
