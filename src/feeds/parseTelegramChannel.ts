@@ -18,7 +18,8 @@ export interface ChannelPost {
 }
 
 const POST_RE = /data-post="([^"/]+)\/(\d+)"/;
-const TEXT_RE = /<div class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/;
+const TEXT_RE =
+  /<div class="tgme_widget_message_text[^"]*\bjs-message_text\b[^"]*"[^>]*>([\s\S]*?)<\/div>/;
 const HREF_RE = /<a\s[^>]*href="([^"]+)"/g;
 const PHOTO_RE = /tgme_widget_message_photo_wrap[^>]*background-image:url\('([^']+)'\)/;
 const VIEWS_RE = /<span class="tgme_widget_message_views">([^<]*)<\/span>/;
@@ -29,7 +30,8 @@ export function parseViews(raw: string): number | null {
   const m = /^([\d.]+)([KM]?)$/.exec(raw.trim());
   if (!m) return null;
   const scale = m[2] === "M" ? 1_000_000 : m[2] === "K" ? 1_000 : 1;
-  return Math.round(Number(m[1]) * scale);
+  const value = Number(m[1]) * scale;
+  return Number.isFinite(value) ? Math.round(value) : null;
 }
 
 function toText(html: string): string {
@@ -62,7 +64,9 @@ export function parseTelegramChannel(html: string): ChannelPost[] {
           id: Number(id),
           url: `https://t.me/${channel}/${id}`,
           text: toText(textHtml),
-          links: [...textHtml.matchAll(HREF_RE)].map((m) => decodeEntities(m[1] ?? "")),
+          links: [...textHtml.matchAll(HREF_RE)]
+            .map((m) => decodeEntities(m[1] ?? ""))
+            .filter((href) => /^https?:\/\//.test(href)),
           imageUrl: PHOTO_RE.exec(block)?.[1] ?? null,
           publishedAt: Number.isNaN(publishedAt) ? null : publishedAt,
           views: parseViews(VIEWS_RE.exec(block)?.[1] ?? ""),
