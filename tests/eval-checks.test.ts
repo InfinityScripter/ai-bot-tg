@@ -483,4 +483,14 @@ describe("checkChannelRetell", () => {
       .map((f) => f.id);
     expect(ids).toEqual([]);
   });
+  it("does not glue numbers from neighbouring lines (abstractDL tariff list)", () => {
+    const tariffs = { ...item, snippet: "100$ = x5\n200$ = x10 (было x20 раньше)\n500$ = x25" };
+    const ids = checkChannelRetell(
+      `за 100 долларов — x5, за 200 долларов — x10 вместо x20, за 500 — x25\n\n${credit}`,
+      tariffs,
+    )
+      .filter((f) => !f.ok)
+      .map((f) => f.id);
+    expect(ids).toEqual([]);
+  });
 });

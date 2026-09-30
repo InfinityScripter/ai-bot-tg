@@ -14,7 +14,9 @@ const CREDIT_SEPARATOR = "\n\nИсточник: ";
 const LINK_FORMS = /https?:\/\/\S+|www\.\S+|\bt\.me\/\S+/gi;
 
 function numbersOf(text: string): string[] {
-  const normalised = text.replace(/(\d)[\s\u00a0\u2009\u202f](?=\d{3}(?!\d))/g, "$1");
+  // Space-like separators only: posts list tariffs one per line ("x5\n200$"), and a
+  // newline join turned 5 and 200 into a fake "5200" (abstractDL, 2026-09-30).
+  const normalised = text.replace(/(\d)[ \u00a0\u2009\u202f](?=\d{3}(?!\d))/g, "$1");
   return (normalised.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(",", "."));
 }
 
