@@ -1,6 +1,7 @@
 export { sendDigest } from "./sendDigest.js";
 export { fetchAllPosts } from "./fetchAllPosts.js";
 export { fetchRecentPosts } from "./fetchRecentPosts.js";
+export { callTelegram, TelegramApiError } from "./telegramApi.js";
 export { fetchAutoPublishFlags } from "./fetchAutoPublishFlags.js";
 export { toReleaseBody, publishRelease } from "./publishRelease.js";
 export { CAPTION_LIMIT, publishToChannel } from "./publishToChannel.js";

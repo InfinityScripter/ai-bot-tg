@@ -2,6 +2,7 @@ import { CONFIG } from "../config.js";
 import { visibleText } from "../feeds/index.js";
 import { PublishError } from "./publishPost.js";
 import { downloadImage } from "./downloadImage.js";
+import { callTelegram, TelegramApiError } from "./telegramApi.js";
 
 import type { PublishOutcome } from "./types.js";
 
@@ -9,9 +10,6 @@ import type { PublishOutcome } from "./types.js";
 export const CAPTION_LIMIT = 1024;
 /** sendMediaGroup takes at most 10 items. */
 const MAX_PHOTOS = 10;
-const SEND_TIMEOUT_MS = 20_000;
-/** An album upload carries up to 10 photos: a timeout here means "maybe posted". */
-const UPLOAD_TIMEOUT_MS = 60_000;
 
 /**
  * Telegram's 400 descriptions for a photo it cannot take (PHOTO_INVALID_DIMENSIONS,
@@ -20,60 +18,10 @@ const UPLOAD_TIMEOUT_MS = 60_000;
  */
 const MEDIA_REJECTION_RE = /photo|image|file|media|dimension|group send/i;
 
-/** A Bot API refusal: keeps the status and description so callers can tell why. */
-class TelegramApiError extends PublishError {
-  constructor(
-    method: string,
-    readonly status: number,
-    readonly description: string,
-  ) {
-    super(`Telegram ${method} ответил ${status}: ${description}`, status >= 500 || status < 300);
-  }
-}
-
-interface SentMessage {
-  message_id?: number;
-}
-
-interface TelegramReply {
-  ok?: boolean;
-  description?: string;
-  /** sendMediaGroup answers with every message of the album. */
-  result?: SentMessage | SentMessage[];
-}
-
-/**
- * One Bot API call, JSON or multipart. Direct fetch (not grammy) on purpose:
- * the publish path is fetch-based like the blog POST, so loadExtraction needs
- * no bot handle and tests stub one global. The token is in the URL, so no
- * error below may echo the URL. Network error or 5xx → the message may exist
- * (maybePosted).
- */
-async function call(method: string, body: Record<string, unknown> | FormData): Promise<number> {
-  const upload = body instanceof FormData;
-  let res: Response;
-  try {
-    res = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${method}`, {
-      method: "POST",
-      ...(upload
-        ? { body }
-        : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(upload ? UPLOAD_TIMEOUT_MS : SEND_TIMEOUT_MS),
-    });
-  } catch (err) {
-    const name = err instanceof Error ? err.name : "Error";
-    throw new PublishError(`Telegram ${method}: сеть (${name})`, true);
-  }
-  const data = ((await res.json().catch(() => null)) ?? {}) as TelegramReply;
-  const messageId = (Array.isArray(data.result) ? data.result[0] : data.result)?.message_id;
-  if (res.ok && data.ok && typeof messageId === "number") return messageId;
-  throw new TelegramApiError(method, res.status, data.description ?? "без описания");
-}
-
 /** The message id, or null when Telegram refused the photos themselves (logged). */
 async function sendPhotos(method: string, form: FormData): Promise<number | null> {
   try {
-    return await call(method, form);
+    return await callTelegram(method, form);
   } catch (err) {
     const media =
       err instanceof TelegramApiError &&
@@ -145,7 +93,7 @@ export async function publishToChannel(
   if (usable.length > 0 && photos.length === 0) {
     console.warn(`[channels] none of ${imageUrls.length} photos usable, sending text`);
   }
-  const id = await call("sendMessage", {
+  const id = await callTelegram("sendMessage", {
     chat_id: chatId,
     text: html,
     parse_mode: "HTML",
