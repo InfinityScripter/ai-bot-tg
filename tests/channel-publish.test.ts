@@ -148,32 +148,58 @@ describe("publishToChannel", () => {
     expect(form.get("p1")).toBeInstanceOf(Blob);
   });
 
-  it("skips photos that fail to download, are not images or are too big", async () => {
+  it("skips photos that fail to download, are not images, are SVG, too big or off Telegram's CDN", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fetchMock = route(
       () => tgOk(79),
       (url) => {
         if (url.endsWith("404.jpg")) return new Response("", { status: 404 });
         if (url.endsWith("html.jpg")) return image("text/html");
+        if (url.endsWith("svg.jpg")) return image("image/svg+xml");
         if (url.endsWith("huge.jpg")) return image("image/jpeg", 10 * 1024 * 1024 + 1);
         if (url.endsWith("net.jpg")) throw new TypeError("fetch failed");
         return image();
       },
     );
     vi.stubGlobal("fetch", fetchMock);
+    const cdn = "https://cdn4.telesco.pe/file";
+    const offCdn = [
+      "ftp://cdn4.telesco.pe/x.jpg",
+      "http://cdn4.telesco.pe/x.jpg",
+      "https://evil.com/x.jpg",
+      "https://telesco.pe.evil.com/x.jpg",
+    ];
 
     await publishToChannel(TEXT, [
-      "https://cdn/404.jpg",
-      "https://cdn/html.jpg",
-      "https://cdn/huge.jpg",
-      "https://cdn/net.jpg",
-      "ftp://cdn/x.jpg",
+      `${cdn}/404.jpg`,
+      `${cdn}/html.jpg`,
+      `${cdn}/svg.jpg`,
+      `${cdn}/huge.jpg`,
+      `${cdn}/net.jpg`,
+      ...offCdn,
       IMG_A,
     ]);
 
     expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendPhoto"]);
-    expect(fetchMock.mock.calls.map(([u]) => String(u))).not.toContain("ftp://cdn/x.jpg");
-    expect(warn.mock.calls.filter(([m]) => String(m).startsWith("[channels]"))).toHaveLength(5);
+    const fetched = fetchMock.mock.calls.map(([u]) => String(u));
+    for (const url of offCdn) expect(fetched).not.toContain(url);
+    expect(warn.mock.calls.filter(([m]) => String(m).startsWith("[channels]"))).toHaveLength(9);
+  });
+
+  it("names the uploaded file by the MIME subtype, without parameters", async () => {
+    const fetchMock = route(
+      () => tgOk(86),
+      (url) => (url.includes("telegram.org") ? image("image/png") : image("image/jpeg; charset=x")),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await publishToChannel(TEXT, [IMG_A]);
+    await publishToChannel(TEXT, ["https://telegram.org/file/b.png"]);
+
+    const names = telegramCalls(fetchMock).map(
+      (c) => ((c.body as FormData).get("photo") as File).name,
+    );
+    expect(names).toEqual(["photo.jpeg", "photo.png"]);
   });
 
   it("sends an HTML text message without a preview when no photo is usable", async () => {
