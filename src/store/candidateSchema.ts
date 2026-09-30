@@ -61,6 +61,11 @@ export const MIGRATIONS = [
   // months of old cards on the next boot.
   `ALTER TABLE candidates ADD COLUMN failure_notice_pending INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE candidates ADD COLUMN source_html TEXT`,
+  // Channel digest queue (2026-10-01): the post's own publish time (ms) for the
+  // 24 h age-out, and views ÷ the median of its channel page, refreshed by
+  // every sweep while the post waits. Other kinds leave both NULL.
+  `ALTER TABLE candidates ADD COLUMN published_at INTEGER`,
+  `ALTER TABLE candidates ADD COLUMN view_score REAL`,
 ];
 // The UNIQUE constraint on dedup_key already creates an index; state-запросы
 // (listByState / countsByState / claim / prune) кроет idx_candidates_state

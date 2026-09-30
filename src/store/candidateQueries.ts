@@ -22,11 +22,11 @@ export function listRecoveredAutomatic(db: Database.Database): Candidate[] {
   );
 }
 
-/** The daily-digest queue, newest first (the digest caps to the freshest N). */
+/** The RSS daily-digest queue, newest first (channel posts wait for their own issue). */
 export function listDigestQueue(db: Database.Database): Candidate[] {
   return list(
     db,
-    "SELECT * FROM candidates WHERE state = ? ORDER BY id DESC",
+    "SELECT * FROM candidates WHERE state = ? AND kind != 'channel' ORDER BY id DESC",
     CandidateState.DigestQueued,
   );
 }
@@ -51,17 +51,6 @@ export function listPublishedReleases(db: Database.Database, days: number): Cand
       )
       .all(CandidateState.Published, `-${days} days`) as CandidateRow[]
   ).map(mapRow);
-}
-
-/** Channel retellings published within the last `hours` (the rolling daily cap). */
-export function countPublishedChannelPosts(db: Database.Database, hours: number): number {
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM candidates
-        WHERE kind = 'channel' AND state = ? AND updated_at >= datetime('now', ?)`,
-    )
-    .get(CandidateState.Published, `-${hours} hours`) as { n: number };
-  return row.n;
 }
 
 /** True when a published candidate's source_url is this URL (trailing slash ignored). */

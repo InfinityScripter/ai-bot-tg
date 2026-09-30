@@ -319,23 +319,12 @@ describe("CandidateStore", () => {
     });
   });
 
-  it("counts channel posts published in the last N hours and finds published URLs", () => {
-    const ch = store.insertCollected(
-      item({
-        dedupKey: "tg:x/1",
-        url: "https://t.me/x/1",
-        feedTitle: "@x",
-        kind: CandidateKind.Channel,
-      }),
-      true,
-    )!;
-    store.setPublished(ch, "tg:55");
+  it("finds published URLs", () => {
     const news = store.insertCollected(
       item({ dedupKey: "https://ex.com/a", url: "https://ex.com/a" }),
       true,
     )!;
     store.setPublished(news, "post-1");
-    expect(store.countPublishedChannelPosts(24)).toBe(1);
     expect(store.isPublishedUrl("https://ex.com/a/")).toBe(true);
     expect(store.isPublishedUrl("https://ex.com/b")).toBe(false);
   });

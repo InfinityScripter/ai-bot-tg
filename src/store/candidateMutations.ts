@@ -209,6 +209,7 @@ export function requeueDigestBatch(db: Database.Database, ids: number[]): void {
  * Expires digest-queued rows older than `hours` to 'skipped' — stale news
  * must not headline tomorrow's digest. updated_at is the queueing time (the
  * queue transition touches it), so the window measures time in the queue.
+ * Channel posts are left alone: their queue ages out by post time (ChannelQueue.expire).
  * Returns the number expired.
  */
 export function expireDigestQueue(db: Database.Database, hours: number): number {
@@ -216,7 +217,7 @@ export function expireDigestQueue(db: Database.Database, hours: number): number 
   const info = db
     .prepare(
       `UPDATE candidates SET state = ?, updated_at = datetime('now')
-       WHERE state = ? AND updated_at < datetime('now', ?)`,
+       WHERE state = ? AND kind != 'channel' AND updated_at < datetime('now', ?)`,
     )
     .run(CandidateState.Skipped, CandidateState.DigestQueued, offset);
   return info.changes;

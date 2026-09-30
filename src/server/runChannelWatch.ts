@@ -58,10 +58,6 @@ async function sweep(
   fetchPages: typeof fetchChannelPages,
   summary: ChannelWatchSummary,
 ): Promise<void> {
-  if (store.countPublishedChannelPosts(24) >= CHANNEL_DAILY_LIMIT) {
-    summary.skipped = "limit";
-    return;
-  }
   const { pages, failed } = await fetchPages(resolveChannels());
   summary.pages = pages.length;
   summary.failed = failed;

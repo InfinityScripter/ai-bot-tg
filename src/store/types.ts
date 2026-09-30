@@ -1,3 +1,5 @@
+import type { Candidate } from "../types.js";
+
 /**
  * Shared types of the store module: the raw SQLite row and the runtime
  * override shapes persisted in the `settings` table. Pure declarations only —
@@ -35,4 +37,10 @@ export interface CandidateRow {
   error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** A channel post waiting for the digest, with views ÷ its channel's median views (0 when unknown). */
+export interface QueuedPost {
+  candidate: Candidate;
+  viewScore: number;
 }

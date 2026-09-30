@@ -6,8 +6,7 @@ vi.mock("../src/llm/filterRelevant.js", async (importOriginal) => {
   return { ...actual, filterRelevant: (...a: unknown[]) => filterRelevant(...a) };
 });
 
-const { runChannelWatch, lastChannelWatch, CHANNEL_DAILY_LIMIT } =
-  await import("../src/server/runChannelWatch.js");
+const { runChannelWatch, lastChannelWatch } = await import("../src/server/runChannelWatch.js");
 const { CandidateStore } = await import("../src/store/index.js");
 import { CandidateKind, CandidateState } from "../src/enums.js";
 
@@ -66,36 +65,6 @@ describe("runChannelWatch", () => {
     expect(candidate.dedupKey.startsWith("tg:pri/")).toBe(true);
     expect(candidate.autoPublish).toBe(true);
     expect(summary.picked).toBe(candidate.dedupKey);
-    store.close();
-  });
-
-  it("does nothing once the rolling daily limit is reached", async () => {
-    const store = new CandidateStore(":memory:");
-    for (let i = 0; i < CHANNEL_DAILY_LIMIT; i += 1) {
-      const id = store.insertCollected(
-        {
-          dedupKey: `tg:x/${i}`,
-          url: `https://t.me/x/${i}`,
-          title: "t",
-          snippet: "s",
-          feedTitle: "@x",
-          imageUrl: null,
-          imageUrls: [],
-          publishedAt: null,
-          kind: CandidateKind.Channel,
-        },
-        true,
-      )!;
-      store.setPublished(id, `tg:${i}`);
-    }
-    const fetchPages = pages({ channel: { name: "pri", priority: true }, posts: [post("pri", 1)] });
-    const processCandidate = vi.fn(async () => {});
-
-    const summary = await runChannelWatch(store, processCandidate, { now: NOW, fetchPages });
-
-    expect(summary.skipped).toBe("limit");
-    expect(fetchPages).not.toHaveBeenCalled();
-    expect(processCandidate).not.toHaveBeenCalled();
     store.close();
   });
 

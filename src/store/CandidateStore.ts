@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { CONFIG } from "../config.js";
 import { CandidateState } from "../enums.js";
 import * as settings from "./storeSettings.js";
+import { ChannelQueue } from "./channelQueue.js";
 import * as queries from "./candidateQueries.js";
 import * as mutations from "./candidateMutations.js";
 import { parseRetell, parseRewrite, parseReleaseBundle } from "./parseExtraction.js";
@@ -20,6 +21,9 @@ import type { FeedItem, Candidate, ChannelRetell, RewriteResult, ReleaseBundle }
  */
 export class CandidateStore {
   private readonly db: Database.Database;
+
+  /** The channel digest queue (kind=channel, digest_queued) and its issue slot. */
+  readonly channelQueue: ChannelQueue;
 
   constructor(path: string = CONFIG.SQLITE_PATH) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -47,6 +51,7 @@ export class CandidateStore {
     // (POST may have reached the blog — warn before re-publish). Idempotent;
     // runs once per process, on construction.
     mutations.recoverInFlight(this.db);
+    this.channelQueue = new ChannelQueue(this.db);
   }
 
   /**
@@ -106,11 +111,6 @@ export class CandidateStore {
   /** Release candidates the bot published within the last `days` days. */
   listPublishedReleases(days: number): Candidate[] {
     return queries.listPublishedReleases(this.db, days);
-  }
-
-  /** Channel retellings published within the last `hours`. */
-  countPublishedChannelPosts(hours: number): number {
-    return queries.countPublishedChannelPosts(this.db, hours);
   }
 
   /**
