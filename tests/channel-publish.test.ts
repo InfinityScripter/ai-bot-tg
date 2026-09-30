@@ -170,7 +170,10 @@ describe("assertRetellPublishable allow-list", () => {
     text: `${body}\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/184`,
   });
   const BODY = "Команда выпустила новую модель и подробно объяснила, что в ней поменялось";
-  const SOURCE = "Пост: OpenAI выложила модель, детали на OpenAI.com, автор @sama_alt";
+  const SOURCE = {
+    snippet: "Пост: OpenAI выложила модель, детали на OpenAI.com, автор @sama_alt",
+    feedTitle: "@ai_for_devs",
+  };
 
   it("rejects a domain the source post never mentioned", () => {
     expect(() => assertRetellPublishable(retell(`${BODY}, подробнее на evil.com`), SOURCE)).toThrow(
@@ -181,6 +184,12 @@ describe("assertRetellPublishable allow-list", () => {
   it("accepts a domain and a handle that are in the source post", () => {
     expect(() =>
       assertRetellPublishable(retell(`${BODY}, детали на openai.com от @Sama_alt`), SOURCE),
+    ).not.toThrow();
+  });
+
+  it("accepts the source channel's own handle even when the post text lacks it", () => {
+    expect(() =>
+      assertRetellPublishable(retell(`Автор канала @AI_for_devs пишет: ${BODY}`), SOURCE),
     ).not.toThrow();
   });
 
@@ -261,6 +270,24 @@ describe("automatic channel retelling", () => {
 
     expect(store.get(id)!.state).toBe(CandidateState.PendingReview);
     expect(fetchMock).not.toHaveBeenCalled();
+    store.close();
+  });
+
+  it("lets a retelling name the source channel's own handle", async () => {
+    const store = new CandidateStore(":memory:");
+    const id = store.insertCollected(item("tg:ai_for_devs/191"), true)!;
+    retellChannelPost.mockResolvedValue({
+      text: `Автор канала @ai_for_devs пишет, что команда выпустила новую модель и объяснила изменения.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/191`,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => tgOk(94)),
+    );
+    const { autoPublishCandidate } = makeBot(store);
+
+    await autoPublishCandidate(store.get(id)!);
+
+    expect(store.get(id)!.state).toBe(CandidateState.Published);
     store.close();
   });
 

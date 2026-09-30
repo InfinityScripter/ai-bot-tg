@@ -4,7 +4,7 @@ import { CAPTION_LIMIT, publishToChannel } from "../blog/index.js";
 
 import type { LoadedExtraction } from "./types.js";
 import type { CandidateStore } from "../store/index.js";
-import type { Candidate, ChannelRetell } from "../types.js";
+import type { FeedItem, Candidate, ChannelRetell } from "../types.js";
 
 /** Telegram auto-links bare domains and @mentions in plain text, so stripLinks can't catch them. */
 const DOMAIN_RE = /\b[\w-]+(\.[\w-]+)*\.[a-z]{2,}\b/gi;
@@ -16,9 +16,13 @@ function linkables(text: string): string[] {
 
 /**
  * Auto-path gate for a retelling: it must fit a photo caption, keep its credit
- * line, and link nothing (domain or @mention) that the source post didn't.
+ * line, and link nothing (domain or @mention) that the source post didn't — except
+ * the source channel's own handle, which the prompt invites («Автор канала…»).
  */
-export function assertRetellPublishable(retell: ChannelRetell, sourceText: string): void {
+export function assertRetellPublishable(
+  retell: ChannelRetell,
+  source: Pick<FeedItem, "snippet" | "feedTitle">,
+): void {
   if (retell.text.length > CAPTION_LIMIT) {
     throw new GateFailure(`пересказ длиннее ${CAPTION_LIMIT} символов (${retell.text.length})`);
   }
@@ -30,7 +34,7 @@ export function assertRetellPublishable(retell: ChannelRetell, sourceText: strin
   if (body.length < 50) {
     throw new GateFailure(`пересказ почти пустой (${body.length} симв. до строки «Источник»)`);
   }
-  const allowed = new Set(linkables(sourceText));
+  const allowed = new Set(linkables(`${source.snippet}\n${source.feedTitle}`));
   const foreign = linkables(body).find((token) => !allowed.has(token));
   if (foreign) {
     throw new GateFailure(`в пересказе ${foreign}, которого нет в исходном посте`);

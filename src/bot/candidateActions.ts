@@ -217,7 +217,7 @@ export async function processClaimedCandidateAutomatically(
   if (extractedCandidate.kind === CandidateKind.Channel) {
     const retell = store.getRetell(extractedCandidate);
     if (!retell) throw new MissingExtractionError("Нет сохранённых данных.");
-    assertRetellPublishable(retell, store.getFeedItem(extractedCandidate).snippet);
+    assertRetellPublishable(retell, store.getFeedItem(extractedCandidate));
   } else {
     const extraction =
       extractedCandidate.kind === CandidateKind.Release
