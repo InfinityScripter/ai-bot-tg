@@ -18,13 +18,16 @@ import { CandidateKind, CandidateState } from "../src/enums.js";
 
 import type { FeedItem } from "../src/types.js";
 
-const TEXT =
-  "Пересказ поста: команда выпустила новую модель и объяснила, что в ней изменилось.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/184";
+const CREDIT = (id: number) =>
+  `\n\nИсточник: <a href="https://t.me/ai_for_devs/${id}">@ai_for_devs</a>`;
+const BODY_HTML =
+  "Пересказ поста: <b>команда выпустила новую модель</b> и объяснила, что в ней изменилось.";
+const TEXT = `${BODY_HTML}${CREDIT(184)}`;
 
 function item(key = "tg:ai_for_devs/184", imageUrl: string | null = null): FeedItem {
   return {
     dedupKey: key,
-    url: "https://t.me/ai_for_devs/184",
+    url: `https://t.me/${key.slice(3)}`,
     title: "Первая строка",
     snippet: "Текст поста. ".repeat(30),
     feedTitle: "@ai_for_devs",
@@ -165,13 +168,14 @@ describe("publishToChannel", () => {
   });
 });
 
-describe("assertRetellPublishable allow-list", () => {
-  const retell = (body: string) => ({
-    html: `${body}\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/184`,
-  });
+describe("assertRetellPublishable", () => {
+  const retell = (body: string) => ({ html: `${body}${CREDIT(184)}` });
   const BODY = "Команда выпустила новую модель и подробно объяснила, что в ней поменялось";
+  const LINK = "https://openai.com/index/new-model";
   const SOURCE = {
+    url: "https://t.me/ai_for_devs/184",
     snippet: "Пост: OpenAI выложила модель, детали на OpenAI.com, автор @sama_alt",
+    html: `Пост: OpenAI выложила <a href="${LINK}">модель</a>, детали на OpenAI.com, автор @sama_alt`,
     feedTitle: "@ai_for_devs",
   };
 
@@ -189,7 +193,7 @@ describe("assertRetellPublishable allow-list", () => {
 
   it("accepts the source channel's own handle even when the post text lacks it", () => {
     expect(() =>
-      assertRetellPublishable(retell(`Автор канала @AI_for_devs пишет: ${BODY}`), SOURCE),
+      assertRetellPublishable(retell(`Канал @AI_for_devs пишет: ${BODY}`), SOURCE),
     ).not.toThrow();
   });
 
@@ -197,6 +201,41 @@ describe("assertRetellPublishable allow-list", () => {
     expect(() => assertRetellPublishable(retell(`${BODY}, пишите @scam`), SOURCE)).toThrow(
       GateFailure,
     );
+  });
+
+  it("measures the caption on visible text, not on markup", () => {
+    const long = `${LINK}?${"q".repeat(600)}`;
+    const source = { ...SOURCE, html: `<a href="${long}">модель</a>` };
+    const body = `<b>${"Слово ".repeat(120)}</b><a href="${long}">модель</a>`;
+    expect(retell(body).html.length).toBeGreaterThan(1024);
+    expect(() => assertRetellPublishable(retell(body), source)).not.toThrow();
+    expect(() => assertRetellPublishable(retell(`<b>${"д".repeat(1010)}</b>`), source)).toThrow(
+      /1024/,
+    );
+  });
+
+  it("requires the code-built credit line linking the exact post", () => {
+    expect(() =>
+      assertRetellPublishable(
+        { html: `${BODY}\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/184` },
+        SOURCE,
+      ),
+    ).toThrow(/Источник/);
+  });
+
+  it("rejects a body under 50 visible characters", () => {
+    expect(() =>
+      assertRetellPublishable(retell(`<b><a href="${LINK}">Смотрите</a></b>`), SOURCE),
+    ).toThrow(/пустой/);
+  });
+
+  it("accepts a link to the source's own target and rejects any other", () => {
+    expect(() =>
+      assertRetellPublishable(retell(`${BODY} <a href="${LINK}/">тут</a>`), SOURCE),
+    ).not.toThrow();
+    expect(() =>
+      assertRetellPublishable(retell(`${BODY} <a href="https://evil.com/x">тут</a>`), SOURCE),
+    ).toThrow(GateFailure);
   });
 });
 
@@ -226,7 +265,7 @@ describe("automatic channel retelling", () => {
   it("tells the owner to check the channel, not the blog, after an unconfirmed channel publish", async () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/187"), true)!;
-    retellChannelPost.mockResolvedValue({ html: TEXT });
+    retellChannelPost.mockResolvedValue({ html: `${BODY_HTML}${CREDIT(187)}` });
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -277,7 +316,7 @@ describe("automatic channel retelling", () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/191"), true)!;
     retellChannelPost.mockResolvedValue({
-      html: `Автор канала @ai_for_devs пишет, что команда выпустила новую модель и объяснила изменения.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/191`,
+      html: `Канал @ai_for_devs пишет, что команда выпустила новую модель и объяснила изменения.${CREDIT(191)}`,
     });
     vi.stubGlobal(
       "fetch",
@@ -295,7 +334,7 @@ describe("automatic channel retelling", () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/189"), true)!;
     retellChannelPost.mockResolvedValue({
-      html: `Команда выпустила новую модель, все подробности и скидки на evil.com прямо сейчас.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/189`,
+      html: `Команда выпустила новую модель, все подробности и скидки на evil.com прямо сейчас.${CREDIT(189)}`,
     });
     const fetchMock = vi.fn(async () => tgOk(93));
     vi.stubGlobal("fetch", fetchMock);
@@ -312,7 +351,7 @@ describe("automatic channel retelling", () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/186"), true)!;
     retellChannelPost.mockResolvedValue({
-      html: "Смотрите.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/186",
+      html: `Смотрите.${CREDIT(186)}`,
     });
     const fetchMock = vi.fn(async () => tgOk(92));
     vi.stubGlobal("fetch", fetchMock);

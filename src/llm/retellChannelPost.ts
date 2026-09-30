@@ -40,7 +40,7 @@ export function finalizeRetell(raw: string | null): ChannelRetell {
 }
 
 /** Credit line added by code, never by the model: the channel handle linked to the exact post. */
-export function withSourceLine(html: string, item: FeedItem): string {
+export function withSourceLine(html: string, item: Pick<FeedItem, "url" | "feedTitle">): string {
   return `${html}\n\nИсточник: <a href="${escapeHtml(item.url)}">${escapeHtml(item.feedTitle)}</a>`;
 }
 
