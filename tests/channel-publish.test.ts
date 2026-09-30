@@ -12,6 +12,8 @@ const { CandidateStore } = await import("../src/store/index.js");
 const { publishToChannel } = await import("../src/blog/index.js");
 const { GateFailure } = await import("../src/llm/index.js");
 const { assertRetellPublishable } = await import("../src/bot/channelExtraction.js");
+import type { Update } from "grammy/types";
+
 import { CandidateKind, CandidateState } from "../src/enums.js";
 
 import type { FeedItem } from "../src/types.js";
@@ -53,6 +55,23 @@ function makeBot(store: InstanceType<typeof CandidateStore>) {
     } as never);
   });
   return { ...bundle, texts, botCalls };
+}
+
+function tap(data: string): Update {
+  return {
+    update_id: 1,
+    callback_query: {
+      id: "cbq-1",
+      from: { id: 123456789, is_bot: false, first_name: "Owner" },
+      chat_instance: "ci",
+      data,
+      message: {
+        message_id: 10,
+        date: 0,
+        chat: { id: 123456789, type: "private", first_name: "Owner" },
+      },
+    },
+  } as Update;
 }
 
 afterEach(() => {
@@ -276,6 +295,33 @@ describe("automatic channel retelling", () => {
 
     expect(store.get(id)!.state).toBe(CandidateState.PendingReview);
     expect(fetchMock).not.toHaveBeenCalled();
+    store.close();
+  });
+});
+
+describe("manual channel retelling", () => {
+  it("🔄 then ✅ posts to the channel once, never to the blog, without scraping t.me", async () => {
+    const store = new CandidateStore(":memory:");
+    const id = store.insertCollected(item("tg:ai_for_devs/190"), false)!;
+    retellChannelPost.mockResolvedValue({ text: TEXT });
+    const fetchMock = vi.fn(async (url: string) =>
+      String(url).includes("api.telegram.org") ? tgOk(95) : new Response("", { status: 500 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { bot } = makeBot(store);
+    bot.botInfo = { id: 1, is_bot: true, first_name: "Bot", username: "bot" } as typeof bot.botInfo;
+
+    await bot.handleUpdate(tap(`rewrite_${id}`));
+    expect(store.get(id)!.state).toBe(CandidateState.PendingReview);
+    await bot.handleUpdate(tap(`approve_${id}`));
+
+    const row = store.get(id)!;
+    expect(row.state).toBe(CandidateState.Published);
+    expect(row.blogPostId).toBe("tg:95");
+    const urls = fetchMock.mock.calls.map(([u]) => String(u));
+    expect(urls.filter((u) => u.includes("api.telegram.org"))).toHaveLength(1);
+    expect(urls.filter((u) => u.includes("/api/post/new"))).toEqual([]);
+    expect(urls.filter((u) => u.startsWith("https://t.me/"))).toEqual([]);
     store.close();
   });
 });
