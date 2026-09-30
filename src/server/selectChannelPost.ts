@@ -7,12 +7,16 @@ import type { ChannelPage, ChannelPost } from "../feeds/index.js";
 const HOUR_MS = 3_600_000;
 /** Views keep growing for days; two hours lets the first wave settle before scoring. */
 const MIN_AGE_MS = 2 * HOUR_MS;
-const MAX_AGE_MS = 8 * HOUR_MS;
+/**
+ * A queued post lives up to 24 h. The sweep runs 08:15-22:15, so at 8 h the
+ * posts of about 20:15-00:15 were never young enough at any sweep.
+ */
+const MAX_AGE_MS = 24 * HOUR_MS;
 const MIN_TEXT = 200;
 /** Russian ad-law markers: a paid post is not something to retell. */
 const AD_RE = /#реклама|\berid\b/i;
 /** Channels repeat links (self-promo, file names); an old link must not block a new post. */
-const LINK_MEMORY_DAYS = 3;
+export const LINK_MEMORY_DAYS = 3;
 
 export interface EligibilityOptions {
   now: number;
@@ -28,16 +32,20 @@ export function channelDedupKey(post: ChannelPost): string {
 }
 
 /**
- * seen_keys entries for a post's outbound links: a retelling's source_url is its
+ * seen_keys entries for outbound links: a digest post's source_url is its
  * t.me permalink, so the article it covers is only remembered through these.
  * t.me links are channel-internal and the post's own dedup key already covers it.
  * Host-only links are skipped: Telegram autolinks file names (`AGENTS.md`) and
  * channels end posts with their own site, so these say nothing about the story.
  */
-export function channelLinkKeys(post: ChannelPost): string[] {
-  return post.links
+export function linkKeysOf(urls: string[]): string[] {
+  return urls
     .filter((url) => !/^https?:\/\/(www\.)?t\.me\//i.test(url) && hasPath(url))
     .map((url) => `link:${url.trim().replace(/\/+$/, "")}`);
+}
+
+export function channelLinkKeys(post: ChannelPost): string[] {
+  return linkKeysOf(post.links);
 }
 
 function hasPath(url: string): boolean {
@@ -74,29 +82,13 @@ function median(values: number[]): number {
 }
 
 /**
- * Priority channels first; within the chosen group the post with the highest
- * views ÷ median views of its own channel page wins, so a small channel's hit
- * beats a big channel's routine post.
+ * Views ÷ the median views of the post's own channel page, so a small
+ * channel's hit beats a big channel's routine post. 0 when views are unknown.
  */
-export function pickChannelPost(
-  pages: ChannelPage[],
-  candidates: ChannelPost[],
-): ChannelPost | null {
-  const byName = new Map(pages.map((page) => [page.channel.name.toLowerCase(), page]));
-  const pageOf = (post: ChannelPost) => byName.get(post.channel.toLowerCase());
-  const priority = candidates.filter((post) => pageOf(post)?.channel.priority);
-  const pool = priority.length > 0 ? priority : candidates;
-  const score = (post: ChannelPost): number => {
-    const views = (pageOf(post)?.posts ?? [])
-      .map((x) => x.views)
-      .filter((v): v is number => v !== null);
-    const base = views.length > 0 ? median(views) : 0;
-    return base > 0 && post.views !== null ? post.views / base : 0;
-  };
-  return pool.reduce<ChannelPost | null>(
-    (best, post) => (best && score(best) >= score(post) ? best : post),
-    null,
-  );
+export function viewScore(page: ChannelPage, post: ChannelPost): number {
+  const views = page.posts.map((x) => x.views).filter((v): v is number => v !== null);
+  const base = views.length > 0 ? median(views) : 0;
+  return base > 0 && post.views !== null ? post.views / base : 0;
 }
 
 /** The candidate row for a post: the text is both the title line and the rewrite input. */

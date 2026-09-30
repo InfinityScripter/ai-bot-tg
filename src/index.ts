@@ -177,8 +177,7 @@ async function main() {
       : "[index] release watch disabled (RELEASE_WATCH_CRON unset)",
   );
 
-  const processDeps = { autoPublish: autoPublishCandidate, sendRawCard };
-  const channelJob = scheduleChannelWatch({ store, inWatchSlot, notifyOwner, processDeps });
+  const channelJob = scheduleChannelWatch({ store, inWatchSlot, notifyOwner });
 
   // The admin control server is started only when a token is configured. Unset
   // = no control server, bot still runs/publishes — so deploying this code

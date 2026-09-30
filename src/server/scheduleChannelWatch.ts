@@ -4,7 +4,6 @@ import { CONFIG } from "../config.js";
 import { NOTIFY_LABELS } from "../labels.js";
 import { scheduleDaily } from "./scheduler.js";
 import { runChannelWatch } from "./runChannelWatch.js";
-import { createProcessCandidate } from "./createProcessCandidate.js";
 
 import type { CandidateStore } from "../store/index.js";
 
@@ -12,12 +11,11 @@ interface ChannelWatchDeps {
   store: CandidateStore;
   /** Runs the task in the slot shared with the release watch, or skips it when the slot is busy. */
   inWatchSlot: (task: () => Promise<void>) => Promise<void>;
-  processDeps: Parameters<typeof createProcessCandidate>[1];
   notifyOwner: (text: string) => Promise<void>;
 }
 
 /**
- * Schedules the channel sweep on CHANNEL_WATCH_CRON (unset = off). A failure
+ * Schedules the channel sweep on CHANNEL_WATCH_CRON (unset = off): it queues posts for the digest. A failure
  * pings the owner once per failure streak: at an hourly cadence every failure
  * would spam.
  */
@@ -25,7 +23,7 @@ export function scheduleChannelWatch(deps: ChannelWatchDeps): Cron | null {
   let failing = false;
   const sweep = async (): Promise<void> => {
     try {
-      await runChannelWatch(deps.store, await createProcessCandidate(deps.store, deps.processDeps));
+      await runChannelWatch(deps.store);
       failing = false;
     } catch (err) {
       console.error(`[channels] channel watch failed: ${String(err)}`);

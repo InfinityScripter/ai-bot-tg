@@ -77,9 +77,8 @@ export interface ChannelWatchSummary {
   failed: string[];
   eligible: number;
   kept: number;
-  /** Dedup key of the post handed to processCandidate, or null. */
-  picked: string | null;
-  /** processCandidate threw for the picked post: logged, not a sweep error (no owner ping). */
-  processFailed?: boolean;
-  skipped?: "limit";
+  /** Posts newly put in the digest queue. */
+  queued: number;
+  /** Queued posts whose view score this sweep updated. */
+  refreshed: number;
 }

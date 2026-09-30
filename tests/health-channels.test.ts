@@ -9,7 +9,8 @@ const summary = (over: Partial<ChannelWatchSummary>): ChannelWatchSummary => ({
   failed: [],
   eligible: 5,
   kept: 3,
-  picked: null,
+  queued: 2,
+  refreshed: 4,
   ...over,
 });
 const last = (over: {
@@ -34,25 +35,11 @@ describe("describeChannelWatch", () => {
     });
   });
 
-  it("reports the daily limit as ok", () => {
-    const s = summary({ skipped: "limit" });
-    expect(describeChannelWatch(last({ summary: s }))).toMatchObject({
-      ok: true,
-      detail: "дневной лимит выбран",
-    });
-  });
-
   it("is ok with no failed pages", () => {
     expect(describeChannelWatch(last({}))).toMatchObject({
       ok: true,
-      detail: "страниц 12, подходящих 5",
+      detail: "страниц 12, подходящих 5, в очередь 2",
     });
-  });
-
-  it("stays ok but says so when the picked post failed to process", () => {
-    const check = describeChannelWatch(last({ summary: summary({ processFailed: true }) }));
-    expect(check.ok).toBe(true);
-    expect(check.detail).toBe("страниц 12, подходящих 5, последний пост не обработан");
   });
 
   it("stays ok but lists the pages when 1 of 12 failed", () => {
