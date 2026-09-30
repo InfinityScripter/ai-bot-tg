@@ -52,12 +52,19 @@ export function decodeEntities(input: string): string {
   return decodeEntityRefs(input).trim();
 }
 
+/** An invalid code point (fromCodePoint throws, a lone surrogate breaks the text) stays as written. */
+function fromCodePoint(code: number, raw: string): string {
+  return code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff)
+    ? String.fromCodePoint(code)
+    : raw;
+}
+
 /** decodeEntities without the trim, for text runs between tags. */
 export function decodeEntityRefs(input: string): string {
   return (
     input
-      .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
-      .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
+      .replace(/&#x([0-9a-f]+);/gi, (raw, hex: string) => fromCodePoint(parseInt(hex, 16), raw))
+      .replace(/&#(\d+);/g, (raw, dec: string) => fromCodePoint(parseInt(dec, 10), raw))
       .replace(/&nbsp;/g, " ")
       .replace(/&mdash;/g, "—")
       .replace(/&ndash;/g, "–")

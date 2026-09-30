@@ -45,7 +45,7 @@ async function call(method: string, body: Record<string, unknown> | FormData): P
     const name = err instanceof Error ? err.name : "Error";
     throw new PublishError(`Telegram ${method}: сеть (${name})`, true);
   }
-  const data = (await res.json().catch(() => ({}))) as TelegramReply;
+  const data = ((await res.json().catch(() => null)) ?? {}) as TelegramReply;
   const messageId = (Array.isArray(data.result) ? data.result[0] : data.result)?.message_id;
   if (res.ok && data.ok && typeof messageId === "number") return messageId;
   throw new PublishError(

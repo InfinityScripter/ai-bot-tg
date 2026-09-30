@@ -210,6 +210,14 @@ describe("publishToChannel", () => {
     expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendPhoto", "sendMessage"]);
   });
 
+  it("treats an unreadable photo reply as maybe-posted, not as a reason to resend as text", async () => {
+    const fetchMock = route(() => new Response("null", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(publishToChannel(TEXT, [IMG_A])).rejects.toMatchObject({ maybePosted: true });
+    expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendPhoto"]);
+  });
+
   it("marks a network failure as maybe-posted and a 4xx as not posted", async () => {
     vi.stubGlobal(
       "fetch",

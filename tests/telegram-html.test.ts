@@ -69,6 +69,22 @@ describe("sanitizeTelegramHtml", () => {
     );
   });
 
+  it("keeps invalid numeric entities as text instead of throwing", () => {
+    expect(sanitizeTelegramHtml("a &#x110000; &#1114112; &#xD800; b &#36;")).toBe(
+      "a &amp;#x110000; &amp;#1114112; &amp;#xD800; b $",
+    );
+  });
+
+  it("opens no code or pre inside formatting or a link", () => {
+    expect(sanitizeTelegramHtml("<b>run <code>npm i</code></b>")).toBe("<b>run npm i</b>");
+    expect(sanitizeTelegramHtml('<a href="https://a.io/1"><pre>x</pre></a>')).toBe(
+      '<a href="https://a.io/1">x</a>',
+    );
+    expect(sanitizeTelegramHtml("<blockquote><code>x</code></blockquote>")).toBe(
+      "<blockquote><code>x</code></blockquote>",
+    );
+  });
+
   it("collapses runs of blank lines, trailing spaces and outer whitespace", () => {
     expect(sanitizeTelegramHtml("  a <br/><br/><br/><br/>b\n  ")).toBe("a\n\nb");
   });

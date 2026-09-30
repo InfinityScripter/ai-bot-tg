@@ -54,13 +54,15 @@ function linkTarget(attrs: string, allowed: Set<string> | null): string | null {
   return !allowed || allowed.has(normalizeHref(href)) ? href : null;
 }
 
-/** Telegram rejects entities inside code/pre and nested links or quotes. */
+/** Bot API nesting rules: nothing inside code/pre, code/pre only at top level or in a quote, no nested links or quotes. */
 function canOpen(name: string, stack: Open[]): boolean {
+  const verbatim = name === "code" || name === "pre";
   return !stack.some(
     (open) =>
       open.emitted &&
       (open.name === "code" ||
         open.name === "pre" ||
+        (verbatim && open.name !== "blockquote") ||
         (open.name === name && (name === "a" || name === "blockquote"))),
   );
 }
