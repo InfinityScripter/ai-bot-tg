@@ -136,6 +136,31 @@ describe("runChannelWatch", () => {
     store.close();
   });
 
+  it("does not retell the same story twice when two channels link the same article", async () => {
+    const store = new CandidateStore(":memory:");
+    filterRelevant.mockImplementation(async (items: FeedItem[]) => ({
+      kept: items,
+      decisions: [],
+    }));
+    const processCandidate = vi.fn(async () => {});
+    const first = { ...post("pri", 1), links: ["https://ex.com/story", "https://t.me/pri/0"] };
+    const second = { ...post("reg", 7), links: ["https://ex.com/story/"] };
+
+    await runChannelWatch(store, processCandidate, {
+      now: NOW,
+      fetchPages: pages({ channel: { name: "pri", priority: true }, posts: [first] }),
+    });
+    const summary = await runChannelWatch(store, processCandidate, {
+      now: NOW,
+      fetchPages: pages({ channel: { name: "reg", priority: false }, posts: [second] }),
+    });
+
+    expect(processCandidate).toHaveBeenCalledTimes(1);
+    expect(summary.eligible).toBe(0);
+    expect(store.isSeen("link:https://t.me/pri/0")).toBe(false);
+    store.close();
+  });
+
   it("throws when no channel page could be read", async () => {
     const store = new CandidateStore(":memory:");
     const fetchPages = vi.fn(async () => ({ pages: [] as ChannelPage[], failed: ["a", "b"] }));

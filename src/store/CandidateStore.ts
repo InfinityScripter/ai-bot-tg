@@ -114,7 +114,11 @@ export class CandidateStore {
     return queries.countPublishedChannelPosts(this.db, hours);
   }
 
-  /** True when the bot already published an item from this article URL. */
+  /**
+   * True when a published candidate's source_url is this URL (trailing slash
+   * ignored) — i.e. a blog-published article. A channel retelling's source_url is
+   * its t.me permalink, so its outbound links never match here (see markSeenKeys).
+   */
   isPublishedUrl(url: string): boolean {
     return queries.isPublishedUrl(this.db, url);
   }
@@ -188,6 +192,12 @@ export class CandidateStore {
       )
       .get(dedupKey, dedupKey);
     return row !== undefined;
+  }
+
+  /** Records extra dedup keys (e.g. a retold post's `link:` keys); isSeen honours them. */
+  markSeenKeys(keys: string[]): void {
+    const insert = this.db.prepare("INSERT OR IGNORE INTO seen_keys (dedup_key) VALUES (?)");
+    for (const key of keys) insert.run(key);
   }
 
   /**

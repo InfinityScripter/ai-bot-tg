@@ -4,6 +4,7 @@ import {
   eligiblePosts,
   pickChannelPost,
   channelDedupKey,
+  channelLinkKeys,
   toChannelFeedItem,
 } from "./selectChannelPost.js";
 
@@ -84,6 +85,7 @@ async function sweep(
   const id = store.insertCollected(toChannelFeedItem(post), true);
   const candidate = id === null ? null : store.get(id);
   if (!candidate) return;
+  store.markSeenKeys(channelLinkKeys(post));
   summary.picked = candidate.dedupKey;
   // autoPublishCandidate rethrows after the owner card; one bad post is not a broken sweep.
   try {

@@ -57,6 +57,22 @@ describe("eligiblePosts", () => {
   });
 });
 
+describe("eligiblePosts link dedup", () => {
+  it("skips a post whose outbound link another retelling already covered, ignoring t.me links", () => {
+    const posts = [
+      p("a", 1, { links: ["https://ex.com/story/"] }),
+      p("a", 2, { links: ["https://t.me/other/5"] }),
+      p("a", 3, { links: ["https://ex.com/fresh"] }),
+    ];
+    const kept = eligiblePosts([page("a", false, posts)], {
+      now: NOW,
+      isSeen: (key) => key === "link:https://ex.com/story" || key === "link:https://t.me/other/5",
+      isPublishedUrl: () => false,
+    });
+    expect(kept.map((x) => x.id)).toEqual([2, 3]);
+  });
+});
+
 describe("pickChannelPost", () => {
   it("prefers a priority channel even over a stronger regular post", () => {
     const big = page("big", false, [p("big", 1, { views: 50_000 }), p("big", 2, { views: 1_000 })]);

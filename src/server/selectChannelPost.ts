@@ -15,12 +15,23 @@ const AD_RE = /#реклама|\berid\b/i;
 export interface EligibilityOptions {
   now: number;
   isSeen: (key: string) => boolean;
-  /** True when the bot already published an item from this article URL. */
+  /** True when a published candidate's source_url is this URL (a blog-published article). */
   isPublishedUrl: (url: string) => boolean;
 }
 
 export function channelDedupKey(post: ChannelPost): string {
   return `tg:${post.channel.toLowerCase()}/${post.id}`;
+}
+
+/**
+ * seen_keys entries for a post's outbound links: a retelling's source_url is its
+ * t.me permalink, so the article it covers is only remembered through these.
+ * t.me links are channel-internal and the post's own dedup key already covers it.
+ */
+export function channelLinkKeys(post: ChannelPost): string[] {
+  return post.links
+    .filter((url) => !/^https?:\/\/(www\.)?t\.me\//i.test(url))
+    .map((url) => `link:${url.trim().replace(/\/+$/, "")}`);
 }
 
 /** Posts that may be retold at all, before the relevance filter. */
@@ -35,7 +46,8 @@ export function eligiblePosts(pages: ChannelPage[], opts: EligibilityOptions): C
         post.text.length >= MIN_TEXT &&
         !AD_RE.test(post.text) &&
         !opts.isSeen(channelDedupKey(post)) &&
-        !post.links.some((url) => opts.isPublishedUrl(url))
+        !post.links.some((url) => opts.isPublishedUrl(url)) &&
+        !channelLinkKeys(post).some((key) => opts.isSeen(key))
       );
     }),
   );

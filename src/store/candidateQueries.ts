@@ -64,7 +64,7 @@ export function countPublishedChannelPosts(db: Database.Database, hours: number)
   return row.n;
 }
 
-/** True when any published candidate came from this article URL (trailing slash ignored). */
+/** True when a published candidate's source_url is this URL (trailing slash ignored). */
 export function isPublishedUrl(db: Database.Database, url: string): boolean {
   const bare = url.trim().replace(/\/+$/, "");
   const row = db
