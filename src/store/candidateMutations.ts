@@ -28,8 +28,8 @@ export function insertCollected(
   const info = db
     .prepare(
       `INSERT OR IGNORE INTO candidates
-         (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, kind, auto_publish, state)
-       VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, @kind, @autoPublish, @state)`,
+         (dedup_key, source_url, source_title, feed_title, image_url, snippet, image_urls, source_html, kind, auto_publish, state)
+       VALUES (@dedupKey, @url, @title, @feedTitle, @imageUrl, @snippet, @imageUrls, @sourceHtml, @kind, @autoPublish, @state)`,
     )
     .run({
       dedupKey: item.dedupKey,
@@ -39,6 +39,7 @@ export function insertCollected(
       imageUrl: item.imageUrl,
       snippet: item.snippet,
       imageUrls: JSON.stringify(item.imageUrls ?? []),
+      sourceHtml: item.html ?? null,
       // The item carries its kind (decided by runCollection from the release
       // markers before insert); an unset kind defaults to 'news'.
       kind: item.kind ?? CandidateKind.News,

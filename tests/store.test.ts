@@ -114,6 +114,20 @@ describe("CandidateStore", () => {
       expect(rebuilt.dedupKey).toBe("https://example.com/a");
     });
 
+    it("persists a channel post's source HTML and round-trips it via getFeedItem", () => {
+      const id = store.insertCollected(item({ html: "<b>Жирный</b> текст" }))!;
+      const candidate = store.get(id)!;
+      expect(candidate.sourceHtml).toBe("<b>Жирный</b> текст");
+      expect(store.getFeedItem(candidate).html).toBe("<b>Жирный</b> текст");
+    });
+
+    it("leaves the source HTML unset for an item without it", () => {
+      const id = store.insertCollected(item())!;
+      const candidate = store.get(id)!;
+      expect(candidate.sourceHtml).toBeNull();
+      expect(store.getFeedItem(candidate).html).toBeUndefined();
+    });
+
     it("getFeedItem yields empty imageUrls when none were stored", () => {
       const id = store.insertCollected(item({ imageUrls: [] }))!;
       const rebuilt = store.getFeedItem(store.get(id)!);

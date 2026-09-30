@@ -15,6 +15,7 @@ function candidate(overrides: Partial<Candidate> = {}): Candidate {
     imageUrl: null,
     snippet: null,
     imageUrls: null,
+    sourceHtml: null,
     kind: CandidateKind.News,
     autoPublish: true,
     state: CandidateState.PendingReview,

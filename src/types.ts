@@ -30,6 +30,8 @@ export interface FeedItem {
   title: string;
   /** HTML-stripped snippet or content, used as rewrite input. */
   snippet: string;
+  /** Channel posts only: the text as sanitized Telegram HTML, the retell input. */
+  html?: string;
   /** Title of the source feed, for attribution. */
   feedTitle: string;
   /** Cover image URL from the feed (enclosure / media:*), if any. */
@@ -65,6 +67,8 @@ export interface Candidate {
   snippet: string | null;
   /** JSON string[] of image URLs (cover first); null on pre-migration rows. */
   imageUrls: string | null;
+  /** Channel posts: FeedItem.html; null for other kinds and pre-migration rows. */
+  sourceHtml: string | null;
   /**
    * What the candidate is — discriminates the rewrite/publish pipeline. Persisted
    * in the `kind` column; back-filled to 'news' on pre-migration rows via the

@@ -22,9 +22,7 @@ export class CandidateStore {
   private readonly db: Database.Database;
 
   constructor(path: string = CONFIG.SQLITE_PATH) {
-    if (path !== ":memory:") {
-      mkdirSync(dirname(path), { recursive: true });
-    }
+    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
     // busy_timeout: wait (not error) if another connection holds the lock —
@@ -81,6 +79,7 @@ export class CandidateStore {
       url: candidate.sourceUrl,
       title: candidate.sourceTitle ?? "",
       snippet: candidate.snippet ?? "",
+      ...(candidate.sourceHtml === null ? {} : { html: candidate.sourceHtml }),
       feedTitle: candidate.feedTitle ?? "",
       imageUrl: candidate.imageUrl,
       imageUrls,

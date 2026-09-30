@@ -7,14 +7,18 @@ function post(opts: {
   id: number;
   text?: string;
   photo?: string;
+  photos?: string[];
   views?: string;
   time?: string;
   forwarded?: boolean;
   reply?: boolean;
 }): string {
-  const photo = opts.photo
-    ? `<a class="tgme_widget_message_photo_wrap 1 2" href="https://t.me/chan/${opts.id}" style="width:800px;background-image:url('${opts.photo}')"> <div class="tgme_widget_message_photo"></div> </a>`
-    : "";
+  const photo = (opts.photos ?? (opts.photo ? [opts.photo] : []))
+    .map(
+      (url) =>
+        `<a class="tgme_widget_message_photo_wrap 1 2" href="https://t.me/chan/${opts.id}" style="width:800px;background-image:url('${url}')"> <div class="tgme_widget_message_photo"></div> </a>`,
+    )
+    .join("");
   const fwd = opts.forwarded
     ? `<div class="tgme_widget_message_forwarded_from accent_color">Forwarded from&nbsp;<span class="tgme_widget_message_forwarded_from_name">Пух</span></div>`
     : "";
@@ -55,10 +59,11 @@ describe("parseTelegramChannel", () => {
       id: 184,
       url: "https://t.me/chan/184",
       text: "Новая модель & агент:\nhttps://ex.com/a\nЦена $200 #ai",
+      html: 'Новая <b>модель</b> &amp; агент:\n<a href="https://ex.com/a">https://ex.com/a</a>\nЦена $200 #ai',
       links: ["https://ex.com/a"],
       views: 6740,
       forwarded: false,
-      imageUrl: null,
+      imageUrls: [],
       publishedAt: Date.parse("2026-09-30T07:37:00+00:00"),
     });
   });
@@ -67,14 +72,42 @@ describe("parseTelegramChannel", () => {
     const [p] = parseTelegramChannel(
       post({ id: 1, text: "x", photo: "https://cdn4.telesco.pe/file/a.jpg" }),
     );
-    expect(p?.imageUrl).toBe("https://cdn4.telesco.pe/file/a.jpg");
+    expect(p?.imageUrls).toEqual(["https://cdn4.telesco.pe/file/a.jpg"]);
+  });
+
+  it("reads every photo of an album, at most 10", () => {
+    const urls = Array.from({ length: 12 }, (_, i) => `https://cdn4.telesco.pe/file/${i}.jpg`);
+    const [p] = parseTelegramChannel(post({ id: 1, text: "x", photos: urls }));
+    expect(p?.imageUrls).toEqual(urls.slice(0, 10));
+  });
+
+  it("keeps the whole text of the live markup: nested text div, blockquote, emoji", () => {
+    // Shape of ai_for_devs/640 on 2026-09-30: the text div is doubled and the
+    // blockquote sits between links; a lazy match to the first </div> cut it short.
+    const inner =
+      '<b><i class="emoji" style="background-image:url(\'//telegram.org/img/emoji/40/E29AA1.png\')"><b>⚡️</b></i> Заголовок</b><br/><br/>' +
+      '<blockquote>Anthropic <a href="https://www.anthropic.com/research/x" target="_blank" rel="noopener" onclick="return confirm(\'Open this link?\\n\\n\'+this.href);">проделали это</a>, <b>с 95% до 6%</b>.<br/></blockquote><br/><br/>' +
+      '<div class="inner">хвост</div> <a href="https://t.me/ai_for_devs" target="_blank">@ai_for_devs</a>';
+    const [p] = parseTelegramChannel(
+      post({
+        id: 640,
+        text: `<div class="tgme_widget_message_text js-message_text" dir="auto">${inner}</div>`,
+      }),
+    );
+    expect(p?.html).toBe(
+      '<b>⚡️ Заголовок</b>\n\n<blockquote>Anthropic <a href="https://www.anthropic.com/research/x">проделали это</a>, <b>с 95% до 6%</b>.\n</blockquote>\n\nхвост <a href="https://t.me/ai_for_devs">@ai_for_devs</a>',
+    );
+    expect(p?.text).toBe(
+      "⚡️ Заголовок\n\nAnthropic проделали это, с 95% до 6%.\n\n\nхвост @ai_for_devs",
+    );
+    expect(p?.links).toEqual(["https://www.anthropic.com/research/x", "https://t.me/ai_for_devs"]);
   });
 
   it("returns the post's own text for a reply, not the quoted text or its thumbnail", () => {
     const [p] = parseTelegramChannel(post({ id: 5, reply: true, text: "Свой текст поста" }));
     expect(p?.text).toBe("Свой текст поста");
     expect(p?.text).not.toContain("ресет");
-    expect(p?.imageUrl).toBeNull();
+    expect(p?.imageUrls).toEqual([]);
   });
 
   it("marks forwarded posts and keeps posts without text with empty text", () => {

@@ -86,6 +86,7 @@ function candidate(id: number): Candidate {
     imageUrl: null,
     snippet: "s",
     imageUrls: null,
+    sourceHtml: null,
     kind: "news",
     autoPublish: false,
     state: "digest_queued",

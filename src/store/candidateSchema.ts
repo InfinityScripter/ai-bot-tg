@@ -20,6 +20,7 @@ export const SCHEMA = `
     image_url     TEXT,
     snippet       TEXT,
     image_urls    TEXT,
+    source_html   TEXT,
     kind          TEXT NOT NULL DEFAULT 'news',
     auto_publish  INTEGER NOT NULL DEFAULT 0,
     state         TEXT NOT NULL,
@@ -59,6 +60,7 @@ export const MIGRATIONS = [
   // pre-existing failure as already shown, so adding the column cannot replay
   // months of old cards on the next boot.
   `ALTER TABLE candidates ADD COLUMN failure_notice_pending INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE candidates ADD COLUMN source_html TEXT`,
 ];
 // The UNIQUE constraint on dedup_key already creates an index; state-запросы
 // (listByState / countsByState / claim / prune) кроет idx_candidates_state
@@ -94,6 +96,7 @@ export function mapRow(row: CandidateRow): Candidate {
     imageUrl: row.image_url,
     snippet: row.snippet,
     imageUrls: row.image_urls,
+    sourceHtml: row.source_html,
     kind: toKind(row.kind),
     autoPublish: row.auto_publish === 1,
     state: row.state as CandidateState,

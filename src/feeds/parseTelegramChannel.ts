@@ -1,4 +1,5 @@
 import { decodeEntities } from "./ingestArticle.js";
+import { visibleText, sanitizeTelegramHtml } from "./telegramHtml.js";
 
 /** One post parsed from a public channel's web preview (t.me/s/<name>). */
 export interface ChannelPost {
@@ -8,9 +9,12 @@ export interface ChannelPost {
   url: string;
   /** Plain text: tags stripped, <br> → newline, entities decoded. "" when the post has no text. */
   text: string;
+  /** The text as sanitized Telegram HTML (see sanitizeTelegramHtml). */
+  html: string;
   /** Outbound links from the text, in order. */
   links: string[];
-  imageUrl: string | null;
+  /** Every photo of the post (an album has several), at most MAX_PHOTOS. */
+  imageUrls: string[];
   publishedAt: number | null;
   views: number | null;
   /** Reposted from another channel: never retold (the author is someone else). */
@@ -18,10 +22,12 @@ export interface ChannelPost {
 }
 
 const POST_RE = /data-post="([^"/]+)\/(\d+)"/;
-const TEXT_RE =
-  /<div class="tgme_widget_message_text[^"]*\bjs-message_text\b[^"]*"[^>]*>([\s\S]*?)<\/div>/;
+const TEXT_OPEN_RE = /<div class="tgme_widget_message_text[^"]*\bjs-message_text\b[^"]*"[^>]*>/;
+const DIV_RE = /<div\b|<\/div>/g;
 const HREF_RE = /<a\s[^>]*href="([^"]+)"/g;
-const PHOTO_RE = /tgme_widget_message_photo_wrap[^>]*background-image:url\('([^']+)'\)/;
+const PHOTO_RE = /tgme_widget_message_photo_wrap[^>]*background-image:url\('([^']+)'\)/g;
+/** sendMediaGroup takes at most 10 items. */
+const MAX_PHOTOS = 10;
 const VIEWS_RE = /<span class="tgme_widget_message_views">([^<]*)<\/span>/;
 const TIME_RE = /<time datetime="([^"]+)"/;
 
@@ -34,18 +40,25 @@ export function parseViews(raw: string): number | null {
   return Number.isFinite(value) ? Math.round(value) : null;
 }
 
-function toText(html: string): string {
-  return decodeEntities(
-    html
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<[^>]+>/g, "")
-      .replace(/[ \t]+\n/g, "\n"),
-  );
+/**
+ * Inner HTML of the post's text div up to its matching </div>. Live markup nests
+ * a second text div inside the first, so the first </div> is not the end.
+ */
+function textHtmlOf(block: string): string {
+  const open = TEXT_OPEN_RE.exec(block);
+  if (!open) return "";
+  const start = open.index + open[0].length;
+  let depth = 1;
+  for (const m of block.slice(start).matchAll(DIV_RE)) {
+    depth += m[0] === "</div>" ? -1 : 1;
+    if (depth === 0) return block.slice(start, start + m.index);
+  }
+  return block.slice(start);
 }
 
 /**
  * Parses the post blocks of a t.me/s page. Regex, like the other scrapers here:
- * the markup is flat and stable, and a parser dependency is not worth it. A
+ * the markup is stable, and a parser dependency is not worth it. A
  * page that yields [] means the markup changed — the caller reports it.
  */
 export function parseTelegramChannel(html: string): ChannelPost[] {
@@ -55,7 +68,8 @@ export function parseTelegramChannel(html: string): ChannelPost[] {
     .flatMap((block) => {
       const [, channel, id] = POST_RE.exec(block) ?? [];
       if (!channel || !id) return [];
-      const textHtml = TEXT_RE.exec(block)?.[1] ?? "";
+      const textHtml = textHtmlOf(block);
+      const postHtml = sanitizeTelegramHtml(textHtml);
       const time = TIME_RE.exec(block)?.[1];
       const publishedAt = time ? Date.parse(time) : NaN;
       return [
@@ -63,11 +77,15 @@ export function parseTelegramChannel(html: string): ChannelPost[] {
           channel,
           id: Number(id),
           url: `https://t.me/${channel}/${id}`,
-          text: toText(textHtml),
+          text: visibleText(postHtml),
+          html: postHtml,
           links: [...textHtml.matchAll(HREF_RE)]
             .map((m) => decodeEntities(m[1] ?? ""))
             .filter((href) => /^https?:\/\//.test(href)),
-          imageUrl: PHOTO_RE.exec(block)?.[1] ?? null,
+          imageUrls: [...new Set([...block.matchAll(PHOTO_RE)].map((m) => m[1] ?? ""))].slice(
+            0,
+            MAX_PHOTOS,
+          ),
           publishedAt: Number.isNaN(publishedAt) ? null : publishedAt,
           views: parseViews(VIEWS_RE.exec(block)?.[1] ?? ""),
           forwarded: block.includes("tgme_widget_message_forwarded_from"),

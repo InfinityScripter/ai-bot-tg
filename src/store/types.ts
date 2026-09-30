@@ -25,6 +25,7 @@ export interface CandidateRow {
   image_url: string | null;
   snippet: string | null;
   image_urls: string | null;
+  source_html: string | null;
   kind: string;
   auto_publish: number;
   state: string;

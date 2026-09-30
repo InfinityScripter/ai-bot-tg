@@ -107,8 +107,9 @@ export function toChannelFeedItem(post: ChannelPost): FeedItem {
     title: truncate((post.text.split("\n")[0] ?? "").trim(), 200),
     snippet: post.text,
     feedTitle: `@${post.channel}`,
-    imageUrl: post.imageUrl,
-    imageUrls: post.imageUrl ? [post.imageUrl] : [],
+    html: post.html,
+    imageUrl: post.imageUrls[0] ?? null,
+    imageUrls: post.imageUrls,
     publishedAt: post.publishedAt,
     kind: CandidateKind.Channel,
   };

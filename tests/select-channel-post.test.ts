@@ -21,8 +21,9 @@ function p(channel: string, id: number, over: Partial<ChannelPost> = {}): Channe
     id,
     url: `https://t.me/${channel}/${id}`,
     text: LONG,
+    html: LONG,
     links: [],
-    imageUrl: null,
+    imageUrls: [],
     publishedAt: NOW - 4 * HOUR,
     views: 1000,
     forwarded: false,
@@ -118,8 +119,9 @@ describe("pickChannelPost", () => {
 describe("toChannelFeedItem", () => {
   it("maps a post to a channel FeedItem with its dedup key and attribution", () => {
     const post = p("Ai_For_Devs", 184, {
-      imageUrl: "https://cdn/x.jpg",
+      imageUrls: ["https://cdn/x.jpg", "https://cdn/y.jpg"],
       text: "Заголовок строкой\nтело",
+      html: "<b>Заголовок строкой</b>\nтело",
     });
     expect(channelDedupKey(post)).toBe("tg:ai_for_devs/184");
     expect(toChannelFeedItem(post)).toMatchObject({
@@ -128,8 +130,9 @@ describe("toChannelFeedItem", () => {
       title: "Заголовок строкой",
       snippet: "Заголовок строкой\nтело",
       feedTitle: "@Ai_For_Devs",
+      html: "<b>Заголовок строкой</b>\nтело",
       imageUrl: "https://cdn/x.jpg",
-      imageUrls: ["https://cdn/x.jpg"],
+      imageUrls: ["https://cdn/x.jpg", "https://cdn/y.jpg"],
       kind: CandidateKind.Channel,
     });
   });
