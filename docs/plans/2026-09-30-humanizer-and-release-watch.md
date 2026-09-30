@@ -73,3 +73,25 @@ the same quality (default effort is "xhigh"). Measured on recorded posts:
 Add to `.env.production`: `HEMMINGWAY_API_KEY=…` and
 `RELEASE_WATCH_CRON=*/30 * * * *`. Both unset = the bot behaves as before,
 except the release confirm in the daily run and the new release post format.
+
+## Follow-up the same day: duplicate release posts
+
+The first live sweeps published three posts about one launch (GPT-6.1 Sol):
+TechCrunch's launch article, plus The Verge's and Habr's DevDay roundups, which
+the first confirm prompt accepted as releases. The two roundup posts were
+deleted from the blog.
+
+- **Confirm prompt:** the whole item must be about one launch; event coverage,
+  "everything announced" pieces and titles listing several products are news.
+  Checked live on the six real marker hits of the day, three runs each: 18/18
+  correct (the old prompt got the Verge roundup wrong and gave no answer on the
+  Latent.Space issue). These six items are now the `RELEASE` eval suite.
+- **No repeat of a published model:** before an automatic publish, the card's
+  identity (vendor + model + version, punctuation dropped: "GPT" + "6.1 Sol"
+  and "GPT-6.1" + "Sol" match) is compared with releases the bot published in
+  the last 14 days. A repeat is not a failure: the row becomes news in the
+  daily digest queue (skipped when the digest is off), and the owner card says
+  so. A release without an extracted card cannot be matched and publishes.
+- **Changelog dates:** a date-only `releasedAt` is sent as midnight UTC; the
+  changelog API rejected the GPT-6.1 Sol card for it. That card was sent by
+  hand once the fix was verified.

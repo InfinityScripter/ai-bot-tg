@@ -5,6 +5,7 @@ import { logEditError } from "./edit.js";
 import { CandidateState } from "../enums.js";
 import { crossPostToChannel } from "../blog/index.js";
 import { rawKeyboard, previewKeyboard } from "./keyboards.js";
+import { DuplicateReleaseError } from "./duplicateRelease.js";
 import { processClaimedCandidateAutomatically } from "./candidateActions.js";
 
 import type { Candidate } from "../types.js";
@@ -127,6 +128,22 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
       }
     } catch (err) {
       await progress;
+      if (err instanceof DuplicateReleaseError) {
+        // Not a failure: the model is already covered, and the article is still
+        // worth a digest line. The run counts it as handled.
+        const digest = CONFIG.DIGEST_POSTS === "on";
+        store.divertReleaseToNews(
+          candidate.id,
+          digest ? CandidateState.DigestQueued : CandidateState.Skipped,
+        );
+        await editCard(
+          candidate,
+          `↪️ ${err.message} уже опубликован, повтор не выпускаю: ${candidate.sourceTitle ?? candidate.sourceUrl}${
+            digest ? "\nСтатья ушла в дневной дайджест." : ""
+          }`,
+        );
+        return;
+      }
       // Owed until Telegram takes it: a crash or a failed send here leaves the
       // flag set, and notifyAutomaticFailures delivers the card on next boot.
       store.setFailureNoticePending(candidate.id, true);

@@ -104,6 +104,9 @@ async function main(): Promise<void> {
     },
     { checkRewrite },
     { checkRelevance, parseRelevanceReply },
+    { checkRelease, parseReleaseReply },
+    { CONFIRM_RELEASE_SYSTEM_PROMPT, buildConfirmReleaseUserContent },
+    { RELEASE_CASES },
     { judgeRewrite },
     { judgeGate, parseJudgeFloor },
     { REWRITE_CASES },
@@ -117,6 +120,9 @@ async function main(): Promise<void> {
     import("../src/llm/prompts.js"),
     import("./checks/rewriteChecks.js"),
     import("./checks/relevanceChecks.js"),
+    import("./checks/releaseChecks.js"),
+    import("../src/llm/detectRelease.js"),
+    import("./fixtures/releaseCases.js"),
     import("./judge/runJudge.js"),
     import("./judge/judgeGate.js"),
     import("./fixtures/rewriteCases.js"),
@@ -240,8 +246,45 @@ async function main(): Promise<void> {
   }
   const relevanceOk = printSummary("RELEVANCE", relevanceReports);
 
+  // ---- RELEASE CONFIRM ----
+  // eslint-disable-next-line no-console
+  console.log("=== RELEASE ===");
+  const releaseReports: import("./report.js").CaseReport[] = [];
+  for (const c of RELEASE_CASES) {
+    if (ARGS.only && c.id !== ARGS.only) continue;
+
+    let findings;
+    try {
+      let raw: string;
+      if (ARGS.mode === "live") {
+        const { provider, model } = resolveActiveProvider(store);
+        const reply = await completeChatJson(provider, model, {
+          system: CONFIRM_RELEASE_SYSTEM_PROMPT,
+          user: buildConfirmReleaseUserContent(c.item),
+          maxTokens: 120,
+          temperature: 0,
+          refusalLabel: "проверять релиз",
+        });
+        raw = reply ?? "";
+        if (ARGS.record) writeRecording(join("release", `${c.id}.json`), raw);
+      } else {
+        raw = readRecording(join("release", `${c.id}.json`));
+      }
+      findings = checkRelease(parseReleaseReply(raw), c.expected);
+    } catch (err) {
+      findings = [
+        { id: "release.produce", ok: false, severity: "error" as const, detail: String(err) },
+      ];
+    }
+
+    const failed = !findingsPass(findings);
+    releaseReports.push({ id: c.id, about: c.about, findings, failed });
+    printCase({ id: c.id, about: c.about, findings, failed });
+  }
+  const releaseOk = printSummary("RELEASE", releaseReports);
+
   store.close();
-  process.exit(rewriteOk && relevanceOk ? 0 : 1);
+  process.exit(rewriteOk && relevanceOk && releaseOk ? 0 : 1);
 }
 
 main().catch((err) => {

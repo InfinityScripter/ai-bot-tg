@@ -1,5 +1,6 @@
 import { CONFIG } from "../config.js";
 import { enrichItemBody } from "../feeds/index.js";
+import { assertNewRelease } from "./duplicateRelease.js";
 import { renderReleasePreview } from "./renderRelease.js";
 import { CandidateKind, CandidateState } from "../enums.js";
 import { renderPreview, isModelNotFound } from "./render.js";
@@ -205,6 +206,8 @@ export async function processClaimedCandidateAutomatically(
       : store.getRewrite(extractedCandidate);
   if (!extraction) throw new MissingExtractionError("Нет сохранённых данных.");
   assertPublishable(extractedCandidate, extraction);
+  if (extractedCandidate.kind === CandidateKind.Release)
+    assertNewRelease(store, extractedCandidate);
 
   if (!store.claimForPublishing(candidate.id)) {
     throw new Error("Кандидат не готов к публикации.");

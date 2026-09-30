@@ -4,6 +4,7 @@ import { isCasePassing } from "../evals/checks/types.js";
 import { finalizeRewrite } from "../src/llm/rewriteToPost.js";
 import { parseJudgeVerdict } from "../evals/judge/runJudge.js";
 import { judgeGate, parseJudgeFloor } from "../evals/judge/judgeGate.js";
+import { checkRelease, parseReleaseReply } from "../evals/checks/releaseChecks.js";
 import { checkRelevance, parseRelevanceReply } from "../evals/checks/relevanceChecks.js";
 import {
   checkMeta,
@@ -409,5 +410,21 @@ describe("relevance checks", () => {
   });
   it("errors when the reply is unparsable (null)", () => {
     expect(erroredOn(checkRelevance(null, "gray"), "relevance.parse")).toBe(true);
+  });
+});
+
+describe("release-confirm checks", () => {
+  it("parses only a boolean release verdict", () => {
+    expect(parseReleaseReply('{"release": true}')).toBe(true);
+    expect(parseReleaseReply('{"release":false}')).toBe(false);
+    expect(parseReleaseReply('{"release": "yes"}')).toBeNull();
+    expect(parseReleaseReply("not json")).toBeNull();
+    expect(parseReleaseReply(null)).toBeNull();
+  });
+
+  it("fails a wrong verdict and an unreadable reply", () => {
+    expect(checkRelease(false, false).every((f) => f.ok)).toBe(true);
+    expect(checkRelease(true, false).find((f) => f.id === "release.verdict")?.ok).toBe(false);
+    expect(checkRelease(null, true)[0]).toMatchObject({ id: "release.parse", ok: false });
   });
 });

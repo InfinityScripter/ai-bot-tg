@@ -40,3 +40,15 @@ export function listAutomaticFailures(db: Database.Database): Candidate[] {
     CandidateState.PendingReview,
   );
 }
+
+/** Release candidates the bot published within the last `days` days. */
+export function listPublishedReleases(db: Database.Database, days: number): Candidate[] {
+  return (
+    db
+      .prepare(
+        `SELECT * FROM candidates
+          WHERE kind = 'release' AND state = ? AND updated_at >= datetime('now', ?)`,
+      )
+      .all(CandidateState.Published, `-${days} days`) as CandidateRow[]
+  ).map(mapRow);
+}

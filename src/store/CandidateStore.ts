@@ -103,6 +103,19 @@ export class CandidateStore {
     return queries.listAutomaticFailures(this.db);
   }
 
+  /** Release candidates the bot published within the last `days` days. */
+  listPublishedReleases(days: number): Candidate[] {
+    return queries.listPublishedReleases(this.db, days);
+  }
+
+  /** Turns a duplicate release back into news: digest queue or skipped (see mutation). */
+  divertReleaseToNews(
+    id: number,
+    state: CandidateState.DigestQueued | CandidateState.Skipped,
+  ): void {
+    mutations.divertReleaseToNews(this.db, id, state);
+  }
+
   /** Marks whether an automatic failure card still has to reach the owner. */
   setFailureNoticePending(id: number, pending: boolean): void {
     mutations.setFailureNoticePending(this.db, id, pending);

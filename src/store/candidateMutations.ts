@@ -250,6 +250,26 @@ export function pruneOld(db: Database.Database, days = 90): number {
   return tx() as number;
 }
 
+/**
+ * Turns an extracted release that repeats an already-published one back into a
+ * plain news item: the digest queue when it runs, else skipped. The stored
+ * bundle is dropped (a digest line is built from the raw item) and
+ * auto_publish cleared so crash-recovery never picks the row up again.
+ * Guarded on pending_review: a row the owner already acted on is left alone.
+ */
+export function divertReleaseToNews(
+  db: Database.Database,
+  id: number,
+  state: CandidateState.DigestQueued | CandidateState.Skipped,
+): void {
+  db.prepare(
+    `UPDATE candidates
+        SET kind = 'news', state = ?, auto_publish = 0, rewrite_json = NULL,
+            updated_at = datetime('now')
+      WHERE id = ? AND state = ?`,
+  ).run(state, id, CandidateState.PendingReview);
+}
+
 /** Marks whether an automatic failure card still has to reach the owner. */
 export function setFailureNoticePending(db: Database.Database, id: number, pending: boolean): void {
   db.prepare(`UPDATE candidates SET failure_notice_pending = ? WHERE id = ?`).run(

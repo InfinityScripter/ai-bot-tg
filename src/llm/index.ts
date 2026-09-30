@@ -11,8 +11,8 @@ export { rewriteToPost, finalizeRewrite } from "./rewriteToPost.js";
 export { extractJson, completeChatJson } from "./chatCompletion.js";
 export { VENDOR_MARKERS, RELEASE_MARKERS } from "./releaseMarkers.js";
 export { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevanceMarkers.js";
-export { detectKind, isReleaseItem, confirmRelease } from "./detectRelease.js";
 export { humanizeText, probeHemmingway, lastHumanizeOutcome } from "./humanize.js";
+export { detectKind, releaseKey, isReleaseItem, confirmRelease } from "./detectRelease.js";
 export { buildDigestPost, finalizeDigestPost, countDigestEntries } from "./buildDigestPost.js";
 
 export { toDigestRewrite, digestSummaryLine, renderDigestMarkdown } from "./renderDigestPost.js";
