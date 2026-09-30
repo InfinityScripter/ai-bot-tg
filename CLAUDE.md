@@ -86,6 +86,9 @@ manual URL-or-text ─► always the RAW → 🔄 → ✅ manual flow (never aut
 
 RELEASE_WATCH_CRON ─► fresh unseen marker hits ─► LLM confirm ─► release path above
   (non-releases stay unseen for the daily run; rejections cached in memory)
+
+CHANNEL_WATCH_CRON ─► t.me/s pages ─► fresh originals ─► relevance ─► pick 1 ─► retell+humanizer ─► channel only
+  (prod `15 10-21 * * *`: 15-minute offset so it never shares a tick with RELEASE_WATCH_CRON)
 ```
 
 Flags: `fetchAutoPublishFlags` reads `autoPublishReleases` / `autoPublishNews`

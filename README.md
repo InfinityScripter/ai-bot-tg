@@ -43,6 +43,23 @@
   виденные пункты с маркерами; всё, что не релиз, остаётся непросмотренным и
   попадает в дневной сбор. Отказы модели запоминаются до перезапуска, поэтому
   частота проходов не множит расход на LLM.
+- **Пересказы из AI-каналов** (`CHANNEL_WATCH_CRON`, на проде `15 10-21 * * *`,
+  то есть в :15 каждого часа с 10 до 21 по `CRON_TZ`, чтобы не совпадать с
+  сторожем релизов) — бот читает публичные страницы `t.me/s/…` двенадцати
+  русскоязычных AI-каналов (список в `src/feeds/defaultChannels.ts`, замена
+  через `TG_SOURCE_CHANNELS`, `!` перед именем отмечает приоритетный канал).
+  Подходит пост старше 2 и моложе 8 часов, от 200 символов, без рекламы,
+  без репоста и без ссылки, которую мы уже публиковали. Из подходящих берётся
+  один: приоритетные каналы первыми, внутри группы побеждает пост с самым
+  большим отношением просмотров к медиане своего канала. Модель пересказывает
+  его своими словами (до 900 символов), humanizer чистит текст, ссылки из
+  пересказа убираются, а строку «Источник» с именем канала код добавляет
+  сам. Лимиты: 1 пересказ за проход и 6 за скользящие сутки. Гейт — флаг
+  `autoPublishChannels` из админки; выключен или пересказ не прошёл гейт
+  (длиннее 1024 символов, нет строки источника, тело короче 50 символов) —
+  владелец получает карточку и решает сам. Пересказ уходит **только в
+  Telegram-канал, в блог не попадает**. В `/health` есть строка «Каналы»:
+  красная, только если проход упал или нечитаемы половина каналов и больше.
 - **Humanizer** (`HEMMINGWAY_API_KEY`) — перед публикацией тело поста и
   вступление с подписями дневного дайджеста проходят через модель
   `hemmingway-27b` (тот же шаг, что в скилле `/humanizer`): убирает тире,
@@ -84,6 +101,10 @@ manual URL / text ─► RAW card ─► 🔄 rewrite ─► PREVIEW ─► ✅ 
 RELEASE_WATCH_CRON ─► RSS ─► свежие непросмотренные + маркеры ─► модель: релиз?
                                 ├─ да  → release-путь выше (autoPublishReleases)
                                 └─ нет → не трогаем, дневной сбор возьмёт как новость
+
+CHANNEL_WATCH_CRON ─► t.me/s страницы ─► свежие оригиналы ─► выбрать 1 ─► пересказ + humanizer
+                        └─ autoPublishChannels? on → пост в канал (блог не трогаем)
+                                                off / гейт → карточка владельцу
 ```
 
 Бот общается с блогом только по HTTP API и владеет только своим состоянием —
@@ -113,7 +134,7 @@ src/
 ├── labels.ts         # строки статусов/уведомлений владельцу
 ├── utils.ts          # canonicalizeUrl/dedupKey, stripHtml, truncate, escapeMarkdown
 ├── auditEmit.ts      # зеркалирование решений фильтра в audit-log бэкенда
-├── schemas/          # zod-схемы: envSchema, rewriteSchema, releaseSchema, digestPostSchema
+├── schemas/          # zod-схемы: envSchema, rewriteSchema, releaseSchema, digestPostSchema, channelRetellSchema
 ├── bot/              # весь Telegram-слой
 │   ├── createBot.ts       # фабрика бота: команды, owner-lock, роутинг callback'ов
 │   ├── createHandlers.ts  # кнопки карточек: rewrite / publish / skip
@@ -128,6 +149,8 @@ src/
 │   ├── modelPick.ts       # кодек callback-данных /model, кнопки, статус
 │   ├── keyboards.ts       # inline-клавиатуры карточек
 │   ├── render.ts / renderRelease.ts  # тексты RAW/PREVIEW карточек
+│   ├── renderRetell.ts    # карточка пересказа канала
+│   ├── channelExtraction.ts # гейт пересказа: ≤ 1024 симв., строка источника, тело ≥ 50
 │   ├── edit.ts            # безопасные ack/edit (Telegram любит кидать 400)
 │   ├── autoRetry.ts       # ретраи 429/5xx Telegram API (vendored auto-retry)
 │   └── types.ts           # общие типы модуля
@@ -135,6 +158,9 @@ src/
 │   ├── defaultFeeds.ts    # список RSS по умолчанию + override RSS_FEEDS
 │   ├── parseFeed.ts       # rss-parser → нормализованные FeedItem
 │   ├── fetchAllFeeds.ts   # обход всех фидов (изоляция сбоев) + og:image
+│   ├── defaultChannels.ts # список Telegram-каналов (приоритетные `!`) + TG_SOURCE_CHANNELS
+│   ├── parseTelegramChannel.ts # разбор страницы t.me/s → посты
+│   ├── fetchChannelPages.ts # обход страниц каналов, один повтор при сбое
 │   ├── fetchHtml.ts       # общий GET с таймаутом и капом байт
 │   ├── fetchArticleBody.ts# дотягивание полного текста перед рерайтом
 │   ├── ingestArticle.ts   # скрейп страницы по ссылке владельца → FeedItem
@@ -151,6 +177,8 @@ src/
 │   ├── extractRelease.ts  # анонс → структурированный релиз (анти-галлюцинации)
 │   ├── detectRelease.ts   # маркеры + проверка моделью «это новая модель?»
 │   ├── humanize.ts        # финальный прогон текста через hemmingway-27b
+│   ├── retellChannelPost.ts # пост канала → пересказ (модель + humanizer + строка источника)
+│   ├── retellPrompt.ts    # системный промпт пересказа
 │   ├── buildDigest.ts     # посты недели → письмо дайджеста
 │   ├── buildDigestPost.ts # очередь новостей → дневной дайджест (allow-list ссылок)
 │   ├── digestPostPrompt.ts# системный промпт дневного дайджеста
@@ -173,6 +201,7 @@ src/
 │   │                      # блог выдаёт обложку, которой нет ни у кого, и
 │   │                      # возвращает её для карточки в канал
 │   ├── publishRelease.ts  # POST /api/changelog/new
+│   ├── publishToChannel.ts # пересказ → Bot API канала (фото, при сбое текст)
 │   ├── sendDigest.ts      # POST /api/newsletter/send
 │   ├── fetchRecentPosts.ts# GET /api/post/list для дайджеста
 │   ├── fetchAutoPublishFlags.ts # GET /api/admin/settings → флаги автопубликации (fail-closed)
@@ -187,6 +216,9 @@ src/
 ├── server/           # инфраструктура процесса
 │   ├── runCollection.ts   # один цикл сбора (fetch→фильтры→dedup→batch action)
 │   ├── runReleaseWatch.ts # проход сторожа релизов между дневными сборами
+│   ├── runChannelWatch.ts # проход пересказов из каналов (1 за проход, 6 за сутки)
+│   ├── scheduleChannelWatch.ts # крон CHANNEL_WATCH_CRON
+│   ├── selectChannelPost.ts # отбор поста: возраст, длина, реклама, приоритет, просмотры
 │   ├── createProcessCandidate.ts # решает авто-публикация vs диверт по флагам (раз/прогон)
 │   ├── scheduler.ts       # ежедневный крон (croner)
 │   ├── controlServer.ts   # localhost HTTP API для админки блога
@@ -284,6 +316,10 @@ cp .env.example .env   # заполнить значения
 `REWRITE_TEMPERATURE`, `REWRITE_MAX_TOKENS`, `MAX_PER_RUN`, `CRON_SCHEDULE`/`CRON_TZ`,
 `RSS_FEEDS` (полная замена дефолтного списка), `SQLITE_PATH`,
 `RELEASE_WATCH_CRON` (сторож релизов, не задан — выключен),
+`CHANNEL_WATCH_CRON` (пересказы из каналов, не задан — выключено; на проде
+`15 10-21 * * *`, не на тиках сторожа релизов),
+`TG_SOURCE_CHANNELS` (каналы-источники через запятую, `!` — приоритетный; не задан —
+список из `src/feeds/defaultChannels.ts`),
 `HEMMINGWAY_API_KEY` (humanizer, не задан — шаг пропускается).
 
 ## Запуск и разработка

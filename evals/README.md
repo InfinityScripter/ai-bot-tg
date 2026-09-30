@@ -62,4 +62,17 @@ rewrite provider/model), `EVAL_JUDGE_FLOOR` (default 80).
   decided by stage-A markers before any LLM call), each tagged with the expected
   band. Titles deliberately dodge the stage-A marker substrings so live mode
   actually reaches the classifier.
+- `fixtures/channelCases.ts` — six channel posts for the retell prompt
+  (`ai-for-devs`, `sukharev-ii`, `aostrikov`, `aimastersme`, `llm-under-hood`,
+  `abstractdl`). Their replies are recorded under `fixtures/recorded/channel/`.
+  `--record` without `--only` rewrites the recordings of EVERY suite, so
+  record CHANNEL one case at a time (`--only` filters each suite by id, and
+  none of these ids is used elsewhere):
+
+  ```bash
+  for id in ai-for-devs sukharev-ii aostrikov aimastersme llm-under-hood abstractdl; do
+    REWRITE_PROVIDER=openrouter OPENROUTER_MODEL=openai/gpt-6-luna \
+      npm run eval -- --mode live --record --only "$id"
+  done
+  ```
 - `fixtures/recorded/**` — one raw reply per case for mock mode.
