@@ -85,5 +85,11 @@ async function sweep(
   const candidate = id === null ? null : store.get(id);
   if (!candidate) return;
   summary.picked = candidate.dedupKey;
-  await processCandidate(candidate);
+  // autoPublishCandidate rethrows after the owner card; one bad post is not a broken sweep.
+  try {
+    await processCandidate(candidate);
+  } catch (err) {
+    summary.processFailed = true;
+    console.warn(`[channels] failed to process #${candidate.id}: ${String(err)}`);
+  }
 }

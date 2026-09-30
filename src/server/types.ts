@@ -79,5 +79,7 @@ export interface ChannelWatchSummary {
   kept: number;
   /** Dedup key of the post handed to processCandidate, or null. */
   picked: string | null;
+  /** processCandidate threw for the picked post: logged, not a sweep error (no owner ping). */
+  processFailed?: boolean;
   skipped?: "limit";
 }

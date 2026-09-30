@@ -6,7 +6,8 @@ vi.mock("../src/llm/filterRelevant.js", async (importOriginal) => {
   return { ...actual, filterRelevant: (...a: unknown[]) => filterRelevant(...a) };
 });
 
-const { runChannelWatch, CHANNEL_DAILY_LIMIT } = await import("../src/server/runChannelWatch.js");
+const { runChannelWatch, lastChannelWatch, CHANNEL_DAILY_LIMIT } =
+  await import("../src/server/runChannelWatch.js");
 const { CandidateStore } = await import("../src/store/index.js");
 import { CandidateKind, CandidateState } from "../src/enums.js";
 
@@ -113,6 +114,25 @@ describe("runChannelWatch", () => {
 
     const [candidate] = processCandidate.mock.calls[0] as unknown as [{ dedupKey: string }];
     expect(candidate.dedupKey).toBe("tg:reg/2");
+    store.close();
+  });
+
+  it("a post that fails to process does not fail the sweep", async () => {
+    const store = new CandidateStore(":memory:");
+    filterRelevant.mockImplementation(async (items: FeedItem[]) => ({
+      kept: items,
+      decisions: [],
+    }));
+    const processCandidate = vi.fn(async () => {
+      throw new Error("Telegram 400");
+    });
+    const fetchPages = pages({ channel: { name: "pri", priority: true }, posts: [post("pri", 1)] });
+
+    const summary = await runChannelWatch(store, processCandidate, { now: NOW, fetchPages });
+
+    expect(summary.picked).toBe("tg:pri/1");
+    expect(summary.processFailed).toBe(true);
+    expect(lastChannelWatch()?.error).toBeNull();
     store.close();
   });
 
