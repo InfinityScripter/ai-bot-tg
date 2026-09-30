@@ -9,7 +9,7 @@ import type Database from "better-sqlite3";
 
 import { CandidateKind, CandidateState } from "../enums.js";
 
-import type { FeedItem, RewriteResult, ReleaseBundle } from "../types.js";
+import type { FeedItem, RewriteResult, ReleaseBundle, ChannelRetell } from "../types.js";
 
 /**
  * Inserts a freshly-collected feed item as state 'collected'. Returns the new
@@ -125,7 +125,7 @@ export function setState(
 export function attachExtraction(
   db: Database.Database,
   id: number,
-  extraction: RewriteResult | ReleaseBundle,
+  extraction: RewriteResult | ReleaseBundle | ChannelRetell,
 ): void {
   db.prepare(
     `UPDATE candidates

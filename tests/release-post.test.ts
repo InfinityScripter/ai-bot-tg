@@ -116,7 +116,7 @@ describe("release publish", () => {
     expect(publishToBlog).toHaveBeenCalledWith(POST, null, ITEM.dedupKey);
     expect(publishRelease).toHaveBeenCalledWith(CARD, `${ITEM.dedupKey}#changelog`);
     expect(result.warning).toBeUndefined();
-    expect(result.extracted.crossPost.linkFor("p1")).toMatch(/\/post\/p1$/);
+    expect(result.extracted.crossPost?.linkFor("p1")).toMatch(/\/post\/p1$/);
     expect(store.get(id)!.state).toBe(CandidateState.Published);
   });
 

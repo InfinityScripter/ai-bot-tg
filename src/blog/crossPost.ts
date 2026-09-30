@@ -121,6 +121,7 @@ export async function crossPostPublished(
   extracted: LoadedExtraction,
   publishedId: string,
 ): Promise<void> {
+  if (!extracted.crossPost) return;
   try {
     await crossPostToChannel(api, extracted.crossPost, publishedId);
   } catch (err) {

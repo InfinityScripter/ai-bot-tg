@@ -113,18 +113,20 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
       await progress;
       const note = warning ? `\n⚠️ ${warning}` : "";
       await editCard(candidate, `✅ Автоопубликовано: ${extracted.title}${note}`);
-      try {
-        await crossPostToChannel(bot.api, extracted.crossPost, postId, notificationSignal());
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        await bot.api
-          .sendMessage(
-            CONFIG.OWNER_TELEGRAM_ID,
-            `⚠️ Пост опубликован, но не запостился в канал: ${message}`,
-            {},
-            notificationSignal(),
-          )
-          .catch(logEditError("auto-publish cross-post warning"));
+      if (extracted.crossPost) {
+        try {
+          await crossPostToChannel(bot.api, extracted.crossPost, postId, notificationSignal());
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          await bot.api
+            .sendMessage(
+              CONFIG.OWNER_TELEGRAM_ID,
+              `⚠️ Пост опубликован, но не запостился в канал: ${message}`,
+              {},
+              notificationSignal(),
+            )
+            .catch(logEditError("auto-publish cross-post warning"));
+        }
       }
     } catch (err) {
       await progress;

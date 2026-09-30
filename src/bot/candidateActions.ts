@@ -1,16 +1,19 @@
 import { CONFIG } from "../config.js";
 import { enrichItemBody } from "../feeds/index.js";
+import { renderRetellPreview } from "./renderRetell.js";
 import { renderReleasePreview } from "./renderRelease.js";
 import { CandidateKind, CandidateState } from "../enums.js";
 import { renderPreview, isModelNotFound } from "./render.js";
 import { assertNamesModel, assertNewRelease } from "./duplicateRelease.js";
 import { PublishError, publishToBlog, publishRelease } from "../blog/index.js";
+import { loadChannelExtraction, assertRetellPublishable } from "./channelExtraction.js";
 import {
   PROVIDERS,
   rewriteToPost,
   extractRelease,
   hasActiveOverride,
   assertPublishable,
+  retellChannelPost,
   NoModelInSourceError,
   resolveActiveProvider,
 } from "../llm/index.js";
@@ -56,6 +59,7 @@ export function loadExtraction(
   store: CandidateStore,
   candidate: Candidate,
 ): LoadedExtraction | null {
+  if (candidate.kind === CandidateKind.Channel) return loadChannelExtraction(store, candidate);
   const bundle = candidate.kind === CandidateKind.Release ? store.getRelease(candidate) : null;
   const rewrite = bundle ? bundle.post : store.getRewrite(candidate);
   if (!rewrite || (candidate.kind === CandidateKind.Release && !bundle)) return null;
@@ -95,6 +99,11 @@ export async function runExtraction(
   fallback: Candidate,
   modelLabel: string,
 ): Promise<string> {
+  if (item.kind === CandidateKind.Channel) {
+    const retell = await retellChannelPost(item, store);
+    store.attachRetell(id, retell);
+    return renderRetellPreview(store.get(id) ?? fallback, retell, modelLabel);
+  }
   if (item.kind === CandidateKind.Release) {
     const post = await rewriteToPost(item, store);
     let noModel = false;
@@ -128,7 +137,8 @@ export async function runClaimedExtraction(
   modelLabel: string,
 ): Promise<string> {
   try {
-    const item = await enrichItemBody(store.getFeedItem(candidate));
+    const stored = store.getFeedItem(candidate);
+    const item = candidate.kind === CandidateKind.Channel ? stored : await enrichItemBody(stored);
     return await runExtraction(store, id, item, candidate, modelLabel);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -151,7 +161,7 @@ function withPublishedCover(
   extracted: LoadedExtraction,
   coverUrl?: string | null,
 ): LoadedExtraction {
-  if (!coverUrl) return extracted;
+  if (!coverUrl || !extracted.crossPost) return extracted;
   const absolute = coverUrl.startsWith("/")
     ? `${CONFIG.BLOG_API_URL.replace(/\/$/, "")}${coverUrl}`
     : coverUrl;
@@ -204,15 +214,21 @@ export async function processClaimedCandidateAutomatically(
   // GateFailure propagates up to runAutomaticPublish's catch → showFailure, which
   // leaves the candidate on its preview card (✅ to publish manually) — so a
   // borderline item is diverted to the owner, never auto-posted or dropped.
-  const extraction =
-    extractedCandidate.kind === CandidateKind.Release
-      ? store.getRelease(extractedCandidate)?.post
-      : store.getRewrite(extractedCandidate);
-  if (!extraction) throw new MissingExtractionError("Нет сохранённых данных.");
-  assertPublishable(extractedCandidate, extraction);
-  if (extractedCandidate.kind === CandidateKind.Release) {
-    assertNamesModel(store, extractedCandidate);
-    assertNewRelease(store, extractedCandidate);
+  if (extractedCandidate.kind === CandidateKind.Channel) {
+    const retell = store.getRetell(extractedCandidate);
+    if (!retell) throw new MissingExtractionError("Нет сохранённых данных.");
+    assertRetellPublishable(retell);
+  } else {
+    const extraction =
+      extractedCandidate.kind === CandidateKind.Release
+        ? store.getRelease(extractedCandidate)?.post
+        : store.getRewrite(extractedCandidate);
+    if (!extraction) throw new MissingExtractionError("Нет сохранённых данных.");
+    assertPublishable(extractedCandidate, extraction);
+    if (extractedCandidate.kind === CandidateKind.Release) {
+      assertNamesModel(store, extractedCandidate);
+      assertNewRelease(store, extractedCandidate);
+    }
   }
 
   if (!store.claimForPublishing(candidate.id)) {

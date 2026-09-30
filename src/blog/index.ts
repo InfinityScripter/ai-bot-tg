@@ -3,6 +3,7 @@ export { fetchAllPosts } from "./fetchAllPosts.js";
 export { fetchRecentPosts } from "./fetchRecentPosts.js";
 export { fetchAutoPublishFlags } from "./fetchAutoPublishFlags.js";
 export { toReleaseBody, publishRelease } from "./publishRelease.js";
+export { CAPTION_LIMIT, publishToChannel } from "./publishToChannel.js";
 export { NEWS_TAG, normalizeTags, TAG_WHITELIST } from "./normalizeTags.js";
 export { PublishError, publishToBlog, toBlogPostBody } from "./publishPost.js";
 

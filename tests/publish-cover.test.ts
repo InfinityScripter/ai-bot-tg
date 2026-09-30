@@ -80,7 +80,7 @@ describe("publishClaimedCandidate cover handling", () => {
 
     const { extracted } = await publishClaimedCandidate(store, readyCandidate(store, feedItem()));
 
-    expect(extracted.crossPost.coverUrl).toBe("https://cdn/blog.jpg");
+    expect(extracted.crossPost?.coverUrl).toBe("https://cdn/blog.jpg");
     store.close();
   });
 
@@ -93,7 +93,7 @@ describe("publishClaimedCandidate cover handling", () => {
 
     const { extracted } = await publishClaimedCandidate(store, readyCandidate(store, feedItem()));
 
-    expect(extracted.crossPost.coverUrl).toBe(
+    expect(extracted.crossPost?.coverUrl).toBe(
       "http://localhost:7272/assets/images/cover/cover-7.webp",
     );
     store.close();
@@ -105,7 +105,7 @@ describe("publishClaimedCandidate cover handling", () => {
 
     const { extracted } = await publishClaimedCandidate(store, readyCandidate(store, feedItem()));
 
-    expect(extracted.crossPost.coverUrl).toBeNull();
+    expect(extracted.crossPost?.coverUrl).toBeNull();
     store.close();
   });
 });

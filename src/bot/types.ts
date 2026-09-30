@@ -52,7 +52,8 @@ export interface LoadedExtraction {
   title: string;
   /** `warning` reports a soft failure after the post itself was published. */
   publish: () => Promise<PublishOutcome & { warning?: string }>;
-  crossPost: CrossPostContent;
+  /** Channel announcement after a blog publish; null when the publish itself was the channel post. */
+  crossPost: CrossPostContent | null;
 }
 
 /** Result of one claimed blog publish, reused by manual and automatic flows. */
