@@ -131,7 +131,11 @@ CHANNEL_WATCH_CRON ─► t.me/s страницы ─► свежие ориги
 - [rss-parser](https://www.npmjs.com/package/rss-parser) — чтение RSS/Atom
 - [@anthropic-ai/sdk](https://www.npmjs.com/package/@anthropic-ai/sdk) — путь Claude;
   остальные провайдеры (Gemini/GLM/DeepSeek/OpenRouter) ходят по
-  OpenAI-совместимому chat-completions через `fetch`, без SDK
+  OpenAI-совместимому chat-completions через `fetch`, без SDK. Запросы в
+  OpenRouter идут с `reasoning: {effort: "low"}`: иначе рассуждающая модель
+  (`openai/gpt-6-luna`) тратит весь `max_tokens` на рассуждения и возвращает
+  пустой ответ. Модели `anthropic/*` через OpenRouter с этой настройкой не
+  выбирать — она включает у Claude рассуждения и даёт тот же пустой ответ
 - [croner](https://www.npmjs.com/package/croner) — ежедневное расписание
 - [better-sqlite3](https://www.npmjs.com/package/better-sqlite3) — хранилище
 - [zod](https://zod.dev) — валидация env и структурированных ответов LLM

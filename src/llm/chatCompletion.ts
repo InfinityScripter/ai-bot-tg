@@ -72,7 +72,8 @@ async function completeWithAnthropic(model: string, req: ChatJsonRequest): Promi
 }
 
 interface OpenAIChatResponse {
-  choices?: { message?: { content?: string } }[];
+  choices?: { message?: { content?: string }; finish_reason?: string }[];
+  usage?: { completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number } };
 }
 
 /**
@@ -110,6 +111,7 @@ async function completeWithOpenAICompat(
         response_format: { type: "json_object" },
         max_tokens: req.maxTokens,
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+        ...spec.extraBody,
       }),
     });
   } catch (err) {
@@ -122,7 +124,18 @@ async function completeWithOpenAICompat(
   }
 
   const data = (await response.json()) as OpenAIChatResponse;
-  return data.choices?.[0]?.message?.content ?? "";
+  const choice = data.choices?.[0];
+  const content = choice?.message?.content ?? "";
+  // A reasoning model can spend the whole max_tokens thinking and stop before
+  // the answer; say so instead of the caller's generic "no JSON".
+  if (choice?.finish_reason === "length" && content.trim() === "") {
+    const reasoning = data.usage?.completion_tokens_details?.reasoning_tokens ?? "?";
+    const total = data.usage?.completion_tokens ?? req.maxTokens;
+    throw new Error(
+      `${spec.label}: пустой ответ, ${reasoning} из ${total} токенов ушли на рассуждения (finish_reason=length).`,
+    );
+  }
+  return content;
 }
 
 /**

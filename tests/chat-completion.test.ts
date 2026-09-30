@@ -14,6 +14,7 @@ const { ProviderName } = await import("../src/enums.js");
 const { completeChatJson } = await import("../src/llm/chatCompletion.js");
 
 import type { ChatJsonRequest } from "../src/llm/types.js";
+import type { ProviderName as Provider } from "../src/enums.js";
 
 /** A minimal chat request. */
 const REQ: ChatJsonRequest = {
@@ -68,5 +69,43 @@ describe("completeChatJson — OpenAI-compat path timeout guard", () => {
 
     vi.unstubAllEnvs();
     vi.resetModules();
+  });
+});
+
+describe("completeChatJson — reasoning models on the OpenAI-compat path", () => {
+  /** Calls the chat core with a stubbed fetch; returns the call result and the sent body. */
+  async function callWith(provider: Provider, reply: unknown) {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    vi.stubEnv("GLM_API_KEY", "test-key");
+    vi.resetModules();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => reply });
+    vi.stubGlobal("fetch", fetchMock);
+    const mod = await import("../src/llm/chatCompletion.js");
+    const result = mod.completeChatJson(provider, "some/model", REQ);
+    await result.catch(() => undefined);
+    const call = fetchMock.mock.calls[0] as [string, { body: string }];
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    return { result, body: JSON.parse(call[1].body) as Record<string, unknown> };
+  }
+
+  const OK = { choices: [{ message: { content: '{"ok":true}' }, finish_reason: "stop" }] };
+
+  it("asks OpenRouter for low reasoning effort", async () => {
+    const { body } = await callWith(ProviderName.OpenRouter, OK);
+    expect(body.reasoning).toEqual({ effort: "low" });
+  });
+
+  it("sends no OpenRouter reasoning param to other providers", async () => {
+    const { body } = await callWith(ProviderName.Glm, OK);
+    expect(body.reasoning).toBeUndefined();
+  });
+
+  it("names the cause when reasoning ate the whole budget and the reply is empty", async () => {
+    const { result } = await callWith(ProviderName.OpenRouter, {
+      choices: [{ message: { content: "" }, finish_reason: "length" }],
+      usage: { completion_tokens: 100, completion_tokens_details: { reasoning_tokens: 100 } },
+    });
+    await expect(result).rejects.toThrow("100 из 100 токенов ушли на рассуждения");
   });
 });

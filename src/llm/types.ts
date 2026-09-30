@@ -21,6 +21,8 @@ export interface ProviderSpec {
   defaultModel: string;
   /** Static model list used when the live /models lookup is unavailable. */
   fallbackModels: string[];
+  /** Provider-specific fields merged into every chat request body — openai-compat only. */
+  extraBody?: Record<string, unknown>;
 }
 
 /** What a feature asks a model for: prompts + sampling caps + refusal label. */

@@ -64,6 +64,13 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     // deepseek-chat is cheap ($0.20/$0.80 за 1M) — ~$4/yr at 15/run, inside the
     // $5 free-tier credit, so it runs without topping up.
     fallbackModels: ["deepseek/deepseek-chat", "google/gemini-2.5-flash"],
+    // max_tokens caps reasoning + answer together. openai/gpt-6-luna reasons at
+    // "medium" by default and on a long post spent all 1200 tokens thinking:
+    // finish=length, empty reply in 3 of 6 retells; at "low" 0 of 20, reasoning
+    // 56-343 tokens (probes, 2026-10-01). Non-reasoning models (deepseek-chat)
+    // ignore it. NOT safe for anthropic/* here: the param switches Claude's
+    // thinking ON and the same retell came back empty.
+    extraBody: { reasoning: { effort: "low" } },
   },
   [ProviderName.Mock]: {
     label: "Mock (без LLM)",
