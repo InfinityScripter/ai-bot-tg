@@ -1,6 +1,11 @@
 import { it, expect, describe } from "vitest";
 
-import { parseViews, parseChannelList, parseTelegramChannel } from "../src/feeds/index.js";
+import {
+  parseViews,
+  parseChannelList,
+  DEFAULT_CHANNELS,
+  parseTelegramChannel,
+} from "../src/feeds/index.js";
 
 /** One post block in the exact t.me/s markup (checked on 2026-09-30). */
 function post(opts: {
@@ -132,5 +137,28 @@ describe("parseChannelList", () => {
       { name: "devfm", priority: false },
       { name: "shilovtech", priority: false },
     ]);
+  });
+});
+
+describe("DEFAULT_CHANNELS", () => {
+  it("drops aostrikov_ai_agents and adds the six channels checked on 2026-10-01", () => {
+    const names = DEFAULT_CHANNELS.map((c) => c.name);
+    expect(names).not.toContain("aostrikov_ai_agents");
+    expect(DEFAULT_CHANNELS.filter((c) => c.priority).map((c) => c.name)).toEqual([
+      "ai_for_devs",
+      "sukharev_ii",
+      "aimastersme",
+    ]);
+    for (const name of [
+      "the_ai_architect",
+      "nobilix",
+      "neuraldeep",
+      "evilfreelancer",
+      "kdoronin_blog",
+      "oestick",
+    ]) {
+      expect(DEFAULT_CHANNELS).toContainEqual({ name, priority: false });
+    }
+    expect(new Set(names.map((n) => n.toLowerCase())).size).toBe(names.length);
   });
 });
