@@ -42,7 +42,7 @@ html: 2–4 предложения, до ${DIGEST_ITEM_TARGET} видимых с
 export function buildDigestItemShortenContent(item: FeedItem, draft: DigestItem): string {
   return `${buildRetellUserContent(item)}
 <draft_json>
-${JSON.stringify({ skip: false, ...draft })}
+${JSON.stringify({ skip: false, ...draft }).replaceAll("<", "\\u003c")}
 </draft_json>
 Поле html в черновике выше длиннее ${DIGEST_ITEM_MAX} видимых символов. Сократи его до ${DIGEST_ITEM_TARGET}: оставь главное, те же ссылки и голос автора. Остальные поля верни без изменений.`;
 }

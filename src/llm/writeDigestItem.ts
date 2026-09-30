@@ -27,10 +27,13 @@ export const DIGEST_ITEM_MAX_TOKENS = 1200;
 export const DIGEST_ITEM_TEMPERATURE = 0.5;
 const FALLBACK_EMOJI = "📌";
 const MOCK_TEXT = 300;
+// Built with the constructor: a literal with the v flag fails tsc at target ES2022.
+// eslint-disable-next-line prefer-regex-literals
+const EMOJI = new RegExp("^\\p{RGI_Emoji}$", "v");
 
 function isOneEmoji(value: string): boolean {
   const graphemes = [...new Intl.Segmenter("ru", { granularity: "grapheme" }).segment(value)];
-  return graphemes.length === 1 && /\p{Extended_Pictographic}/u.test(value);
+  return graphemes.length === 1 && EMOJI.test(value);
 }
 
 /** Parses a raw reply: null when the model says the post is not news. Throws a readable RU error. */
@@ -64,8 +67,9 @@ export function finalizeDigestItem(raw: string | null): DigestItem | null {
 /** The card text as the article carries it: inline Telegram tags, source links only, one paragraph. */
 export function inlineItemHtml(html: string, item: FeedItem): string {
   return cleanRetellHtml(html, item)
-    .replace(/<\/?(?:pre|blockquote)>/g, "")
+    .replace(/<\/?(?:pre|blockquote)>/g, " ")
     .replace(/\s*\n+\s*/g, " ")
+    .replace(/ {2,}/g, " ")
     .trim();
 }
 

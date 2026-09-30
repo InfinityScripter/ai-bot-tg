@@ -1,4 +1,4 @@
-import { callTelegram, TelegramApiError } from "../blog/index.js";
+import { callTelegram, TelegramApiError } from "../blog/telegramApi.js";
 
 import type { Article } from "./types.js";
 

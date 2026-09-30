@@ -140,4 +140,15 @@ describe("buildFallbackText", () => {
     expect(text).toContain("Новость 4");
     expect(text).not.toContain("Новость 5");
   });
+
+  it("throws when not even one card fits, instead of returning the title alone", () => {
+    expect(() => buildFallbackText(TITLE, [item(1, { html: "д".repeat(5000) })])).toThrow(
+      /не влезает/,
+    );
+  });
+
+  it("escapes the rubric the way the article does", () => {
+    const text = buildFallbackText(TITLE, [item(1, { rubric: "<b>" as ChannelRubric })]);
+    expect(text).toContain("#&lt;b&gt; · @ai_for_devs");
+  });
 });

@@ -72,7 +72,18 @@ describe("deliverArticle", () => {
       chat_id: "@ch",
       text: "<b>текст</b>",
       parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
     });
+  });
+
+  it("falls back to text on a 413 too: any 4xx except 400/403/429 is a rejection", async () => {
+    const fetchMock = stub(tg(413, { ok: false, description: "Request Entity Too Large" }), ok(79));
+
+    await expect(deliverArticle("@ch", ARTICLE, "t")).resolves.toEqual({
+      messageId: 79,
+      rejected: "Request Entity Too Large",
+    });
+    expect(methodOf(fetchMock.mock.calls[1]![0])).toBe("sendMessage");
   });
 
   it.each([429, 403])(
