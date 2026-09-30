@@ -135,6 +135,53 @@ describe("retellChannelPost", () => {
     store.close();
   });
 
+  it("asks for 700 characters and does not ask again when the draft fits", async () => {
+    completeChatJson.mockResolvedValue(JSON.stringify({ html: "<b>Суть</b>\nКоротко." }));
+    const store = new CandidateStore(":memory:");
+
+    await retellChannelPost(ITEM, store);
+
+    expect(completeChatJson).toHaveBeenCalledTimes(1);
+    const [, , req] = completeChatJson.mock.calls[0] as [unknown, unknown, { system: string }];
+    expect(req.system).toContain("До 700 видимых символов");
+    store.close();
+  });
+
+  it("asks the model once to shorten a draft over the cap", async () => {
+    const long = `<b>Суть</b>\n${"д".repeat(950)}`;
+    completeChatJson
+      .mockResolvedValueOnce(JSON.stringify({ html: long }))
+      .mockResolvedValueOnce(JSON.stringify({ html: "<b>Суть</b>\nКороче." }));
+    const store = new CandidateStore(":memory:");
+
+    const result = await retellChannelPost(ITEM, store);
+
+    expect(completeChatJson).toHaveBeenCalledTimes(2);
+    const [, , req] = completeChatJson.mock.calls[1] as [unknown, unknown, { user: string }];
+    expect(req.user).toContain("<b>Первая строка</b>");
+    expect(req.user).toContain("д".repeat(950));
+    expect(req.user).toContain("700");
+    expect(result.html).toBe(`<b>Суть</b>\nКороче.${CREDIT}`);
+    store.close();
+  });
+
+  it.each([
+    ["fails", () => completeChatJson.mockRejectedValueOnce(new Error("timeout"))],
+    [
+      "comes back no shorter",
+      () => completeChatJson.mockResolvedValueOnce(JSON.stringify({ html: "ж".repeat(960) })),
+    ],
+  ])("keeps the long draft when shortening %s, for the gate to decide", async (_, second) => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const long = `<b>Суть</b>\n${"д".repeat(950)}`;
+    completeChatJson.mockResolvedValueOnce(JSON.stringify({ html: long }));
+    second();
+    const store = new CandidateStore(":memory:");
+
+    expect((await retellChannelPost(ITEM, store)).html).toBe(`${long}${CREDIT}`);
+    store.close();
+  });
+
   it("drops model-made links and credit lines, keeping only the code-built one", async () => {
     completeChatJson.mockResolvedValue(
       JSON.stringify({

@@ -2,12 +2,15 @@ import { escapeHtml, sanitizeTelegramHtml } from "../feeds/index.js";
 
 import type { FeedItem } from "../types.js";
 
+/** Well under the 900 cap: models overshoot a character target by 5-40%. */
+const RETELL_TARGET = 700;
+
 export const RETELL_SYSTEM_PROMPT = `Ты ведёшь Telegram-канал про ИИ для разработчиков.
 Перескажи пост из другого канала своими словами для своих подписчиков.
 Пост приходит в Telegram HTML, пересказ тоже верни в Telegram HTML.
 
 Правила:
-- До 900 видимых символов (теги не считаются). Длинный пост сожми, оставив главное.
+- До ${RETELL_TARGET} видимых символов (теги не считаются). Длинный пост сожми, оставив главное.
 - Голос оригинала: пиши так, как написал бы сам автор, но другими словами.
   Не пиши «Автор канала пишет», «по словам автора».
 - Та же структура: жирный заголовок, если он был, те же абзацы, цитаты и выделения.
@@ -29,4 +32,13 @@ export const RETELL_SYSTEM_PROMPT = `Ты ведёшь Telegram-канал пр�
 export function buildRetellUserContent(item: FeedItem): string {
   const html = sanitizeTelegramHtml(item.html ?? escapeHtml(item.snippet));
   return `<source_post_json>\n${JSON.stringify({ channel: item.feedTitle, html })}\n</source_post_json>`;
+}
+
+/** The follow-up for a draft over the cap: the same post plus the draft to cut down. */
+export function buildShortenUserContent(item: FeedItem, draft: string): string {
+  return `${buildRetellUserContent(item)}
+<draft_json>
+${JSON.stringify({ html: draft })}
+</draft_json>
+Черновик пересказа выше длиннее 900 видимых символов. Сократи его до ${RETELL_TARGET}: оставь главное, ту же разметку, те же ссылки и голос автора.`;
 }

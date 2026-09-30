@@ -4,7 +4,11 @@ import { humanizeText } from "./humanize.js";
 import { completeChatJson } from "./chatCompletion.js";
 import { resolveActiveProvider } from "./providers.js";
 import { ChannelRetellSchema } from "../schemas/channelRetellSchema.js";
-import { RETELL_SYSTEM_PROMPT, buildRetellUserContent } from "./retellPrompt.js";
+import {
+  RETELL_SYSTEM_PROMPT,
+  buildRetellUserContent,
+  buildShortenUserContent,
+} from "./retellPrompt.js";
 import {
   hrefsOf,
   escapeHtml,
@@ -73,11 +77,51 @@ function sameMarkup(a: string, b: string): boolean {
   );
 }
 
+async function askModel(
+  provider: ProviderName,
+  model: string,
+  user: string,
+  item: FeedItem,
+): Promise<string> {
+  const raw = await completeChatJson(provider, model, {
+    system: RETELL_SYSTEM_PROMPT,
+    user,
+    maxTokens: RETELL_MAX_TOKENS,
+    temperature: RETELL_TEMPERATURE,
+    refusalLabel: "пересказывать пост",
+  });
+  return cleanRetellHtml(finalizeRetell(raw).html, item);
+}
+
 /**
- * Retells a channel post with the active model, then the humanizer pass on the
- * HTML. The humanized HTML is kept only while it has the model's exact tags and
- * links and stays within RETELL_MAX visible characters: the caption limit and
- * the formatting are hard, the voice pass is not.
+ * One more call for a draft over RETELL_MAX. Optional: when it fails or comes
+ * back no shorter, the draft stands and the publish gate decides.
+ */
+async function shortened(
+  provider: ProviderName,
+  model: string,
+  draft: string,
+  item: FeedItem,
+): Promise<string> {
+  const { length } = visibleText(draft);
+  if (length <= RETELL_MAX) return draft;
+  try {
+    const short = await askModel(provider, model, buildShortenUserContent(item, draft), item);
+    if (short !== "" && visibleText(short).length < length) return short;
+    console.warn(`[retell] shortening gave no shorter text, kept the ${length}-character draft`);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`[retell] shortening failed, kept the ${length}-character draft: ${reason}`);
+  }
+  return draft;
+}
+
+/**
+ * Retells a channel post with the active model (asking once more to shorten a
+ * draft over RETELL_MAX), then the humanizer pass on the HTML. The humanized
+ * HTML is kept only while it has the model's exact tags and links and stays
+ * within RETELL_MAX visible characters: the caption limit and the formatting
+ * are hard, the voice pass is not.
  */
 export async function retellChannelPost(
   item: FeedItem,
@@ -87,16 +131,10 @@ export async function retellChannelPost(
   const body =
     provider === ProviderName.Mock
       ? escapeHtml(truncate(item.snippet, RETELL_MAX))
-      : cleanRetellHtml(
-          finalizeRetell(
-            await completeChatJson(provider, model, {
-              system: RETELL_SYSTEM_PROMPT,
-              user: buildRetellUserContent(item),
-              maxTokens: RETELL_MAX_TOKENS,
-              temperature: RETELL_TEMPERATURE,
-              refusalLabel: "пересказывать пост",
-            }),
-          ).html,
+      : await shortened(
+          provider,
+          model,
+          await askModel(provider, model, buildRetellUserContent(item), item),
           item,
         );
   const humanized = cleanRetellHtml(await humanizeText(body), item);
