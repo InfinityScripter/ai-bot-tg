@@ -64,7 +64,9 @@ rewrite provider/model), `EVAL_JUDGE_FLOOR` (default 80).
   actually reaches the classifier.
 - `fixtures/channelCases.ts` — six channel posts for the retell prompt
   (`ai-for-devs`, `sukharev-ii`, `aostrikov`, `aimastersme`, `llm-under-hood`,
-  `abstractdl`). Their replies are recorded under `fixtures/recorded/channel/`.
+  `abstractdl`). Their replies are to be recorded under `fixtures/recorded/channel/` (the
+  folder does not exist yet; until it does, mock `npm run eval` fails the
+  CHANNEL suite with ENOENT and exits 1).
   `--record` without `--only` rewrites the recordings of EVERY suite, so
   record CHANNEL one case at a time (`--only` filters each suite by id, and
   none of these ids is used elsewhere):

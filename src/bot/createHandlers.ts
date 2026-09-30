@@ -3,12 +3,12 @@ import type { Bot, Context, InlineKeyboard } from "grammy";
 import { CONFIG } from "../config.js";
 import { escapeMarkdown } from "../utils.js";
 import { CARD_CALLBACK } from "../consts.js";
-import { CandidateState } from "../enums.js";
 import { renderRewriting } from "./render.js";
 import { parseCallback } from "./modelPick.js";
 import { handleModelCallback } from "./modelMenu.js";
 import { ackSilently, logEditError } from "./edit.js";
 import { crossPostPublished } from "../blog/index.js";
+import { CandidateKind, CandidateState } from "../enums.js";
 import { rawKeyboard, previewKeyboard } from "./keyboards.js";
 import {
   activeModelLabel,
@@ -125,9 +125,10 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
             })
             .catch(logEditError("publish missing-extraction text"));
         } else if (state === CandidateState.NeedsVerification) {
+          const where = candidate.kind === CandidateKind.Channel ? "канал" : "блог";
           await ctx
             .editMessageText(
-              `❓ Публикация не подтверждена: ${message}\n\n_Пост МОГ опубликоваться — проверьте блог перед повтором._`,
+              `❓ Публикация не подтверждена: ${message}\n\n_Пост МОГ опубликоваться — проверьте ${where} перед повтором._`,
               { parse_mode: "Markdown", reply_markup: previewKeyboard(id) },
             )
             .catch(logEditError("publish maybe-posted text"));

@@ -2,9 +2,9 @@ import type { Bot, InlineKeyboard } from "grammy";
 
 import { CONFIG } from "../config.js";
 import { logEditError } from "./edit.js";
-import { CandidateState } from "../enums.js";
 import { crossPostToChannel } from "../blog/index.js";
 import { ReleaseToNewsError } from "./duplicateRelease.js";
+import { CandidateKind, CandidateState } from "../enums.js";
 import { rawKeyboard, previewKeyboard } from "./keyboards.js";
 import { processClaimedCandidateAutomatically } from "./candidateActions.js";
 
@@ -89,9 +89,10 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
     const current = store.get(candidate.id) ?? candidate;
     const message = err instanceof Error ? err.message : String(err);
     if (current.state === CandidateState.NeedsVerification) {
+      const where = current.kind === CandidateKind.Channel ? "канал" : "блог";
       return editCard(
         current,
-        `❓ Автопубликация не подтверждена: ${message}\n\nПост мог появиться — проверьте блог перед повтором.`,
+        `❓ Автопубликация не подтверждена: ${message}\n\nПост мог появиться — проверьте ${where} перед повтором.`,
         previewKeyboard(current.id),
       );
     }

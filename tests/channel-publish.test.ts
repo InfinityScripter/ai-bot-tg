@@ -109,6 +109,31 @@ describe("publishToChannel", () => {
     await expect(publishToChannel(TEXT, null)).rejects.toMatchObject({ maybePosted: false });
   });
 
+  it("does not fall back to text after an ambiguous photo failure", async () => {
+    const fetchMock = vi.fn(async () => new Response("oops", { status: 502 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(publishToChannel(TEXT, "https://cdn/x.jpg")).rejects.toMatchObject({
+      maybePosted: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fall back to text after a photo network error and hides the token", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const err = (await publishToChannel(TEXT, "https://cdn/x.jpg").catch(
+      (e: unknown) => e,
+    )) as Error;
+
+    expect(err).toMatchObject({ maybePosted: true });
+    expect(err.message).not.toContain("test:telegram-token");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("never puts the bot token into an error message", async () => {
     vi.stubGlobal(
       "fetch",
@@ -139,6 +164,26 @@ describe("automatic channel retelling", () => {
     expect(urls.filter((u) => u.includes("/api/post/new"))).toEqual([]);
     expect(urls.filter((u) => u.includes("api.telegram.org"))).toHaveLength(1);
     expect(texts.at(-1)).toContain("Автоопубликовано");
+    store.close();
+  });
+
+  it("tells the owner to check the channel, not the blog, after an unconfirmed channel publish", async () => {
+    const store = new CandidateStore(":memory:");
+    const id = store.insertCollected(item("tg:ai_for_devs/187"), true)!;
+    retellChannelPost.mockResolvedValue({ text: TEXT });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed");
+      }),
+    );
+    const { autoPublishCandidate, texts } = makeBot(store);
+
+    await autoPublishCandidate(store.get(id)!).catch(() => {});
+
+    expect(store.get(id)!.state).toBe(CandidateState.NeedsVerification);
+    expect(texts.at(-1)).toContain("канал");
+    expect(texts.at(-1)).not.toContain("блог");
     store.close();
   });
 
