@@ -51,6 +51,7 @@ describe("eligiblePosts", () => {
     const kept = eligiblePosts([page("a", false, posts)], {
       now: NOW,
       isSeen: (key) => key === "tg:a/8",
+      isSeenSince: () => false,
       isPublishedUrl: (url) => url === "https://ex.com/covered",
     });
     expect(kept.map((x) => x.id)).toEqual([1]);
@@ -66,10 +67,23 @@ describe("eligiblePosts link dedup", () => {
     ];
     const kept = eligiblePosts([page("a", false, posts)], {
       now: NOW,
-      isSeen: (key) => key === "link:https://ex.com/story" || key === "link:https://t.me/other/5",
+      isSeen: () => false,
+      isSeenSince: (key, days) =>
+        days === 3 && (key === "link:https://ex.com/story" || key === "link:https://t.me/other/5"),
       isPublishedUrl: () => false,
     });
     expect(kept.map((x) => x.id)).toEqual([2, 3]);
+  });
+
+  it("ignores host-only links (autolinked file names, self-promo domains)", () => {
+    const posts = [p("a", 1, { links: ["http://AGENTS.md", "https://vibecoding.tech/"] })];
+    const kept = eligiblePosts([page("a", false, posts)], {
+      now: NOW,
+      isSeen: (key) => key.startsWith("link:"),
+      isSeenSince: (key) => key.startsWith("link:"),
+      isPublishedUrl: () => false,
+    });
+    expect(kept.map((x) => x.id)).toEqual([1]);
   });
 });
 

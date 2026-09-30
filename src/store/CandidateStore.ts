@@ -194,10 +194,17 @@ export class CandidateStore {
     return row !== undefined;
   }
 
-  /** Records extra dedup keys (e.g. a retold post's `link:` keys); isSeen honours them. */
+  /**
+   * Records extra dedup keys (e.g. a retold post's `link:` keys); isSeen honours
+   * them. Marking an existing key again refreshes its seen_at for isSeenSince.
+   */
   markSeenKeys(keys: string[]): void {
-    const insert = this.db.prepare("INSERT OR IGNORE INTO seen_keys (dedup_key) VALUES (?)");
-    for (const key of keys) insert.run(key);
+    mutations.markSeenKeys(this.db, keys);
+  }
+
+  /** True if this key was recorded in seen_keys within the last `days` days. */
+  isSeenSince(key: string, days: number): boolean {
+    return queries.isSeenSince(this.db, key, days);
   }
 
   /**

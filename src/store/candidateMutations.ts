@@ -293,3 +293,12 @@ export function setPublished(db: Database.Database, id: number, blogPostId: stri
      WHERE id = ?`,
   ).run(CandidateState.Published, blogPostId, id);
 }
+
+/** Upserts seen_keys rows; a repeat refreshes seen_at (isSeenSince reads it). */
+export function markSeenKeys(db: Database.Database, keys: string[]): void {
+  const upsert = db.prepare(
+    `INSERT INTO seen_keys (dedup_key) VALUES (?)
+       ON CONFLICT(dedup_key) DO UPDATE SET seen_at = datetime('now')`,
+  );
+  for (const key of keys) upsert.run(key);
+}

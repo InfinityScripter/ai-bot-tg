@@ -70,6 +70,7 @@ async function sweep(
   const eligible = eligiblePosts(pages, {
     now,
     isSeen: (key) => store.isSeen(key),
+    isSeenSince: (key, days) => store.isSeenSince(key, days),
     isPublishedUrl: (url) => store.isPublishedUrl(url),
   });
   summary.eligible = eligible.length;

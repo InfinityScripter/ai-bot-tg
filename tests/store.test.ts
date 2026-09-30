@@ -370,3 +370,17 @@ describe("mock override", () => {
     store.close();
   });
 });
+
+describe("seen keys with an age", () => {
+  it("isSeenSince honours seen_at, and marking again refreshes an old key", () => {
+    const store = new CandidateStore(":memory:");
+    store.markSeenKeys(["link:https://ex.com/a"]);
+    expect(store.isSeenSince("link:https://ex.com/a", 3)).toBe(true);
+    // @ts-expect-error reach into the private db for the test
+    store.db.prepare("UPDATE seen_keys SET seen_at = datetime('now','-5 days')").run();
+    expect(store.isSeenSince("link:https://ex.com/a", 3)).toBe(false);
+    store.markSeenKeys(["link:https://ex.com/a"]);
+    expect(store.isSeenSince("link:https://ex.com/a", 3)).toBe(true);
+    store.close();
+  });
+});

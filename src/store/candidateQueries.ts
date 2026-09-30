@@ -74,3 +74,11 @@ export function isPublishedUrl(db: Database.Database, url: string): boolean {
     .get(CandidateState.Published, bare, `${bare}/`);
   return row !== undefined;
 }
+
+/** True if this key was recorded in seen_keys within the last `days` days. */
+export function isSeenSince(db: Database.Database, key: string, days: number): boolean {
+  const row = db
+    .prepare("SELECT 1 FROM seen_keys WHERE dedup_key = ? AND seen_at >= datetime('now', ?)")
+    .get(key, `-${days} days`);
+  return row !== undefined;
+}

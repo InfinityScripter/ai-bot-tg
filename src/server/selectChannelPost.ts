@@ -11,10 +11,14 @@ const MAX_AGE_MS = 8 * HOUR_MS;
 const MIN_TEXT = 200;
 /** Russian ad-law markers: a paid post is not something to retell. */
 const AD_RE = /#реклама|\berid\b/i;
+/** Channels repeat links (self-promo, file names); an old link must not block a new post. */
+const LINK_MEMORY_DAYS = 3;
 
 export interface EligibilityOptions {
   now: number;
   isSeen: (key: string) => boolean;
+  /** isSeen limited to keys recorded within the last `days` days. */
+  isSeenSince: (key: string, days: number) => boolean;
   /** True when a published candidate's source_url is this URL (a blog-published article). */
   isPublishedUrl: (url: string) => boolean;
 }
@@ -27,11 +31,21 @@ export function channelDedupKey(post: ChannelPost): string {
  * seen_keys entries for a post's outbound links: a retelling's source_url is its
  * t.me permalink, so the article it covers is only remembered through these.
  * t.me links are channel-internal and the post's own dedup key already covers it.
+ * Host-only links are skipped: Telegram autolinks file names (`AGENTS.md`) and
+ * channels end posts with their own site, so these say nothing about the story.
  */
 export function channelLinkKeys(post: ChannelPost): string[] {
   return post.links
-    .filter((url) => !/^https?:\/\/(www\.)?t\.me\//i.test(url))
+    .filter((url) => !/^https?:\/\/(www\.)?t\.me\//i.test(url) && hasPath(url))
     .map((url) => `link:${url.trim().replace(/\/+$/, "")}`);
+}
+
+function hasPath(url: string): boolean {
+  try {
+    return new URL(url).pathname.length > 1;
+  } catch {
+    return false;
+  }
 }
 
 /** Posts that may be retold at all, before the relevance filter. */
@@ -47,7 +61,7 @@ export function eligiblePosts(pages: ChannelPage[], opts: EligibilityOptions): C
         !AD_RE.test(post.text) &&
         !opts.isSeen(channelDedupKey(post)) &&
         !post.links.some((url) => opts.isPublishedUrl(url)) &&
-        !channelLinkKeys(post).some((key) => opts.isSeen(key))
+        !channelLinkKeys(post).some((key) => opts.isSeenSince(key, LINK_MEMORY_DAYS))
       );
     }),
   );

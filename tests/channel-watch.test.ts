@@ -161,6 +161,28 @@ describe("runChannelWatch", () => {
     store.close();
   });
 
+  it("forgets a link after 3 days", async () => {
+    const store = new CandidateStore(":memory:");
+    filterRelevant.mockImplementation(async (items: FeedItem[]) => ({
+      kept: items,
+      decisions: [],
+    }));
+    // @ts-expect-error reach into the private db for the test
+    store.db
+      .prepare("INSERT INTO seen_keys (dedup_key, seen_at) VALUES (?, datetime('now','-5 days'))")
+      .run("link:https://ex.com/story");
+    const processCandidate = vi.fn(async () => {});
+    const fetchPages = pages({
+      channel: { name: "pri", priority: true },
+      posts: [{ ...post("pri", 1), links: ["https://ex.com/story"] }],
+    });
+
+    await runChannelWatch(store, processCandidate, { now: NOW, fetchPages });
+
+    expect(processCandidate).toHaveBeenCalledTimes(1);
+    store.close();
+  });
+
   it("throws when no channel page could be read", async () => {
     const store = new CandidateStore(":memory:");
     const fetchPages = vi.fn(async () => ({ pages: [] as ChannelPage[], failed: ["a", "b"] }));
