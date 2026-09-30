@@ -17,14 +17,6 @@ export { detectKind, releaseKey, isReleaseItem, confirmRelease } from "./detectR
 export { buildDigestPost, finalizeDigestPost, countDigestEntries } from "./buildDigestPost.js";
 export { toDigestRewrite, digestSummaryLine, renderDigestMarkdown } from "./renderDigestPost.js";
 
-export {
-  RETELL_MAX,
-  RETELL_MAX_TOKENS,
-  RETELL_TEMPERATURE,
-  finalizeRetell,
-  withSourceLine,
-  retellChannelPost,
-} from "./retellChannelPost.js";
 export type {
   PingResult,
   DigestDraft,
@@ -33,6 +25,14 @@ export type {
   ChatJsonRequest,
   RelevanceDecision,
 } from "./types.js";
+export {
+  RETELL_MAX,
+  finalizeRetell,
+  withSourceLine,
+  RETELL_MAX_TOKENS,
+  retellChannelPost,
+  RETELL_TEMPERATURE,
+} from "./retellChannelPost.js";
 export {
   chatUrl,
   PROVIDERS,

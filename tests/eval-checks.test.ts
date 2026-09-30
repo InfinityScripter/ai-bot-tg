@@ -3,8 +3,8 @@ import { it, expect, describe } from "vitest";
 import { isCasePassing } from "../evals/checks/types.js";
 import { finalizeRewrite } from "../src/llm/rewriteToPost.js";
 import { parseJudgeVerdict } from "../evals/judge/runJudge.js";
-import { judgeGate, parseJudgeFloor } from "../evals/judge/judgeGate.js";
 import { checkChannelRetell } from "../evals/checks/channelChecks.js";
+import { judgeGate, parseJudgeFloor } from "../evals/judge/judgeGate.js";
 import { checkRelease, parseReleaseReply } from "../evals/checks/releaseChecks.js";
 import { checkRelevance, parseRelevanceReply } from "../evals/checks/relevanceChecks.js";
 import {

@@ -143,8 +143,9 @@ async function main() {
   // Release watch: extra feed sweeps (RELEASE_WATCH_CRON) so a new-model release
   // publishes within one interval instead of waiting for the daily run. A sweep
   // is skipped while a collection runs (it handles releases itself), while the
-  // previous sweep is still going, or while the channel sweep holds the slot. A failure pings the owner once, then stays
-  // quiet until a sweep succeeds: at a 30-minute cadence every failure would spam.
+  // previous sweep is still going, or while the channel sweep holds the slot. A
+  // failure pings the owner once, then stays quiet until a sweep succeeds: at a
+  // 30-minute cadence every failure would spam.
   const rejectedReleases = new Set<string>();
   let watchFailing = false;
   const sweep = async (): Promise<void> => {

@@ -94,7 +94,8 @@ export enum InputKind {
  * What a collected candidate is. Persisted verbatim in the `kind` column and
  * used to discriminate the pipeline: a 'news' candidate is rewritten into a blog
  * post and published to /api/post/new; a 'release' candidate is extracted into a
- * structured ModelRelease and published to /api/changelog/new. Default 'news'.
+ * structured ModelRelease and published to /api/changelog/new; a 'channel'
+ * candidate is retold and posted to our Telegram channel only. Default 'news'.
  */
 export enum CandidateKind {
   News = "news",

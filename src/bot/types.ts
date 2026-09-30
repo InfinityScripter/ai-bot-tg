@@ -44,9 +44,10 @@ export type ParsedCallback =
  * A loaded, ready-to-publish extraction for a candidate, discriminated by kind.
  * `title` is the label shown in the "✅ Опубликовано: …" confirmation; `publish`
  * runs the kind-appropriate POST (/api/post/new for news, /api/changelog/new for
- * release) and returns the created id. `crossPost` describes how to render the
- * channel announcement once the published id is known (news → /post/{id},
- * release → /changelog); `null`/`undefined` fields degrade gracefully.
+ * release; for channel it is the Telegram channel post itself) and returns the
+ * created id. `crossPost` describes how to render the channel announcement once
+ * the published id is known (news → /post/{id}, release → /changelog; null for
+ * channel); `null`/`undefined` fields degrade gracefully.
  */
 export interface LoadedExtraction {
   title: string;
