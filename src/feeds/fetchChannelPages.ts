@@ -17,14 +17,21 @@ const PAGE_TIMEOUT_MS = 15_000;
  * Fetches every channel's t.me/s page in parallel. A failed fetch, and a page
  * that parses to zero posts (markup changed), both land in `failed`: on
  * 2026-09-30 three of twelve pages failed once and answered in 0.7 s on retry,
- * so one bad channel only skips that channel for this sweep.
+ * so one bad channel only skips that channel for this sweep. A rejected fetch
+ * gets one more attempt after `retryDelayMs`; an empty parse is not retried.
  */
 export async function fetchChannelPages(
   channels: SourceChannel[],
+  retryDelayMs = 1000,
 ): Promise<{ pages: ChannelPage[]; failed: string[] }> {
-  const results = await Promise.allSettled(
-    channels.map((c) => fetchHtml(`https://t.me/s/${c.name}`, PAGE_MAX_BYTES, PAGE_TIMEOUT_MS)),
-  );
+  const get = (name: string) =>
+    fetchHtml(`https://t.me/s/${name}`, PAGE_MAX_BYTES, PAGE_TIMEOUT_MS);
+  const getWithRetry = (name: string) =>
+    get(name).catch(async () => {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      return get(name);
+    });
+  const results = await Promise.allSettled(channels.map((c) => getWithRetry(c.name)));
   const pages: ChannelPage[] = [];
   const failed: string[] = [];
   channels.forEach((channel, idx) => {

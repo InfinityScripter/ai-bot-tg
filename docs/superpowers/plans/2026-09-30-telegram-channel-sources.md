@@ -1934,7 +1934,7 @@ Expected: PASS (4 tests).
     /**
      * Cron expression (in CRON_TZ) for the channel sweep: retell one post from
      * the source Telegram channels. The expression is also the time window
-     * (prod: "0 10-21 * * *"). OPTIONAL: unset = no sweep.
+     * (prod: "15 10-21 * * *"). OPTIONAL: unset = no sweep.
      */
     CHANNEL_WATCH_CRON: z.string().min(1).optional(),
 ```
@@ -1943,7 +1943,7 @@ Expected: PASS (4 tests).
 
 ```
 # Hourly retelling of other AI Telegram channels into TELEGRAM_CHANNEL_ID (unset = off).
-# CHANNEL_WATCH_CRON=0 10-21 * * *
+# CHANNEL_WATCH_CRON=15 10-21 * * *
 ```
 
 `src/labels.ts` — add to `NOTIFY_LABELS`:
@@ -2249,7 +2249,7 @@ Expected: `pages: 12` (or 11–12 with a named failure), `eligible` ≥ 0, and �
 
 Stage docs (`git add README.md CLAUDE.md`), then report to the owner: gate results, the dry-run pick, and the deploy steps that are theirs to trigger:
 1. backend + frontend (flag appears, off by default);
-2. bot with `CHANNEL_WATCH_CRON=0 10-21 * * *` added to `.env.production` on the VDS;
+2. bot with `CHANNEL_WATCH_CRON=15 10-21 * * *` added to `.env.production` on the VDS;
 3. watch the first cards with the switch off, then turn `autoPublishChannels` on in the admin.
 
 ---

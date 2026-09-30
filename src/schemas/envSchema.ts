@@ -88,7 +88,8 @@ export const EnvSchema = z
     /**
      * Cron expression (in CRON_TZ) for the channel sweep: retell one post from
      * the source Telegram channels. The expression is also the time window
-     * (prod: "0 10-21 * * *"). OPTIONAL: unset = no sweep.
+     * (prod: "15 10-21 * * *"). Must not coincide with RELEASE_WATCH_CRON ticks:
+     * a busy slot skips, so the hour would be lost. OPTIONAL: unset = no sweep.
      */
     CHANNEL_WATCH_CRON: z.string().min(1).optional(),
     /** Optional CSV override of the default feed list. */

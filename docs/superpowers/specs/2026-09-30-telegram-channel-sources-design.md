@@ -46,7 +46,7 @@ replaces the whole list when set.
 
 ## Flow
 
-1. **Fetch.** `CHANNEL_WATCH_CRON` (unset = off; prod `0 10-21 * * *`,
+1. **Fetch.** `CHANNEL_WATCH_CRON` (unset = off; prod `15 10-21 * * *`,
    `CRON_TZ`) fetches each channel page through `fetchHtml` (timeout, size
    cap). One failing channel is logged and skipped.
 2. **Parse** (`src/feeds/parseTelegramChannel.ts`, regex like the other

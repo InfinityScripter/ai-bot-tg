@@ -46,9 +46,10 @@ async function main() {
   const run = (): Promise<string> => {
     if (!acceptingCollections) return Promise.resolve("Сервис останавливается, сбор не запущен.");
     if (activeCollection) return activeCollection;
-    // Wait out a running release-watch sweep: its fresh release row still has
-    // auto_publish=1 + collected, and the collection's crash-recovery would
-    // pick it up a second time (a duplicate card or a failed double claim).
+    // Wait out a running release-watch or channel sweep: its fresh release or
+    // channel row still has auto_publish=1 + collected, and the collection's
+    // crash-recovery would pick it up a second time (a duplicate card or a
+    // failed double claim).
     const current = (activeWatch ?? Promise.resolve()).then(runOnce).finally(() => {
       if (activeCollection === current) activeCollection = null;
     });
@@ -141,8 +142,8 @@ async function main() {
   };
   // Release watch: extra feed sweeps (RELEASE_WATCH_CRON) so a new-model release
   // publishes within one interval instead of waiting for the daily run. A sweep
-  // is skipped while a collection runs (it handles releases itself) or while the
-  // previous sweep is still going. A failure pings the owner once, then stays
+  // is skipped while a collection runs (it handles releases itself), while the
+  // previous sweep is still going, or while the channel sweep holds the slot. A failure pings the owner once, then stays
   // quiet until a sweep succeeds: at a 30-minute cadence every failure would spam.
   const rejectedReleases = new Set<string>();
   let watchFailing = false;

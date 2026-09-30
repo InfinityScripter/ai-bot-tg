@@ -1,5 +1,5 @@
 import { CONFIG } from "../config.js";
-import { lastChannelWatch } from "../server/index.js";
+import { lastChannelWatch } from "../server/runChannelWatch.js";
 import {
   pingModel,
   PROVIDERS,
@@ -104,12 +104,12 @@ export function scheduleCheck(nextRun: (() => Date | null) | undefined): HealthC
   };
 }
 
-/** The latest channel sweep: off, never ran yet, failed, or how many pages it read. */
-export function checkChannels(): HealthCheck {
+/**
+ * The latest channel sweep: never ran, failed, or how many pages it read. A few
+ * unreadable pages keep the row green (they are listed); half or more turn it red.
+ */
+export function describeChannelWatch(last: ReturnType<typeof lastChannelWatch>): HealthCheck {
   const name = "Каналы";
-  if (!CONFIG.CHANNEL_WATCH_CRON)
-    return { name, ok: true, detail: "выключено (CHANNEL_WATCH_CRON не задан)" };
-  const last = lastChannelWatch();
   if (!last) return { name, ok: true, detail: "ещё не запускалось" };
   if (last.error) return { name, ok: false, detail: last.error };
   const s = last.summary;
@@ -118,7 +118,13 @@ export function checkChannels(): HealthCheck {
   const failed = s.failed.length ? `, не прочитались: ${s.failed.join(", ")}` : "";
   return {
     name,
-    ok: s.failed.length === 0,
+    ok: s.failed.length * 2 < s.pages + s.failed.length,
     detail: `страниц ${s.pages}, подходящих ${s.eligible}${failed}`,
   };
+}
+
+export function checkChannels(): HealthCheck {
+  if (!CONFIG.CHANNEL_WATCH_CRON)
+    return { name: "Каналы", ok: true, detail: "выключено (CHANNEL_WATCH_CRON не задан)" };
+  return describeChannelWatch(lastChannelWatch());
 }

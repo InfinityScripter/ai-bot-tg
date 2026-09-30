@@ -28,7 +28,7 @@ export function scheduleChannelWatch(deps: ChannelWatchDeps): Cron | null {
       await runChannelWatch(deps.store, await createProcessCandidate(deps.store, deps.processDeps));
       failing = false;
     } catch (err) {
-      console.error(`[index] channel watch failed: ${String(err)}`);
+      console.error(`[channels] channel watch failed: ${String(err)}`);
       if (!failing) await deps.notifyOwner(NOTIFY_LABELS.channelWatchFailed(err));
       failing = true;
     }
@@ -38,8 +38,8 @@ export function scheduleChannelWatch(deps: ChannelWatchDeps): Cron | null {
     : null;
   console.log(
     job
-      ? `[index] channel watch scheduled: ${CONFIG.CHANNEL_WATCH_CRON} (${CONFIG.CRON_TZ})`
-      : "[index] channel watch disabled (CHANNEL_WATCH_CRON unset)",
+      ? `[channels] channel watch scheduled: ${CONFIG.CHANNEL_WATCH_CRON} (${CONFIG.CRON_TZ})`
+      : "[channels] channel watch disabled (CHANNEL_WATCH_CRON unset)",
   );
   return job;
 }
