@@ -1,14 +1,11 @@
 import { truncate } from "../utils.js";
 import { ProviderName } from "../enums.js";
 import { humanizeText } from "./humanize.js";
+import { dressForChannel } from "./dressForChannel.js";
 import { completeChatJson } from "./chatCompletion.js";
 import { resolveActiveProvider } from "./providers.js";
+import { CAPTION_LIMIT } from "../blog/publishToChannel.js";
 import { ChannelRetellSchema } from "../schemas/channelRetellSchema.js";
-import {
-  RETELL_SYSTEM_PROMPT,
-  buildRetellUserContent,
-  buildShortenUserContent,
-} from "./retellPrompt.js";
 import {
   hrefsOf,
   escapeHtml,
@@ -16,12 +13,16 @@ import {
   visibleText,
   sanitizeTelegramHtml,
 } from "../feeds/index.js";
+import {
+  RETELL_MAX,
+  RETELL_SYSTEM_PROMPT,
+  buildRetellUserContent,
+  buildShortenUserContent,
+} from "./retellPrompt.js";
 
 import type { CandidateStore } from "../store/index.js";
-import type { FeedItem, ChannelRetell } from "../types.js";
+import type { FeedItem, ChannelDress, ChannelRetell } from "../types.js";
 
-/** Visible-text cap before the source line: a photo caption holds 1024 characters in total. */
-export const RETELL_MAX = 900;
 export const RETELL_MAX_TOKENS = 1200;
 export const RETELL_TEMPERATURE = 0.6;
 
@@ -41,6 +42,13 @@ export function finalizeRetell(raw: string | null): ChannelRetell {
     );
   }
   return parsed.data;
+}
+
+/** The why line and the rubric hashtag, added by code under the retelling (the model is told to write neither). */
+export function withDress(html: string, dress: ChannelDress | null): string {
+  if (!dress) return html;
+  const why = dress.why ? `\n\n💡 <b>Зачем тебе это:</b> ${escapeHtml(dress.why)}` : "";
+  return `${html}${why}\n\n#${dress.rubric}`;
 }
 
 /** Credit line added by code, never by the model: the channel handle linked to the exact post. */
@@ -121,7 +129,8 @@ async function shortened(
  * draft over RETELL_MAX), then the humanizer pass on the HTML. The humanized
  * HTML is kept only while it has the model's exact tags and links and stays
  * within RETELL_MAX visible characters: the caption limit and the formatting
- * are hard, the voice pass is not.
+ * are hard, the voice pass is not. The dress (why line, rubric, cover text) is
+ * made from the final text and is skipped when the model gives none.
  */
 export async function retellChannelPost(
   item: FeedItem,
@@ -143,5 +152,17 @@ export async function retellChannelPost(
   if (!keep && humanized !== body) {
     console.warn("[retell] humanizer changed the markup or went over the cap, kept the model HTML");
   }
-  return { html: withSourceLine(keep ? humanized : body, item) };
+  const text = keep ? humanized : body;
+  const asked = await dressForChannel({ title: "", text: visibleText(text) }, store);
+  // A draft the shortening could not cut leaves no room for the why line; the
+  // rubric and the cover still fit, and the post is not sent to the owner over it.
+  const overflows =
+    asked?.why && visibleText(withSourceLine(withDress(text, asked), item)).length > CAPTION_LIMIT;
+  if (overflows)
+    console.warn(`[retell] why line left out: the caption would exceed ${CAPTION_LIMIT}`);
+  const dress = asked && overflows ? { ...asked, why: "" } : asked;
+  return {
+    html: withSourceLine(withDress(text, dress), item),
+    ...(dress ? { dress } : {}),
+  };
 }

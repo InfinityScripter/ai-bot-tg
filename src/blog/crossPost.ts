@@ -1,9 +1,13 @@
 import type { Api, Context } from "grammy";
 
+import { InputFile } from "grammy";
+
 import { CONFIG } from "../config.js";
 import { logEditError } from "../bot/edit.js";
 import { truncate, escapeMarkdown } from "../utils.js";
+import { coverSpecFor, tryRenderCover } from "./renderCover.js";
 
+import type { ChannelDress } from "../types.js";
 import type { LoadedExtraction, CrossPostContent } from "../bot/types.js";
 
 type TelegramAbortSignal = Parameters<Api["sendMessage"]>[3];
@@ -33,13 +37,19 @@ const DESCRIPTION_MAX = 320;
  * Feed/LLM-derived text is escaped so it can't break or hijack the formatting.
  * Exported for unit testing without a live bot.
  */
-export function buildCrossPostCaption(content: CrossPostContent, url: string): string {
+export function buildCrossPostCaption(
+  content: CrossPostContent,
+  url: string,
+  dress: ChannelDress | null = null,
+): string {
   const title = `*${escapeMarkdown(truncate(content.title, 200))}*`;
   const link = `[Читать на сайте →](${url})`;
   const description = content.description?.trim()
     ? escapeMarkdown(truncate(content.description.trim(), DESCRIPTION_MAX))
     : "";
-  const caption = [title, description, link].filter(Boolean).join("\n\n");
+  const why = dress?.why ? `💡 *Зачем тебе это:* ${escapeMarkdown(dress.why)}` : "";
+  const rubric = dress ? `#${dress.rubric}` : "";
+  const caption = [title, description, why, rubric, link].filter(Boolean).join("\n\n");
   return truncate(caption, CAPTION_MAX);
 }
 
@@ -67,44 +77,50 @@ function isUsableImageUrl(value: string | null | undefined): value is string {
  * Throws only when BOTH the photo and the text fallback fail, so the caller can
  * surface it as a soft warning — it must NOT be called in a way that fails publish.
  *
- * A usable cover → a photo card (richer, higher engagement). If sendPhoto fails
- * (a non-image URL like a habr /share/ page, a 404, a host block), we fall back
- * to a plain text message so a bad cover never costs us the announcement. No
- * usable cover → straight to text and let Telegram render the link og-preview.
+ * The photo is the branded cover rendered from the dress; only when rendering
+ * fails does the blog's own cover stand in (when it is a URL Telegram can
+ * fetch). If sendPhoto fails (a non-image URL like a habr /share/ page, a 404,
+ * a host block, a rejected upload), the announcement degrades to plain text
+ * rather than being dropped. `signal` is a factory: a timeout started before
+ * the dress's model call would be spent on the model, not on Telegram.
  */
 export async function crossPostToChannel(
   api: Api,
   content: CrossPostContent,
   publishedId: string,
-  signal?: TelegramAbortSignal,
+  signal?: () => TelegramAbortSignal,
 ): Promise<boolean> {
   const channel = CONFIG.TELEGRAM_CHANNEL_ID;
   if (!channel) return false;
 
-  const url = content.linkFor(publishedId);
-  const caption = buildCrossPostCaption(content, url);
+  const dress = (await content.dress?.()) ?? null;
+  const caption = buildCrossPostCaption(content, content.linkFor(publishedId), dress);
+  const cover = tryRenderCover(coverSpecFor(dress, content.title));
+  const blogCover = isUsableImageUrl(content.coverUrl) ? content.coverUrl : null;
+  const photo = cover ? new InputFile(cover, "cover.png") : blogCover;
+  const options = { parse_mode: "Markdown" as const };
 
-  if (isUsableImageUrl(content.coverUrl)) {
+  if (photo) {
     try {
-      const options = { caption, parse_mode: "Markdown" as const };
-      await (signal
-        ? api.sendPhoto(channel, content.coverUrl, options, signal)
-        : api.sendPhoto(channel, content.coverUrl, options));
+      const photoOptions = { ...options, caption };
+      const sendSignal = signal?.();
+      await (sendSignal
+        ? api.sendPhoto(channel, photo, photoOptions, sendSignal)
+        : api.sendPhoto(channel, photo, photoOptions));
       return true;
-    } catch {
-      // Cover URL was shaped like a URL but Telegram couldn't use it as a photo
-      // (non-image page, 404, blocked host) — degrade to text rather than drop.
-      const options = { parse_mode: "Markdown" as const };
-      await (signal
-        ? api.sendMessage(channel, caption, options, signal)
-        : api.sendMessage(channel, caption, options));
-      return true;
+    } catch (err) {
+      // Telegram couldn't use the photo (non-image page, 404, blocked host,
+      // rejected upload) — degrade to text rather than drop the announcement.
+      const reason = err instanceof Error ? err.message : String(err);
+      const which = cover ? "branded cover" : "blog cover";
+      console.warn(`[cross-post] sendPhoto with the ${which} failed, sending text: ${reason}`);
     }
   }
 
-  const options = { parse_mode: "Markdown" as const };
-  await (signal
-    ? api.sendMessage(channel, caption, options, signal)
+  // A fresh timeout: the photo attempt may have spent or aborted the first one.
+  const sendSignal = signal?.();
+  await (sendSignal
+    ? api.sendMessage(channel, caption, options, sendSignal)
     : api.sendMessage(channel, caption, options));
   return true;
 }

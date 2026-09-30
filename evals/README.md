@@ -65,12 +65,17 @@ rewrite provider/model), `EVAL_JUDGE_FLOOR` (default 80).
 - `fixtures/channelCases.ts` — six channel posts for the retell prompt
   (`ai-for-devs`, `sukharev-ii`, `aostrikov`, `aimastersme`, `llm-under-hood`,
   `abstractdl`), each with the sanitized HTML the retell prompt receives. The model
-  replies `{"html": …}` in Telegram HTML; the recordings in `fixtures/recorded/channel/`
-  are still the old `{"text": …}` replies, so mock `npm run eval` fails the CHANNEL
-  suite until they are re-recorded.
+  replies `{"html": …}` in Telegram HTML (`fixtures/recorded/channel/`). Live mode
+  follows production: a draft over `RETELL_MAX` gets one shorten call, and the
+  recording holds the reply production would keep.
+  The same posts feed the DRESS suite (`fixtures/recorded/dress/`): the channel
+  dress prompt (rubric, "why it matters" line, cover title and fact) run on the
+  source text. Its checks go through `finalizeDress` and the invented-number
+  guard as production does: a field production drops is a warning, an invented
+  number in the cover title (the whole dress is lost) is an error.
   `--record` without `--only` rewrites the recordings of EVERY suite, so
-  record CHANNEL one case at a time (`--only` filters each suite by id, and
-  none of these ids is used elsewhere):
+  record CHANNEL and DRESS one case at a time (`--only` filters each suite by
+  id; both suites share these ids and none is used elsewhere):
 
   ```bash
   for id in ai-for-devs sukharev-ii aostrikov aimastersme llm-under-hood abstractdl; do

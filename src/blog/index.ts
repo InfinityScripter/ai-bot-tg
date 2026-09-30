@@ -5,6 +5,7 @@ export { fetchAutoPublishFlags } from "./fetchAutoPublishFlags.js";
 export { toReleaseBody, publishRelease } from "./publishRelease.js";
 export { CAPTION_LIMIT, publishToChannel } from "./publishToChannel.js";
 export { NEWS_TAG, normalizeTags, TAG_WHITELIST } from "./normalizeTags.js";
+export { renderCover, coverSpecFor, tryRenderCover } from "./renderCover.js";
 export { PublishError, publishToBlog, toBlogPostBody } from "./publishPost.js";
 
 export type { RecentPost, PostListPage, DigestSendResult, AutoPublishFlags } from "./types.js";

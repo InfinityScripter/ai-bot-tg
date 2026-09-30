@@ -1,3 +1,4 @@
+export { linkables } from "./linkables.js";
 export { buildDigest } from "./buildDigest.js";
 export type { ModelPrice } from "./modelPrices.js";
 export { filterRelevant } from "./filterRelevant.js";
@@ -11,12 +12,17 @@ export { extractJson, completeChatJson } from "./chatCompletion.js";
 export { VENDOR_MARKERS, RELEASE_MARKERS } from "./releaseMarkers.js";
 export { extractRelease, NoModelInSourceError } from "./extractRelease.js";
 export { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevanceMarkers.js";
-export { RETELL_SYSTEM_PROMPT, buildRetellUserContent } from "./retellPrompt.js";
+export { DRESS_SYSTEM_PROMPT, buildDressUserContent } from "./dressPrompt.js";
 export { humanizeText, probeHemmingway, lastHumanizeOutcome } from "./humanize.js";
 export { detectKind, releaseKey, isReleaseItem, confirmRelease } from "./detectRelease.js";
 export { buildDigestPost, finalizeDigestPost, countDigestEntries } from "./buildDigestPost.js";
 export { toDigestRewrite, digestSummaryLine, renderDigestMarkdown } from "./renderDigestPost.js";
-
+export {
+  RETELL_MAX,
+  RETELL_SYSTEM_PROMPT,
+  buildRetellUserContent,
+  buildShortenUserContent,
+} from "./retellPrompt.js";
 export type {
   PingResult,
   DigestDraft,
@@ -25,8 +31,17 @@ export type {
   ChatJsonRequest,
   RelevanceDecision,
 } from "./types.js";
+
 export {
-  RETELL_MAX,
+  finalizeDress,
+  dropInventions,
+  dressForChannel,
+  DRESS_MAX_TOKENS,
+  DRESS_TIMEOUT_MS,
+  DRESS_TEMPERATURE,
+} from "./dressForChannel.js";
+export {
+  withDress,
   finalizeRetell,
   withSourceLine,
   cleanRetellHtml,

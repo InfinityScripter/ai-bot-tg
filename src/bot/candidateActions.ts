@@ -11,6 +11,7 @@ import {
   PROVIDERS,
   rewriteToPost,
   extractRelease,
+  dressForChannel,
   hasActiveOverride,
   assertPublishable,
   retellChannelPost,
@@ -75,6 +76,11 @@ export function loadExtraction(
     description: rewrite.description,
     coverUrl: cover,
     linkFor: (postId) => `${PUBLIC_BASE}/post/${postId}`,
+    dress: () =>
+      dressForChannel(
+        { title: rewrite.title, text: `${rewrite.description}\n\n${rewrite.content}` },
+        store,
+      ),
   };
   return {
     title: rewrite.title,
@@ -102,12 +108,7 @@ export async function runExtraction(
   if (item.kind === CandidateKind.Channel) {
     const retell = await retellChannelPost(item, store);
     store.attachRetell(id, retell);
-    return renderRetellPreview(
-      store.get(id) ?? fallback,
-      retell,
-      modelLabel,
-      item.imageUrls.length,
-    );
+    return renderRetellPreview(store.get(id) ?? fallback, retell, modelLabel);
   }
   if (item.kind === CandidateKind.Release) {
     const post = await rewriteToPost(item, store);

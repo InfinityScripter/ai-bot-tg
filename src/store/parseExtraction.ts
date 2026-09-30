@@ -1,4 +1,5 @@
 import { escapeHtml } from "../feeds/index.js";
+import { ChannelDressSchema } from "../schemas/channelDressSchema.js";
 
 import type { RewriteResult, ReleaseBundle, ChannelRetell } from "../types.js";
 
@@ -29,12 +30,23 @@ export function parseReleaseBundle(json: string | null): ReleaseBundle | null {
   }
 }
 
-/** Parses the stored retelling of a kind='channel' candidate, or null. */
+/**
+ * Parses the stored retelling of a kind='channel' candidate, or null. A dress
+ * that no longer validates is dropped: the post then gets a plain cover.
+ */
 export function parseRetell(json: string | null): ChannelRetell | null {
   if (!json) return null;
   try {
     const parsed = JSON.parse(json) as Partial<ChannelRetell> & { text?: unknown };
-    if (typeof parsed.html === "string") return { html: parsed.html };
+    if (typeof parsed.html === "string") {
+      const dress = ChannelDressSchema.safeParse(parsed.dress);
+      if (parsed.dress !== undefined && !dress.success) {
+        console.warn(
+          "[store] stored dress no longer validates, the cover falls back to the first line",
+        );
+      }
+      return { html: parsed.html, ...(dress.success ? { dress: dress.data } : {}) };
+    }
     // Rows retold before the HTML format stored plain text.
     return typeof parsed.text === "string" ? { html: escapeHtml(parsed.text) } : null;
   } catch {

@@ -10,11 +10,11 @@ vi.stubEnv("TELEGRAM_CHANNEL_ID", "@ai_first_news");
 const { createBot } = await import("../src/bot/index.js");
 const { CandidateStore } = await import("../src/store/index.js");
 const { publishToChannel } = await import("../src/blog/index.js");
-const { GateFailure } = await import("../src/llm/index.js");
+const { GateFailure, withDress } = await import("../src/llm/index.js");
 const { assertRetellPublishable } = await import("../src/bot/channelExtraction.js");
 import type { Update } from "grammy/types";
 
-import { CandidateKind, CandidateState } from "../src/enums.js";
+import { CandidateKind, ChannelRubric, CandidateState } from "../src/enums.js";
 
 import type { FeedItem } from "../src/types.js";
 
@@ -84,6 +84,7 @@ afterEach(() => {
 
 const IMG_A = "https://cdn4.telesco.pe/file/a.jpg";
 const IMG_B = "https://cdn4.telesco.pe/file/b.jpg";
+const COVER = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 
 function image(type = "image/jpeg", bytes = 3): Response {
   return new Response(new Uint8Array(bytes), { status: 200, headers: { "content-type": type } });
@@ -373,6 +374,51 @@ describe("publishToChannel", () => {
     expect(telegramCalls(fetchMock)).toHaveLength(1);
   });
 
+  it("uploads the branded cover instead of downloading the source photos", async () => {
+    const fetchMock = route(() => tgOk(78));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const out = await publishToChannel(TEXT, [IMG_A, IMG_B], COVER);
+
+    expect(out).toEqual({ postId: "tg:78" });
+    expect(
+      fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.includes("telesco")),
+    ).toEqual([]);
+    const [call] = telegramCalls(fetchMock);
+    expect(call?.method).toBe("sendPhoto");
+    const form = call?.body as FormData;
+    expect(form.get("caption")).toBe(TEXT);
+    expect((form.get("photo") as File).name).toBe("photo.png");
+  });
+
+  it("falls back to text when Telegram rejects the cover, never to the source photos", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = route((method) =>
+      method === "sendPhoto"
+        ? new Response(
+            JSON.stringify({ ok: false, description: "Bad Request: IMAGE_PROCESS_FAILED" }),
+            {
+              status: 400,
+            },
+          )
+        : tgOk(79),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(publishToChannel(TEXT, [IMG_A], COVER)).resolves.toEqual({ postId: "tg:79" });
+    expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendPhoto", "sendMessage"]);
+  });
+
+  it("sends a retelling over the caption limit as text without the cover", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = route(() => tgOk(80));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await publishToChannel("д".repeat(1100), [], COVER);
+
+    expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendMessage"]);
+  });
+
   it("never puts the bot token into an error message", async () => {
     vi.stubGlobal(
       "fetch",
@@ -444,6 +490,19 @@ describe("assertRetellPublishable", () => {
     ).toThrow(/пустой/);
   });
 
+  it("measures the 50-character minimum without the why line and the hashtag", () => {
+    const dress = {
+      rubric: ChannelRubric.Tool,
+      why: "Проверь, как новая модель ведёт себя на твоих задачах, прежде чем переезжать",
+      coverTitle: "Вышла модель",
+      coverFact: "",
+    };
+    const html = `${withDress("Коротко.", dress)}${CREDIT(184)}`;
+    expect(() => assertRetellPublishable({ html, dress }, SOURCE)).toThrow(/пустой/);
+    const full = `${withDress(BODY, dress)}${CREDIT(184)}`;
+    expect(() => assertRetellPublishable({ html: full, dress }, SOURCE)).not.toThrow();
+  });
+
   it("accepts a link to the source's own target and rejects any other", () => {
     expect(() =>
       assertRetellPublishable(retell(`${BODY} <a href="${LINK}/">тут</a>`), SOURCE),
@@ -478,24 +537,33 @@ describe("automatic channel retelling", () => {
     store.close();
   });
 
-  it("publishes every photo of the source post as one album", async () => {
+  it("publishes the branded cover built from the dress, not the source photos", async () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(
       { ...item(), imageUrl: IMG_A, imageUrls: [IMG_A, IMG_B] },
       true,
     )!;
-    retellChannelPost.mockResolvedValue({ html: TEXT });
-    const fetchMock = route(
-      () =>
-        new Response(JSON.stringify({ ok: true, result: [{ message_id: 96 }] }), { status: 200 }),
-    );
+    const dress = {
+      rubric: ChannelRubric.Model,
+      why: "",
+      coverTitle: "Вышла новая модель",
+      coverFact: "",
+    };
+    retellChannelPost.mockResolvedValue({ html: TEXT, dress });
+    const fetchMock = route(() => tgOk(96));
     vi.stubGlobal("fetch", fetchMock);
     const { autoPublishCandidate } = makeBot(store);
 
     await autoPublishCandidate(store.get(id)!);
 
     expect(store.get(id)!.blogPostId).toBe("tg:96");
-    expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendMediaGroup"]);
+    expect(store.getRetell(store.get(id)!)?.dress).toEqual(dress);
+    const [call, ...rest] = telegramCalls(fetchMock);
+    expect(rest).toEqual([]);
+    expect(call?.method).toBe("sendPhoto");
+    const photo = (call?.body as FormData).get("photo") as File;
+    expect(photo.name).toBe("photo.png");
+    expect(photo.size).toBeGreaterThan(5000);
     store.close();
   });
 

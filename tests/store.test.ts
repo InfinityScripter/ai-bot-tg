@@ -408,4 +408,12 @@ describe("parseRetell", () => {
     });
     expect(parseRetell("{}")).toBeNull();
   });
+
+  it("keeps a valid dress for the cover and ignores a broken one", () => {
+    const dress = { rubric: "релиз", why: "", coverTitle: "Вышла модель", coverFact: "" };
+    expect(parseRetell(JSON.stringify({ html: "x", dress }))).toEqual({ html: "x", dress });
+    expect(parseRetell(JSON.stringify({ html: "x", dress: { rubric: "?" } }))).toEqual({
+      html: "x",
+    });
+  });
 });

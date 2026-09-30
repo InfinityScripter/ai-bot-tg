@@ -7,6 +7,7 @@
  */
 
 import { pass, fail } from "./types.js";
+import { numbersOf } from "../../src/llm/numbersOf.js";
 import { RETELL_MAX, withSourceLine, cleanRetellHtml } from "../../src/llm/index.js";
 import { hrefsOf, tagNamesOf, visibleText, sanitizeTelegramHtml } from "../../src/feeds/index.js";
 
@@ -19,13 +20,6 @@ const TELEGRAM_TAGS = new Set(
   "b strong i em u ins s strike del a code pre blockquote br".split(" "),
 );
 const normalizeHref = (href: string) => href.trim().replace(/\/+$/, "");
-
-function numbersOf(text: string): string[] {
-  // Space-like separators only: posts list tariffs one per line ("x5\n200$"), and a
-  // newline join turned 5 and 200 into a fake "5200" (abstractDL, 2026-09-30).
-  const normalised = text.replace(/(\d)[ \u00a0\u2009\u202f](?=\d{3}(?!\d))/g, "$1");
-  return (normalised.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(",", "."));
-}
 
 /** What the sanitizer would have to repair: unknown tags, unbalanced tags, dropped links. */
 function markupProblems(html: string): string[] {

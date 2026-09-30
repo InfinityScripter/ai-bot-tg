@@ -10,12 +10,17 @@ vi.mock("../src/llm/humanize.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/llm/humanize.js")>();
   return { ...actual, humanizeText: (t: string) => humanizeText(t) };
 });
+const dressForChannel = vi.fn(async (..._a: unknown[]): Promise<unknown> => null);
+vi.mock("../src/llm/dressForChannel.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/llm/dressForChannel.js")>();
+  return { ...actual, dressForChannel: (...a: unknown[]) => dressForChannel(...a) };
+});
 
 const { retellChannelPost, finalizeRetell, withSourceLine, cleanRetellHtml } =
   await import("../src/llm/retellChannelPost.js");
 const { buildRetellUserContent } = await import("../src/llm/retellPrompt.js");
 const { CandidateStore } = await import("../src/store/index.js");
-import { CandidateKind } from "../src/enums.js";
+import { CandidateKind, ChannelRubric } from "../src/enums.js";
 
 import type { FeedItem } from "../src/types.js";
 
@@ -38,6 +43,8 @@ afterEach(() => {
   completeChatJson.mockReset();
   humanizeText.mockReset();
   humanizeText.mockImplementation(async (t: string) => t);
+  dressForChannel.mockReset();
+  dressForChannel.mockResolvedValue(null);
 });
 
 describe("finalizeRetell", () => {
@@ -135,7 +142,7 @@ describe("retellChannelPost", () => {
     store.close();
   });
 
-  it("asks for 700 characters and does not ask again when the draft fits", async () => {
+  it("asks for 560 characters and does not ask again when the draft fits", async () => {
     completeChatJson.mockResolvedValue(JSON.stringify({ html: "<b>Суть</b>\nКоротко." }));
     const store = new CandidateStore(":memory:");
 
@@ -143,7 +150,7 @@ describe("retellChannelPost", () => {
 
     expect(completeChatJson).toHaveBeenCalledTimes(1);
     const [, , req] = completeChatJson.mock.calls[0] as [unknown, unknown, { system: string }];
-    expect(req.system).toContain("До 700 видимых символов");
+    expect(req.system).toContain("До 560 видимых символов");
     store.close();
   });
 
@@ -160,7 +167,7 @@ describe("retellChannelPost", () => {
     const [, , req] = completeChatJson.mock.calls[1] as [unknown, unknown, { user: string }];
     expect(req.user).toContain("<b>Первая строка</b>");
     expect(req.user).toContain("д".repeat(950));
-    expect(req.user).toContain("700");
+    expect(req.user).toContain("560");
     expect(result.html).toBe(`<b>Суть</b>\nКороче.${CREDIT}`);
     store.close();
   });
@@ -211,6 +218,75 @@ describe("retellChannelPost", () => {
     const store = new CandidateStore(":memory:");
 
     expect((await retellChannelPost(ITEM, store)).html).toBe(`${model}${CREDIT}`);
+    store.close();
+  });
+
+  it("puts the why line and the rubric hashtag before the credit and keeps the dress", async () => {
+    const model = `<b>Суть поста</b>\nПро <a href="${LINK}">статью</a>.`;
+    const dress = {
+      rubric: ChannelRubric.Tool,
+      why: "Проверь баланс кредитов",
+      coverTitle: "Суть поста",
+      coverFact: "",
+    };
+    completeChatJson.mockResolvedValue(JSON.stringify({ html: model }));
+    dressForChannel.mockResolvedValueOnce(dress);
+    const store = new CandidateStore(":memory:");
+
+    const result = await retellChannelPost(ITEM, store);
+
+    expect(result.html).toBe(
+      `${model}\n\n💡 <b>Зачем тебе это:</b> Проверь баланс кредитов\n\n#инструмент${CREDIT}`,
+    );
+    expect(result.dress).toEqual(dress);
+    expect(dressForChannel).toHaveBeenCalledWith(
+      { title: "", text: "Суть поста\nПро статью." },
+      store,
+    );
+    store.close();
+  });
+
+  it("escapes the why line and leaves an empty one out, keeping the hashtag", async () => {
+    completeChatJson.mockResolvedValue(JSON.stringify({ html: "<b>Суть</b>" }));
+    const dress = { rubric: ChannelRubric.Opinion, why: "", coverTitle: "Суть", coverFact: "" };
+    dressForChannel.mockResolvedValueOnce({ ...dress, why: "Сравни <b> & </b>" });
+    dressForChannel.mockResolvedValueOnce(dress);
+    const store = new CandidateStore(":memory:");
+
+    expect((await retellChannelPost(ITEM, store)).html).toContain(
+      "<b>Зачем тебе это:</b> Сравни &lt;b&gt; &amp; &lt;/b&gt;\n\n#мнение",
+    );
+    expect((await retellChannelPost(ITEM, store)).html).toBe(`<b>Суть</b>\n\n#мнение${CREDIT}`);
+    store.close();
+  });
+
+  it("leaves the why line out when it would push the caption over 1024 characters", async () => {
+    const long = `<b>Суть</b>\n${"д".repeat(900)}`;
+    completeChatJson.mockResolvedValue(JSON.stringify({ html: long }));
+    const dress = {
+      rubric: ChannelRubric.Tool,
+      why: "Проверь это на своих задачах, прежде чем обновляться: изменений больше, чем кажется",
+      coverTitle: "Суть",
+      coverFact: "",
+    };
+    dressForChannel.mockResolvedValueOnce(dress);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const store = new CandidateStore(":memory:");
+
+    const result = await retellChannelPost(ITEM, store);
+
+    expect(result.html).toBe(`${long}\n\n#инструмент${CREDIT}`);
+    expect(result.dress).toEqual({ ...dress, why: "" });
+    store.close();
+  });
+
+  it("publishes the plain retelling without a dress key when dressing gave nothing", async () => {
+    completeChatJson.mockResolvedValue(JSON.stringify({ html: "<b>Суть</b>" }));
+    const store = new CandidateStore(":memory:");
+
+    const result = await retellChannelPost(ITEM, store);
+
+    expect(result).toEqual({ html: `<b>Суть</b>${CREDIT}` });
     store.close();
   });
 

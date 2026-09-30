@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
+    "@resvg/resvg-js": "^2.6.2",
     "better-sqlite3": "^11.8.0",
     "croner": "^9.0.0",
     "dotenv": "^16.4.0",

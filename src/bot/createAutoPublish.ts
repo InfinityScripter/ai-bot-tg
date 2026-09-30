@@ -116,7 +116,7 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
       await editCard(candidate, `✅ Автоопубликовано: ${extracted.title}${note}`);
       if (extracted.crossPost) {
         try {
-          await crossPostToChannel(bot.api, extracted.crossPost, postId, notificationSignal());
+          await crossPostToChannel(bot.api, extracted.crossPost, postId, notificationSignal);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           await bot.api

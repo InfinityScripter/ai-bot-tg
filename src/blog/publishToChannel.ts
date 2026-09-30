@@ -109,27 +109,33 @@ function photoRequest(chatId: string, html: string, photos: Blob[]): [string, Fo
 }
 
 /**
- * Posts a retelling (Telegram HTML) to the channel: the source post's photos
- * uploaded as files with the retelling as caption, else a text message. Photos
- * that fail to download are dropped; photos Telegram rejected as media
- * degrade to one photo, then to text. Every fallback is logged.
+ * Posts a retelling (Telegram HTML) to the channel with the retelling as the
+ * caption: the branded cover when there is one (the source photos are then not
+ * used at all), else the source post's photos uploaded as files, else a text
+ * message. Photos that fail to download are dropped; photos Telegram rejected
+ * as media degrade to one photo, then to text. Every fallback is logged.
  */
-export async function publishToChannel(html: string, imageUrls: string[]): Promise<PublishOutcome> {
+export async function publishToChannel(
+  html: string,
+  imageUrls: string[],
+  cover: Uint8Array | null = null,
+): Promise<PublishOutcome> {
   const chatId = CONFIG.TELEGRAM_CHANNEL_ID;
   if (!chatId) throw new PublishError("TELEGRAM_CHANNEL_ID не задан — некуда публиковать", false);
   // Only the manual path gets here with a long retelling (the auto gate stops it);
   // Telegram would refuse it as a caption, so it goes out as text right away.
   const visible = visibleText(html).length;
-  const tooLong = visible > CAPTION_LIMIT && imageUrls.length > 0;
+  const tooLong = visible > CAPTION_LIMIT && (imageUrls.length > 0 || cover !== null);
   if (tooLong) {
     console.warn(
       `[channels] ${visible} characters exceed the ${CAPTION_LIMIT} caption limit, sending text without photos`,
     );
   }
-  const usable = tooLong ? [] : imageUrls.slice(0, MAX_PHOTOS);
-  const photos = (await Promise.all(usable.map(downloadImage))).filter(
+  const usable = tooLong || cover ? [] : imageUrls.slice(0, MAX_PHOTOS);
+  const downloaded = (await Promise.all(usable.map(downloadImage))).filter(
     (photo): photo is Blob => photo !== null,
   );
+  const photos = cover && !tooLong ? [new Blob([cover], { type: "image/png" })] : downloaded;
   // An album Telegram refused goes out with its first photo before giving up on photos.
   const attempts = photos.length > 1 ? [photos, photos.slice(0, 1)] : [photos];
   for (const attempt of attempts.filter((list) => list.length > 0)) {

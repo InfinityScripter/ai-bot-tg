@@ -2,8 +2,13 @@ import { escapeHtml, sanitizeTelegramHtml } from "../feeds/index.js";
 
 import type { FeedItem } from "../types.js";
 
-/** Well under the 900 cap: models overshoot a character target by 5-40%. */
-const RETELL_TARGET = 700;
+/**
+ * Visible-text cap before the why line, hashtag and source line: together they
+ * must fit a photo caption, which holds 1024 characters in total.
+ */
+export const RETELL_MAX = 720;
+/** Well under the cap: models overshoot a character target by 5-40%. */
+const RETELL_TARGET = 560;
 
 export const RETELL_SYSTEM_PROMPT = `Ты ведёшь Telegram-канал про ИИ для разработчиков.
 Перескажи пост из другого канала своими словами для своих подписчиков.
@@ -40,5 +45,5 @@ export function buildShortenUserContent(item: FeedItem, draft: string): string {
 <draft_json>
 ${JSON.stringify({ html: draft })}
 </draft_json>
-Черновик пересказа выше длиннее 900 видимых символов. Сократи его до ${RETELL_TARGET}: оставь главное, ту же разметку, те же ссылки и голос автора.`;
+Черновик пересказа выше длиннее ${RETELL_MAX} видимых символов. Сократи его до ${RETELL_TARGET}: оставь главное, ту же разметку, те же ссылки и голос автора.`;
 }

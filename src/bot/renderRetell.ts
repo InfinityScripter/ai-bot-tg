@@ -4,21 +4,23 @@ import { CAPTION_LIMIT } from "../blog/index.js";
 
 import type { Candidate, ChannelRetell } from "../types.js";
 
-/** Preview of a retelling: the text as the channel reader sees it, and how many photos go with it. */
+/** Preview of a retelling: the text as the channel reader sees it, and what its cover will say. */
 export function renderRetellPreview(
   candidate: Candidate,
   retell: ChannelRetell,
   modelLabel: string,
-  photoCount: number,
 ): string {
   const text = visibleText(retell.html);
-  const withoutPhotos = text.length > CAPTION_LIMIT && photoCount > 0;
+  const coverTitle = retell.dress ? escapeMarkdown(retell.dress.coverTitle) : "первая строка поста";
   return [
-    `📣 *Пересказ для канала* (${text.length} симв., фото: ${photoCount})`,
-    ...(withoutPhotos ? [`⚠️ Пересказ длиннее ${CAPTION_LIMIT} — уйдёт без фото`] : []),
+    `📣 *Пересказ для канала* (${text.length} симв.)`,
+    ...(text.length > CAPTION_LIMIT
+      ? [`⚠️ Пересказ длиннее ${CAPTION_LIMIT} — уйдёт без обложки`]
+      : []),
     "",
     escapeMarkdown(text),
     "",
+    `🖼 Обложка: ${coverTitle}`,
     `🤖 Модель: ${escapeMarkdown(modelLabel)}`,
     `Оригинал: ${escapeMarkdown(candidate.sourceUrl)}`,
   ].join("\n");

@@ -3,10 +3,10 @@ import type { Bot, Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 
 import { CONFIG } from "../config.js";
-import { CandidateState } from "../enums.js";
 import { DIGEST_POST_CALLBACK } from "../consts.js";
 import { ackSilently, logEditError } from "./edit.js";
 import { truncate, escapeMarkdown } from "../utils.js";
+import { ChannelRubric, CandidateState } from "../enums.js";
 import { buildDigestPost } from "../llm/buildDigestPost.js";
 import {
   toDigestRewrite,
@@ -99,6 +99,12 @@ export function createDigestPostFlow(bot: Bot, store: CandidateStore) {
             description: post.intro,
             coverUrl: cover ?? null,
             linkFor: (id) => `${CONFIG.BLOG_PUBLIC_URL.replace(/\/$/, "")}/post/${id}`,
+            dress: async () => ({
+              rubric: ChannelRubric.Digest,
+              why: "",
+              coverTitle: post.title,
+              coverFact: "",
+            }),
           },
           postId,
         );

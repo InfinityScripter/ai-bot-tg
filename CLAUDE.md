@@ -87,7 +87,11 @@ manual URL-or-text ─► always the RAW → 🔄 → ✅ manual flow (never aut
 RELEASE_WATCH_CRON ─► fresh unseen marker hits ─► LLM confirm ─► release path above
   (non-releases stay unseen for the daily run; rejections cached in memory)
 
-CHANNEL_WATCH_CRON ─► t.me/s pages ─► fresh originals ─► relevance ─► pick 1 ─► retell+humanizer ─► channel only (prod `15 10-21 * * *`: offset from RELEASE_WATCH_CRON)
+CHANNEL_WATCH_CRON ─► t.me/s pages ─► fresh originals ─► relevance ─► pick 1 ─► retell+humanizer+dress ─► channel only (prod `15 10-21 * * *`: offset from RELEASE_WATCH_CRON)
+
+every channel post (retell, news/release/digest announcement) ─► branded PNG cover
+  (src/blog/renderCover.ts) + dress (rubric, "why" line, cover text; fail-soft:
+  no dress = plain post, no cover = the old photos)
 ```
 
 Flags: `fetchAutoPublishFlags` reads `autoPublishReleases` / `autoPublishNews`

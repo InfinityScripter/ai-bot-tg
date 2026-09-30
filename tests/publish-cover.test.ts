@@ -1,7 +1,13 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
 import { CandidateStore } from "../src/store/index.js";
-import { publishClaimedCandidate } from "../src/bot/candidateActions.js";
+import { loadExtraction, publishClaimedCandidate } from "../src/bot/candidateActions.js";
+
+const { dressForChannel } = vi.hoisted(() => ({ dressForChannel: vi.fn(async () => null) }));
+vi.mock("../src/llm/dressForChannel.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/llm/dressForChannel.js")>()),
+  dressForChannel,
+}));
 
 import type { FeedItem, RewriteResult } from "../src/types.js";
 
@@ -106,6 +112,22 @@ describe("publishClaimedCandidate cover handling", () => {
     const { extracted } = await publishClaimedCandidate(store, readyCandidate(store, feedItem()));
 
     expect(extracted.crossPost?.coverUrl).toBeNull();
+    store.close();
+  });
+});
+
+describe("channel announcement dress", () => {
+  it("is made from the article's description and body, only when asked for", async () => {
+    const store = new CandidateStore(":memory:");
+    const extracted = loadExtraction(store, readyCandidate(store, feedItem()))!;
+    expect(dressForChannel).not.toHaveBeenCalled();
+
+    await extracted.crossPost!.dress!();
+
+    expect(dressForChannel).toHaveBeenCalledWith(
+      { title: REWRITE.title, text: `${REWRITE.description}\n\n${REWRITE.content}` },
+      store,
+    );
     store.close();
   });
 });

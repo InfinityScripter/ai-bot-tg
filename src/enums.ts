@@ -119,6 +119,19 @@ export enum MenuAction {
   Help = "help",
 }
 
+/**
+ * Rubric of a channel post: the hashtag under the text and the label on the
+ * cover. The model picks one of the first five; Digest is set by code only.
+ */
+export enum ChannelRubric {
+  Release = "релиз",
+  Tool = "инструмент",
+  Model = "модель",
+  Research = "исследование",
+  Opinion = "мнение",
+  Digest = "дайджест",
+}
+
 /** Which stage of the relevance filter produced a decision (diagnostic field). */
 export enum RelevanceStage {
   /** Dropped by an off-topic keyword marker. */

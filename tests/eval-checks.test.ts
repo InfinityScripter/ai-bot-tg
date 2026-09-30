@@ -1,6 +1,8 @@
 import { it, expect, describe } from "vitest";
 
+import { RETELL_MAX } from "../src/llm/retellPrompt.js";
 import { isCasePassing } from "../evals/checks/types.js";
+import { checkDress } from "../evals/checks/dressChecks.js";
 import { finalizeRewrite } from "../src/llm/rewriteToPost.js";
 import { parseJudgeVerdict } from "../evals/judge/runJudge.js";
 import { checkChannelRetell } from "../evals/checks/channelChecks.js";
@@ -454,9 +456,9 @@ describe("checkChannelRetell", () => {
     ).toEqual([]);
   });
 
-  it("measures the 900 cap on visible text, not on markup", () => {
-    expect(failed(`<b>${"x".repeat(900)}</b>`)).not.toContain("channel.length");
-    expect(failed(`<i>${"x".repeat(901)}</i>`)).toContain("channel.length");
+  it("measures the RETELL_MAX cap on visible text, not on markup", () => {
+    expect(failed(`<b>${"x".repeat(RETELL_MAX)}</b>`)).not.toContain("channel.length");
+    expect(failed(`<i>${"x".repeat(RETELL_MAX + 1)}</i>`)).toContain("channel.length");
   });
 
   it("keeps one credit line even when the model writes its own", () => {
@@ -501,5 +503,61 @@ describe("checkChannelRetell", () => {
     expect(
       failed("за 100 долларов — x5, за 200 долларов — x10 вместо x20, за 500 — x25", tariffs),
     ).toEqual([]);
+  });
+});
+
+describe("checkDress", () => {
+  const item = {
+    dedupKey: "u",
+    url: "https://t.me/c/1",
+    title: "t",
+    snippet: "Квоты: 100$ = x5, 200$ = x10 (раньше было x20).",
+    feedTitle: "@c",
+    imageUrl: null,
+    imageUrls: [],
+    publishedAt: null,
+  };
+  const good = {
+    rubric: "инструмент",
+    why: "Проверь лимиты на тарифе за $200",
+    coverTitle: "Codex урезал квоты вдвое",
+    coverFact: "$200: было x20, стало x10",
+  };
+  const failing = (dress: object) =>
+    checkDress(JSON.stringify(dress), item.snippet)
+      .filter((f) => !f.ok)
+      .map((f) => `${f.id}:${f.severity}`);
+
+  it("passes a dress built only from the source's facts", () => {
+    expect(failing(good)).toEqual([]);
+  });
+
+  it("warns when production drops a field for an invented number", () => {
+    expect(failing({ ...good, coverFact: "в 3 раза меньше" })).toEqual([
+      "dress.numbers:warn",
+      "dress.dropped:warn",
+    ]);
+  });
+
+  it("fails an invented number in the cover title: the whole dress is lost", () => {
+    expect(failing({ ...good, coverTitle: "Codex урезал квоты в 3 раза" })).toEqual([
+      "dress.numbers:error",
+    ]);
+  });
+
+  it("warns on a long title and fails one the cover would cut", () => {
+    expect(failing({ ...good, coverTitle: "д".repeat(61) })).toEqual(["dress.title:warn"]);
+    expect(failing({ ...good, coverTitle: "д".repeat(94) })).toEqual(["dress.title:error"]);
+  });
+
+  it("warns when production would drop the why line or the fact", () => {
+    expect(failing({ ...good, why: "Читай https://ex.com" })).toEqual(["dress.dropped:warn"]);
+    expect(failing({ ...good, coverFact: "x".repeat(51) })).toEqual(["dress.dropped:warn"]);
+  });
+
+  it("warns on a long dash", () => {
+    expect(failing({ ...good, why: "Квоты урезали — проверь лимиты" })).toEqual([
+      "dress.dash:warn",
+    ]);
   });
 });

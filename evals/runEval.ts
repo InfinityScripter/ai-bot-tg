@@ -102,10 +102,18 @@ async function main(): Promise<void> {
       completeChatJson,
       resolveActiveProvider,
       PROVIDERS,
+      RETELL_MAX,
+      cleanRetellHtml,
       RETELL_SYSTEM_PROMPT,
       buildRetellUserContent,
+      buildShortenUserContent,
+      DRESS_SYSTEM_PROMPT,
+      buildDressUserContent,
+      DRESS_MAX_TOKENS,
+      DRESS_TEMPERATURE,
     },
     { CONFIG },
+    { visibleText },
     { ProviderName },
     { CandidateStore },
     {
@@ -118,6 +126,7 @@ async function main(): Promise<void> {
     { checkRelevance, parseRelevanceReply },
     { checkRelease, parseReleaseReply },
     { checkChannelRetell },
+    { checkDress },
     { CONFIRM_RELEASE_SYSTEM_PROMPT, buildConfirmReleaseUserContent },
     { RELEASE_CASES },
     { CHANNEL_CASES },
@@ -129,6 +138,7 @@ async function main(): Promise<void> {
   ] = await Promise.all([
     import("../src/llm/index.js"),
     import("../src/config.js"),
+    import("../src/feeds/index.js"),
     import("../src/enums.js"),
     import("../src/store/index.js"),
     import("../src/llm/prompts.js"),
@@ -136,6 +146,7 @@ async function main(): Promise<void> {
     import("./checks/relevanceChecks.js"),
     import("./checks/releaseChecks.js"),
     import("./checks/channelChecks.js"),
+    import("./checks/dressChecks.js"),
     import("../src/llm/detectRelease.js"),
     import("./fixtures/releaseCases.js"),
     import("./fixtures/channelCases.js"),
@@ -311,14 +322,28 @@ async function main(): Promise<void> {
       let raw: string;
       if (ARGS.mode === "live") {
         const { provider, model } = resolveActiveProvider(store);
-        raw =
+        const ask = async (user: string) =>
           (await completeChatJson(provider, model, {
             system: RETELL_SYSTEM_PROMPT,
-            user: buildRetellUserContent(c.item),
+            user,
             maxTokens: RETELL_MAX_TOKENS,
             temperature: RETELL_TEMPERATURE,
             refusalLabel: "пересказывать пост",
           })) ?? "";
+        raw = await ask(buildRetellUserContent(c.item));
+        // Production asks once more to shorten a draft over the cap; the eval
+        // records what production would keep.
+        const draft = cleanRetellHtml(finalizeRetell(raw).html, c.item);
+        if (visibleText(draft).length > RETELL_MAX) {
+          const kept = await ask(buildShortenUserContent(c.item, draft))
+            .then((reply) => ({ reply, html: cleanRetellHtml(finalizeRetell(reply).html, c.item) }))
+            .catch((err: unknown) => {
+              // eslint-disable-next-line no-console
+              console.warn(`  shorten call failed, the draft stands: ${String(err)}`);
+              return null;
+            });
+          if (kept && visibleText(kept.html).length < visibleText(draft).length) raw = kept.reply;
+        }
         if (ARGS.record) writeRecording(join("channel", `${c.id}.json`), raw);
       } else {
         raw = readRecording(join("channel", `${c.id}.json`));
@@ -336,8 +361,49 @@ async function main(): Promise<void> {
   }
   const channelOk = printSummary("CHANNEL", channelReports);
 
+  // ---- CHANNEL DRESS ---- (same posts as CHANNEL: --only <id> runs both)
+  // Production dresses the retelling, not the source post, so the dress input
+  // is the CHANNEL recording as production would publish it (minus humanizer).
+  // eslint-disable-next-line no-console
+  console.log("=== DRESS ===");
+  const dressReports: import("./report.js").CaseReport[] = [];
+  for (const c of CHANNEL_CASES) {
+    if (ARGS.only && c.id !== ARGS.only) continue;
+
+    let findings;
+    try {
+      const retell = finalizeRetell(readRecording(join("channel", `${c.id}.json`))).html;
+      const retold = visibleText(cleanRetellHtml(retell, c.item));
+      let raw: string;
+      if (ARGS.mode === "live") {
+        const { provider, model } = resolveActiveProvider(store);
+        raw =
+          (await completeChatJson(provider, model, {
+            system: DRESS_SYSTEM_PROMPT,
+            user: buildDressUserContent({ title: "", text: retold }),
+            maxTokens: DRESS_MAX_TOKENS,
+            temperature: DRESS_TEMPERATURE,
+            refusalLabel: "оформлять пост",
+          })) ?? "";
+        if (ARGS.record) writeRecording(join("dress", `${c.id}.json`), raw);
+      } else {
+        raw = readRecording(join("dress", `${c.id}.json`));
+      }
+      findings = checkDress(raw, retold);
+    } catch (err) {
+      findings = [
+        { id: "dress.produce", ok: false, severity: "error" as const, detail: String(err) },
+      ];
+    }
+
+    const failed = !findingsPass(findings);
+    dressReports.push({ id: c.id, about: c.about, findings, failed });
+    printCase({ id: c.id, about: c.about, findings, failed });
+  }
+  const dressOk = printSummary("DRESS", dressReports);
+
   store.close();
-  process.exit(rewriteOk && relevanceOk && releaseOk && channelOk ? 0 : 1);
+  process.exit(rewriteOk && relevanceOk && releaseOk && channelOk && dressOk ? 0 : 1);
 }
 
 main().catch((err) => {
