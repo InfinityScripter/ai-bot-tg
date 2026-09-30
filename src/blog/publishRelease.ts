@@ -16,7 +16,11 @@ export function toReleaseBody(release: ReleaseResult): CreateReleasePayload {
     vendor: release.vendor,
     model: release.model,
     version: release.version,
-    releasedAt: release.releasedAt,
+    // The extraction prompt asks for YYYY-MM-DD, the changelog API rejects
+    // anything but a full ISO datetime; same midnight-UTC form as importCatalog.
+    releasedAt: /^\d{4}-\d{2}-\d{2}$/.test(release.releasedAt)
+      ? `${release.releasedAt}T00:00:00Z`
+      : release.releasedAt,
     sourceUrl: release.sourceUrl,
     contextTokens: release.contextTokens,
     priceIn: release.priceIn,

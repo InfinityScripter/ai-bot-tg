@@ -250,6 +250,14 @@ export function pruneOld(db: Database.Database, days = 90): number {
   return tx() as number;
 }
 
+/** Marks whether an automatic failure card still has to reach the owner. */
+export function setFailureNoticePending(db: Database.Database, id: number, pending: boolean): void {
+  db.prepare(`UPDATE candidates SET failure_notice_pending = ? WHERE id = ?`).run(
+    pending ? 1 : 0,
+    id,
+  );
+}
+
 /** Records the Telegram message id of the approval DM. */
 export function setTelegramMessage(db: Database.Database, id: number, messageId: number): void {
   db.prepare(

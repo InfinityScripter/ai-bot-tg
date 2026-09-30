@@ -44,7 +44,7 @@ describe("toReleaseBody", () => {
       vendor: "OpenAI",
       model: "GPT",
       version: "5",
-      releasedAt: "2026-06-01",
+      releasedAt: "2026-06-01T00:00:00Z",
       sourceUrl: "https://example.com/release",
       contextTokens: 400000,
       priceIn: 1.25,
@@ -60,6 +60,16 @@ describe("toReleaseBody", () => {
     expect(body.priceOut).toBeNull();
     expect(body.contextTokens).toBeNull();
     expect(body.sourceName).toBeNull();
+  });
+
+  it("sends a date-only releasedAt as a datetime, which the changelog API requires", () => {
+    // 2026-09-30: the GPT-6.1 Sol card got 400 "releasedAt: Invalid ISO datetime".
+    expect(toReleaseBody({ ...RELEASE, releasedAt: "2026-09-30" }).releasedAt).toBe(
+      "2026-09-30T00:00:00Z",
+    );
+    expect(toReleaseBody({ ...RELEASE, releasedAt: "2026-09-30T12:00:00.000Z" }).releasedAt).toBe(
+      "2026-09-30T12:00:00.000Z",
+    );
   });
 
   it("does not send a verdict (bot drafts have no owner verdict)", () => {

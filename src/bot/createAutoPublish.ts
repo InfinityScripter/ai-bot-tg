@@ -35,11 +35,12 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
     }
   }
 
+  /** Shows the card; true once Telegram holds it (edited in place or sent). */
   async function editCard(
     candidate: Candidate,
     text: string,
     keyboard?: InlineKeyboard,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const current = store.get(candidate.id) ?? candidate;
     if (current.tgMessageId) {
       try {
@@ -60,8 +61,11 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
             )
             .catch(logEditError("auto-publish clear markup"));
         }
-        return;
+        return true;
       } catch (err) {
+        // The card already shows this exact text: it is delivered. Sending a
+        // new message here is what flooded the chat on every restart.
+        if (String(err).includes("message is not modified")) return true;
         logEditError("auto-publish edit card")(err);
       }
     }
@@ -73,27 +77,28 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
         notificationSignal(),
       );
       store.setTelegramMessage(candidate.id, message.message_id);
+      return true;
     } catch (err) {
       logEditError("auto-publish send card")(err);
+      return false;
     }
   }
 
-  async function showFailure(candidate: Candidate, err: unknown): Promise<void> {
+  async function showFailure(candidate: Candidate, err: unknown): Promise<boolean> {
     const current = store.get(candidate.id) ?? candidate;
     const message = err instanceof Error ? err.message : String(err);
     if (current.state === CandidateState.NeedsVerification) {
-      await editCard(
+      return editCard(
         current,
         `❓ Автопубликация не подтверждена: ${message}\n\nПост мог появиться — проверьте блог перед повтором.`,
         previewKeyboard(current.id),
       );
-      return;
     }
     const keyboard =
       current.state === CandidateState.PendingReview
         ? previewKeyboard(current.id)
         : rawKeyboard(current.id);
-    await editCard(current, `⚠️ Автопубликация не удалась: ${message}`, keyboard);
+    return editCard(current, `⚠️ Автопубликация не удалась: ${message}`, keyboard);
   }
 
   async function runAutomaticPublish(candidate: Candidate): Promise<void> {
@@ -122,7 +127,10 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
       }
     } catch (err) {
       await progress;
-      await showFailure(candidate, err);
+      // Owed until Telegram takes it: a crash or a failed send here leaves the
+      // flag set, and notifyAutomaticFailures delivers the card on next boot.
+      store.setFailureNoticePending(candidate.id, true);
+      if (await showFailure(candidate, err)) store.setFailureNoticePending(candidate.id, false);
       throw err;
     }
   }
@@ -143,14 +151,20 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
     }
   }
 
+  /**
+   * Boot-time replay of failure cards that never reached the owner. One at a
+   * time: a parallel burst trips Telegram's rate limit, and the 5 s
+   * notification timeout then aborts the requests auto-retry would have waited
+   * out. A card that fails again stays owed for the next boot.
+   */
   async function notifyAutomaticFailures(): Promise<void> {
-    await Promise.allSettled(
-      store
-        .listAutomaticFailures()
-        .map((candidate) =>
-          showFailure(candidate, candidate.error ?? "Требуется ручное продолжение."),
-        ),
-    );
+    for (const candidate of store.listAutomaticFailures()) {
+      const delivered = await showFailure(
+        candidate,
+        candidate.error ?? "Требуется ручное продолжение.",
+      );
+      if (delivered) store.setFailureNoticePending(candidate.id, false);
+    }
   }
 
   return { autoPublishCandidate, notifyAutomaticFailures, drain };

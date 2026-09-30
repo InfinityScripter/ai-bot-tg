@@ -54,6 +54,11 @@ export const MIGRATIONS = [
   // (SQLite-safe on ADD COLUMN); no second migration or column needed.
   `ALTER TABLE candidates ADD COLUMN kind TEXT NOT NULL DEFAULT 'news'`,
   `ALTER TABLE candidates ADD COLUMN auto_publish INTEGER NOT NULL DEFAULT 0`,
+  // 1 while an automatic failure card is owed to the owner (set before the
+  // card is shown, cleared once Telegram accepted it). DEFAULT 0 marks every
+  // pre-existing failure as already shown, so adding the column cannot replay
+  // months of old cards on the next boot.
+  `ALTER TABLE candidates ADD COLUMN failure_notice_pending INTEGER NOT NULL DEFAULT 0`,
 ];
 // The UNIQUE constraint on dedup_key already creates an index; state-запросы
 // (listByState / countsByState / claim / prune) кроет idx_candidates_state

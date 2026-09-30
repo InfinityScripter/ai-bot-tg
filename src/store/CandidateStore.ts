@@ -98,9 +98,14 @@ export class CandidateStore {
     return queries.listRecoveredAutomatic(this.db);
   }
 
-  /** Automatic failures whose Telegram recovery card may need replaying on boot. */
+  /** Automatic failures whose Telegram card has not reached the owner yet. */
   listAutomaticFailures(): Candidate[] {
     return queries.listAutomaticFailures(this.db);
+  }
+
+  /** Marks whether an automatic failure card still has to reach the owner. */
+  setFailureNoticePending(id: number, pending: boolean): void {
+    mutations.setFailureNoticePending(this.db, id, pending);
   }
 
   // --- daily digest queue (DIGEST_POSTS=on) --------------------------------

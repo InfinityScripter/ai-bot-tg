@@ -34,7 +34,8 @@ export function listDigestQueue(db: Database.Database): Candidate[] {
 export function listAutomaticFailures(db: Database.Database): Candidate[] {
   return list(
     db,
-    "SELECT * FROM candidates WHERE auto_publish = 1 AND state IN (?, ?) ORDER BY id",
+    `SELECT * FROM candidates
+      WHERE auto_publish = 1 AND failure_notice_pending = 1 AND state IN (?, ?) ORDER BY id`,
     CandidateState.RewriteFailed,
     CandidateState.PendingReview,
   );

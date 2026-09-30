@@ -145,22 +145,81 @@ describe("automatic collection publishing", () => {
     store.close();
   });
 
-  it("replays a recovery card for an automatic failure on startup", async () => {
+  it("replays an owed failure card on startup once, then never again", async () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(feedItem(), true)!;
     store.setState(id, CandidateState.RewriteFailed, "LLM unavailable");
+    store.setFailureNoticePending(id, true);
+    const { apiCalls, notifyAutomaticFailures } = makeBot(store);
+
+    await notifyAutomaticFailures();
+    await notifyAutomaticFailures();
+
+    const sent = apiCalls.filter(({ method }) => method === "sendMessage");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.payload).toMatchObject({
+      text: expect.stringContaining("LLM unavailable"),
+      reply_markup: expect.any(Object),
+    });
+    expect(store.get(id)?.tgMessageId).toBe(42);
+    store.close();
+  });
+
+  it("does not replay a failure whose card the owner already got", async () => {
+    // The restart flood of 2026-09-30: 97 old failures re-sent on every boot.
+    const store = new CandidateStore(":memory:");
+    const id = store.insertCollected(feedItem(), true)!;
+    store.setState(id, CandidateState.RewriteFailed, "old failure");
     const { apiCalls, notifyAutomaticFailures } = makeBot(store);
 
     await notifyAutomaticFailures();
 
-    expect(apiCalls).toContainEqual({
-      method: "sendMessage",
-      payload: expect.objectContaining({
-        text: expect.stringContaining("LLM unavailable"),
-        reply_markup: expect.any(Object),
-      }),
+    expect(apiCalls).toHaveLength(0);
+    store.close();
+  });
+
+  it("counts an unchanged card as delivered instead of sending a new message", async () => {
+    const store = new CandidateStore(":memory:");
+    const id = store.insertCollected(feedItem(), true)!;
+    store.setState(id, CandidateState.RewriteFailed, "LLM unavailable");
+    store.setTelegramMessage(id, 7);
+    store.setFailureNoticePending(id, true);
+    const bundle = createBot(store, async () => {});
+    const methods: string[] = [];
+    bundle.bot.api.config.use((_prev, method) => {
+      methods.push(method);
+      if (method === "editMessageText") {
+        return Promise.resolve({
+          ok: false,
+          error_code: 400,
+          description: "Bad Request: message is not modified",
+        } as never);
+      }
+      return Promise.resolve({ ok: true, result: { message_id: 43 } } as never);
     });
-    expect(store.get(id)?.tgMessageId).toBe(42);
+
+    await bundle.notifyAutomaticFailures();
+    await bundle.notifyAutomaticFailures();
+
+    expect(methods).toEqual(["editMessageText"]);
+    store.close();
+  });
+
+  it("keeps the card owed when Telegram is down during the run, and delivers it on boot", async () => {
+    fetchAllFeeds.mockResolvedValue([feedItem()]);
+    rewriteToPost.mockRejectedValue(new Error("LLM unavailable"));
+    const store = new CandidateStore(":memory:");
+    const down = createBot(store, async () => {});
+    down.bot.api.config.use(() => Promise.reject(new Error("network down")));
+
+    await runCollection(store, down.autoPublishCandidate, 0);
+    const [failed] = store.listAutomaticFailures();
+    expect(failed?.state).toBe(CandidateState.RewriteFailed);
+
+    const { apiCalls, notifyAutomaticFailures } = makeBot(store);
+    await notifyAutomaticFailures();
+    expect(apiCalls.some(({ method }) => method === "sendMessage")).toBe(true);
+    expect(store.listAutomaticFailures()).toHaveLength(0);
     store.close();
   });
 
