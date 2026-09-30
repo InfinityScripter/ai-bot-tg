@@ -52,3 +52,25 @@ export function listPublishedReleases(db: Database.Database, days: number): Cand
       .all(CandidateState.Published, `-${days} days`) as CandidateRow[]
   ).map(mapRow);
 }
+
+/** Channel retellings published within the last `hours` (the rolling daily cap). */
+export function countPublishedChannelPosts(db: Database.Database, hours: number): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM candidates
+        WHERE kind = 'channel' AND state = ? AND updated_at >= datetime('now', ?)`,
+    )
+    .get(CandidateState.Published, `-${hours} hours`) as { n: number };
+  return row.n;
+}
+
+/** True when any published candidate came from this article URL (trailing slash ignored). */
+export function isPublishedUrl(db: Database.Database, url: string): boolean {
+  const bare = url.trim().replace(/\/+$/, "");
+  const row = db
+    .prepare(
+      `SELECT 1 FROM candidates WHERE state = ? AND (source_url = ? OR source_url = ?) LIMIT 1`,
+    )
+    .get(CandidateState.Published, bare, `${bare}/`);
+  return row !== undefined;
+}

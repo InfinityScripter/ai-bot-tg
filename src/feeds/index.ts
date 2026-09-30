@@ -1,6 +1,8 @@
 export { fetchHtml } from "./fetchHtml.js";
 export { fetchAllFeeds } from "./fetchAllFeeds.js";
 export type { SourceChannel } from "./defaultChannels.js";
+export type { ChannelPage } from "./fetchChannelPages.js";
+export { fetchChannelPages } from "./fetchChannelPages.js";
 export type { ChannelPost } from "./parseTelegramChannel.js";
 export { resolveFeeds, DEFAULT_FEEDS } from "./defaultFeeds.js";
 export { IMG_SRC_RE, collectImageUrls } from "./collectImages.js";

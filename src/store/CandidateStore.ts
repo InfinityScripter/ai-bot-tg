@@ -108,6 +108,16 @@ export class CandidateStore {
     return queries.listPublishedReleases(this.db, days);
   }
 
+  /** Channel retellings published within the last `hours`. */
+  countPublishedChannelPosts(hours: number): number {
+    return queries.countPublishedChannelPosts(this.db, hours);
+  }
+
+  /** True when the bot already published an item from this article URL. */
+  isPublishedUrl(url: string): boolean {
+    return queries.isPublishedUrl(this.db, url);
+  }
+
   /** Turns a duplicate release back into news: digest queue or skipped (see mutation). */
   divertReleaseToNews(
     id: number,
