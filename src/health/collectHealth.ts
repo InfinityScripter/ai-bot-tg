@@ -2,6 +2,7 @@ import { pingModel } from "../llm/index.js";
 import {
   checkBlog,
   processCheck,
+  checkChannels,
   checkProvider,
   scheduleCheck,
   checkHumanizer,
@@ -31,7 +32,7 @@ export async function collectHealth(
     checkBlog(fetchFn),
     checkHumanizer(fetchFn),
   ]);
-  checks.push(provider, blog, humanizer);
+  checks.push(provider, blog, humanizer, checkChannels());
 
   const queue = store.countsByState();
   const healthy = checks.every((c) => c.ok);

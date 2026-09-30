@@ -8,6 +8,7 @@ import {
   scheduleDaily,
   runReleaseWatch,
   startControlServer,
+  scheduleChannelWatch,
   createProcessCandidate,
 } from "./server/index.js";
 
@@ -129,6 +130,15 @@ async function main() {
       : "[index] catalog import disabled (CATALOG_CRON_SCHEDULE unset)",
   );
 
+  // One slot for the release watch and the channel sweep: they and a collection
+  // never overlap, and a busy slot just skips this tick.
+  const inWatchSlot = async (task: () => Promise<void>): Promise<void> => {
+    if (!acceptingCollections || activeCollection || activeWatch) return;
+    activeWatch = task().finally(() => {
+      activeWatch = null;
+    });
+    await activeWatch;
+  };
   // Release watch: extra feed sweeps (RELEASE_WATCH_CRON) so a new-model release
   // publishes within one interval instead of waiting for the daily run. A sweep
   // is skipped while a collection runs (it handles releases itself) or while the
@@ -156,21 +166,17 @@ async function main() {
       watchFailing = true;
     }
   };
-  const watchRun = async (): Promise<void> => {
-    if (!acceptingCollections || activeCollection || activeWatch) return;
-    activeWatch = sweep().finally(() => {
-      activeWatch = null;
-    });
-    await activeWatch;
-  };
   const watchJob = CONFIG.RELEASE_WATCH_CRON
-    ? scheduleDaily(watchRun, CONFIG.RELEASE_WATCH_CRON)
+    ? scheduleDaily(() => inWatchSlot(sweep), CONFIG.RELEASE_WATCH_CRON)
     : null;
   console.log(
     watchJob
       ? `[index] release watch scheduled: ${CONFIG.RELEASE_WATCH_CRON} (${CONFIG.CRON_TZ})`
       : "[index] release watch disabled (RELEASE_WATCH_CRON unset)",
   );
+
+  const processDeps = { autoPublish: autoPublishCandidate, sendRawCard };
+  const channelJob = scheduleChannelWatch({ store, inWatchSlot, notifyOwner, processDeps });
 
   // The admin control server is started only when a token is configured. Unset
   // = no control server, bot still runs/publishes — so deploying this code
@@ -207,6 +213,7 @@ async function main() {
       job?.stop();
       catalogJob?.stop();
       watchJob?.stop();
+      channelJob?.stop();
       if (controlServer) await controlServer.close();
       await bot.stop(); // grammy: stops polling; does not drain handlers
       if (activeCollection) await activeCollection;

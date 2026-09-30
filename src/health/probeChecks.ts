@@ -1,4 +1,5 @@
 import { CONFIG } from "../config.js";
+import { lastChannelWatch } from "../server/index.js";
 import {
   pingModel,
   PROVIDERS,
@@ -100,5 +101,24 @@ export function scheduleCheck(nextRun: (() => Date | null) | undefined): HealthC
     name: "Расписание",
     ok: true,
     detail: next ? `следующий сбор ${next.toISOString()}` : "не запланировано",
+  };
+}
+
+/** The latest channel sweep: off, never ran yet, failed, or how many pages it read. */
+export function checkChannels(): HealthCheck {
+  const name = "Каналы";
+  if (!CONFIG.CHANNEL_WATCH_CRON)
+    return { name, ok: true, detail: "выключено (CHANNEL_WATCH_CRON не задан)" };
+  const last = lastChannelWatch();
+  if (!last) return { name, ok: true, detail: "ещё не запускалось" };
+  if (last.error) return { name, ok: false, detail: last.error };
+  const s = last.summary;
+  if (!s) return { name, ok: true, detail: "нет данных" };
+  if (s.skipped === "limit") return { name, ok: true, detail: "дневной лимит выбран" };
+  const failed = s.failed.length ? `, не прочитались: ${s.failed.join(", ")}` : "";
+  return {
+    name,
+    ok: s.failed.length === 0,
+    detail: `страниц ${s.pages}, подходящих ${s.eligible}${failed}`,
   };
 }

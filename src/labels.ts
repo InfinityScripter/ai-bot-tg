@@ -17,4 +17,6 @@ export const NOTIFY_LABELS = {
     `⚠️ Импорт каталога моделей упал с ошибкой:\n${String(err)}`,
   releaseWatchFailed: (err: unknown) =>
     `⚠️ Проверка фидов на релизы моделей упала с ошибкой (повторю молча до первого успеха):\n${String(err)}`,
+  channelWatchFailed: (err: unknown) =>
+    `⚠️ Проход по AI-каналам упал с ошибкой (повторю молча до первого успеха):\n${String(err)}`,
 } as const;

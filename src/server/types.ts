@@ -70,3 +70,14 @@ export interface ControlServerHandle {
   server: Server;
   close: () => Promise<void>;
 }
+
+/** What one channel sweep did; kept in memory for /health. */
+export interface ChannelWatchSummary {
+  pages: number;
+  failed: string[];
+  eligible: number;
+  kept: number;
+  /** Dedup key of the post handed to processCandidate, or null. */
+  picked: string | null;
+  skipped?: "limit";
+}
