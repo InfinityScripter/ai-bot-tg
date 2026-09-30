@@ -85,6 +85,21 @@ describe("sanitizeTelegramHtml", () => {
     );
   });
 
+  it("reads href only from the href attribute, not from data-href", () => {
+    expect(
+      sanitizeTelegramHtml('<a data-href="https://evil.com" href="https://good.com">x</a>', {
+        allowedHrefs: ["https://good.com"],
+      }),
+    ).toBe('<a href="https://good.com">x</a>');
+    expect(sanitizeTelegramHtml('<a data-href="https://evil.com">x</a>')).toBe("x");
+  });
+
+  it("opens no blockquote inside a link", () => {
+    expect(sanitizeTelegramHtml('<a href="https://a.io/1"><blockquote>q</blockquote></a>')).toBe(
+      '<a href="https://a.io/1">q</a>',
+    );
+  });
+
   it("collapses runs of blank lines, trailing spaces and outer whitespace", () => {
     expect(sanitizeTelegramHtml("  a <br/><br/><br/><br/>b\n  ")).toBe("a\n\nb");
   });

@@ -23,7 +23,7 @@ const TAGS: Record<string, string> = {
 /** t.me/s renders emoji as an image around the emoji character; keep the character. */
 const EMOJI_RE = /<i\s+class="emoji"[^>]*>([\s\S]*?)<\/i>/gi;
 const TOKEN_RE = /<!--[\s\S]*?-->|<(\/?)([a-z][a-z0-9-]*)\b([^>]*)>/gi;
-const HREF_ATTR_RE = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
+const HREF_ATTR_RE = /(?:^|\s)href\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
 
 export interface SanitizeOptions {
   /** When set, an <a> survives only if its href is in this list (trailing slash ignored). */
@@ -54,7 +54,7 @@ function linkTarget(attrs: string, allowed: Set<string> | null): string | null {
   return !allowed || allowed.has(normalizeHref(href)) ? href : null;
 }
 
-/** Bot API nesting rules: nothing inside code/pre, code/pre only at top level or in a quote, no nested links or quotes. */
+/** Bot API nesting rules: nothing inside code/pre, code/pre only at top level or in a quote, no quote in a link, no nested links or quotes. */
 function canOpen(name: string, stack: Open[]): boolean {
   const verbatim = name === "code" || name === "pre";
   return !stack.some(
@@ -63,6 +63,7 @@ function canOpen(name: string, stack: Open[]): boolean {
       (open.name === "code" ||
         open.name === "pre" ||
         (verbatim && open.name !== "blockquote") ||
+        (name === "blockquote" && open.name === "a") ||
         (open.name === name && (name === "a" || name === "blockquote"))),
   );
 }
