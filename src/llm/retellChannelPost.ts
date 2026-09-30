@@ -11,8 +11,8 @@ import type { FeedItem, ChannelRetell } from "../types.js";
 
 /** Body cap before the source line: a photo caption holds 1024 characters in total. */
 export const RETELL_MAX = 900;
-const RETELL_MAX_TOKENS = 1200;
-const RETELL_TEMPERATURE = 0.6;
+export const RETELL_MAX_TOKENS = 1200;
+export const RETELL_TEMPERATURE = 0.6;
 
 /** Parses and validates a raw model reply. Throws a readable RU error. */
 export function finalizeRetell(raw: string | null): ChannelRetell {

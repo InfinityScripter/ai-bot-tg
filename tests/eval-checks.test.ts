@@ -457,4 +457,30 @@ describe("checkChannelRetell", () => {
       ok("Смотрите https://ex.com и 7 агентов **жирно**\n\nИсточник: @c — https://t.me/c/1"),
     ).toEqual(expect.arrayContaining(["channel.links", "channel.numbers", "channel.markdown"]));
   });
+
+  const credit = "Источник: @c — https://t.me/c/1";
+  it("fails a duplicate credit line inside the body", () => {
+    expect(ok(`Автор собрал 3 агента.\n${credit}\n\n${credit}`)).toContain("channel.source");
+  });
+  it("fails a credit line with a wrong url or a non-final credit line", () => {
+    expect(ok("Автор собрал 3 агента.\n\nИсточник: @c — https://t.me/c/2")).toContain(
+      "channel.source",
+    );
+    expect(ok(`Автор собрал 3 агента.\n\n${credit}\nещё строка`)).toContain("channel.source");
+  });
+  it("holds the body limit at exactly 900 characters", () => {
+    expect(ok(`${"x".repeat(900)}\n\n${credit}`)).not.toContain("channel.length");
+    expect(ok(`${"x".repeat(901)}\n\n${credit}`)).toContain("channel.length");
+  });
+  it("flags the bare link forms that production strips", () => {
+    expect(ok(`Смотрите t.me/x\n\n${credit}`)).toContain("channel.links");
+    expect(ok(`Смотрите www.ex.com\n\n${credit}`)).toContain("channel.links");
+  });
+  it("compares numbers after normalising decimal comma and digit-group spaces", () => {
+    const priced = { ...item, snippet: "цена $0,24 и 2 500 запросов" };
+    const ids = checkChannelRetell(`цена 0.24 и 2500 запросов\n\n${credit}`, priced)
+      .filter((f) => !f.ok)
+      .map((f) => f.id);
+    expect(ids).toEqual([]);
+  });
 });

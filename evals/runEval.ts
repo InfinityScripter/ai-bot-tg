@@ -23,7 +23,7 @@
 
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 type Mode = "mock" | "live";
 
@@ -86,6 +86,7 @@ function readRecording(relPath: string): string {
 /** Writes a recording file for a case. */
 function writeRecording(relPath: string, raw: string): void {
   const abs = join(HERE, "fixtures", "recorded", relPath);
+  mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, `${JSON.stringify({ raw }, null, 2)}\n`, "utf8");
 }
 
@@ -96,6 +97,8 @@ async function main(): Promise<void> {
       extractJson,
       finalizeRewrite,
       finalizeRetell,
+      RETELL_MAX_TOKENS,
+      RETELL_TEMPERATURE,
       withSourceLine,
       completeChatJson,
       resolveActiveProvider,
@@ -313,8 +316,8 @@ async function main(): Promise<void> {
           (await completeChatJson(provider, model, {
             system: RETELL_SYSTEM_PROMPT,
             user: buildRetellUserContent(c.item),
-            maxTokens: 1200,
-            temperature: 0.6,
+            maxTokens: RETELL_MAX_TOKENS,
+            temperature: RETELL_TEMPERATURE,
             refusalLabel: "пересказывать пост",
           })) ?? "";
         if (ARGS.record) writeRecording(join("channel", `${c.id}.json`), raw);

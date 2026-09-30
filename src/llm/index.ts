@@ -19,6 +19,8 @@ export { toDigestRewrite, digestSummaryLine, renderDigestMarkdown } from "./rend
 
 export {
   RETELL_MAX,
+  RETELL_MAX_TOKENS,
+  RETELL_TEMPERATURE,
   finalizeRetell,
   withSourceLine,
   retellChannelPost,

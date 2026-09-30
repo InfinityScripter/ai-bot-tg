@@ -5,31 +5,41 @@
  */
 
 import { pass, fail } from "./types.js";
+import { RETELL_MAX } from "../../src/llm/index.js";
 
 import type { Finding } from "./types.js";
 import type { FeedItem } from "../../src/types.js";
 
-const BODY_MAX = 900;
+const CREDIT_SEPARATOR = "\n\nИсточник: ";
+const LINK_FORMS = /https?:\/\/\S+|www\.\S+|\bt\.me\/\S+/gi;
+
+function numbersOf(text: string): string[] {
+  const normalised = text.replace(/(\d)[\s\u00a0\u2009\u202f](?=\d{3}(?!\d))/g, "$1");
+  return (normalised.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(",", "."));
+}
 
 export function checkChannelRetell(text: string, item: FeedItem): Finding[] {
-  const [body = "", ...rest] = text.split("\n\nИсточник: ");
+  const creditAt = text.lastIndexOf(CREDIT_SEPARATOR);
+  const body = creditAt >= 0 ? text.slice(0, creditAt) : text;
+  const creditLines = text.match(/^\s*Источник:/gm) ?? [];
+  const lastLine = text.slice(text.lastIndexOf("\n") + 1);
   const findings: Finding[] = [];
   findings.push(
-    body.length <= BODY_MAX
+    body.length <= RETELL_MAX
       ? pass("channel.length")
-      : fail("channel.length", "error", `${body.length} > ${BODY_MAX}`),
+      : fail("channel.length", "error", `${body.length} > ${RETELL_MAX}`),
   );
   findings.push(
-    rest.length === 1 && rest[0] === `${item.feedTitle} — ${item.url}`
+    creditLines.length === 1 && lastLine === `Источник: ${item.feedTitle} — ${item.url}`
       ? pass("channel.source")
       : fail("channel.source", "error", "no single credit line"),
   );
-  const links = body.match(/https?:\/\/\S+/g) ?? [];
+  const links = body.match(LINK_FORMS) ?? [];
   findings.push(
     links.length === 0 ? pass("channel.links") : fail("channel.links", "error", links.join(", ")),
   );
-  const known = new Set(item.snippet.match(/\d+(?:[.,]\d+)?/g) ?? []);
-  const novel = (body.match(/\d+(?:[.,]\d+)?/g) ?? []).filter((n) => !known.has(n));
+  const known = new Set(numbersOf(item.snippet));
+  const novel = numbersOf(body).filter((n) => !known.has(n));
   findings.push(
     novel.length === 0
       ? pass("channel.numbers")
