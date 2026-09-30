@@ -8,12 +8,13 @@ vi.mock("../src/llm/rewriteToPost.js", async (importOriginal) => {
   return { ...actual, rewriteToPost: (...a: unknown[]) => rewriteToPost(...a) };
 });
 const extractRelease = vi.fn();
-vi.mock("../src/llm/extractRelease.js", () => ({
-  extractRelease: (...a: unknown[]) => extractRelease(...a),
-}));
+vi.mock("../src/llm/extractRelease.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/llm/extractRelease.js")>();
+  return { ...actual, extractRelease: (...a: unknown[]) => extractRelease(...a) };
+});
 
 const { createBot } = await import("../src/bot/index.js");
-const { releaseKey } = await import("../src/llm/index.js");
+const { releaseKey, NoModelInSourceError } = await import("../src/llm/index.js");
 const { CandidateStore } = await import("../src/store/index.js");
 import { CandidateKind, CandidateState } from "../src/enums.js";
 
@@ -135,6 +136,52 @@ describe("automatic release publish — duplicates", () => {
           : new Response(JSON.stringify({ data: { release: { id: "rel-2" } } }), { status: 201 }),
       ),
     );
+    const { autoPublishCandidate } = makeBot(store);
+
+    await autoPublishCandidate(store.get(id)!);
+
+    expect(store.get(id)!.state).toBe(CandidateState.Published);
+    store.close();
+  });
+});
+
+describe("automatic release publish — no model in the source", () => {
+  function blogApi() {
+    return vi.fn(async (url: string) =>
+      String(url).includes("/api/post/new")
+        ? new Response(JSON.stringify({ post: { id: "post-2" } }), { status: 201 })
+        : new Response("<html></html>", { status: 200 }),
+    );
+  }
+
+  it("sends a newsletter the model took for a release to the news lane, not a post", async () => {
+    const store = new CandidateStore(":memory:");
+    const id = store.insertCollected(item("latentspace"), true)!;
+    rewriteToPost.mockResolvedValue(POST);
+    extractRelease.mockRejectedValue(new NoModelInSourceError("нет модели"));
+    const blog = blogApi();
+    vi.stubGlobal("fetch", blog);
+    const { autoPublishCandidate, texts } = makeBot(store);
+
+    await autoPublishCandidate(store.get(id)!);
+
+    expect(blog.mock.calls.map(([url]) => String(url)).filter((u) => u.includes("/api/"))).toEqual(
+      [],
+    );
+    const row = store.get(id)!;
+    expect(row.kind).toBe(CandidateKind.News);
+    expect(row.state).toBe(CandidateState.Skipped);
+    expect(store.listAutomaticFailures()).toHaveLength(0);
+    expect(texts.at(-1)).toContain("не релиз");
+    store.close();
+  });
+
+  it("still publishes the post alone when the card failed for another reason", async () => {
+    const store = new CandidateStore(":memory:");
+    const id = store.insertCollected(item("techcrunch"), true)!;
+    rewriteToPost.mockResolvedValue(POST);
+    extractRelease.mockRejectedValue(new Error("The operation was aborted due to timeout"));
+    vi.stubGlobal("fetch", blogApi());
     const { autoPublishCandidate } = makeBot(store);
 
     await autoPublishCandidate(store.get(id)!);

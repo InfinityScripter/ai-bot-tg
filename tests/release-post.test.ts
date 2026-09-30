@@ -9,9 +9,10 @@ vi.mock("../src/llm/rewriteToPost.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/llm/rewriteToPost.js")>();
   return { ...actual, rewriteToPost: (...a: unknown[]) => rewriteToPost(...a) };
 });
-vi.mock("../src/llm/extractRelease.js", () => ({
-  extractRelease: (...a: unknown[]) => extractRelease(...a),
-}));
+vi.mock("../src/llm/extractRelease.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/llm/extractRelease.js")>();
+  return { ...actual, extractRelease: (...a: unknown[]) => extractRelease(...a) };
+});
 const publishToBlog = vi.fn();
 const publishRelease = vi.fn();
 vi.mock("../src/blog/index.js", async (importOriginal) => {

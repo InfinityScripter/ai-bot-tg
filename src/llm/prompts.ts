@@ -222,6 +222,9 @@ Return STRICTLY a valid JSON object (and nothing else) with these fields:
   "sourceName": "the human-readable source name (e.g. TechCrunch), or null"
 }
 
+If the source is not about one specific model launch (a newsletter, a roundup of
+many announcements, a research paper), set "model" and "version" to null.
+
 Do not invent facts absent from the input. No text before or after the JSON.`;
 
 export function buildReleaseUserContent(item: FeedItem): string {

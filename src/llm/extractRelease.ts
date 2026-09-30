@@ -29,6 +29,16 @@ function mockRelease(item: FeedItem): ReleaseResult {
   };
 }
 
+/**
+ * The model answered but named no model or version: the source is not one
+ * model launch (a newsletter, roundup or paper the confirm check let through).
+ * Unlike a timeout or broken JSON this says something about the item itself,
+ * so the automatic runner sends it to the news lane instead of a release post.
+ */
+export class NoModelInSourceError extends Error {}
+
+const isBlank = (value: unknown) => typeof value !== "string" || value.trim() === "";
+
 /** Parses, validates and normalizes a raw JSON string from any provider. */
 function finalizeRelease(raw: string | null, item: FeedItem): ReleaseResult {
   if (!raw) {
@@ -39,6 +49,10 @@ function finalizeRelease(raw: string | null, item: FeedItem): ReleaseResult {
     candidate = JSON.parse(raw);
   } catch {
     throw new Error("LLM вернул невалидный JSON.");
+  }
+  const { model, version } = (candidate ?? {}) as { model?: unknown; version?: unknown };
+  if (isBlank(model) || isBlank(version)) {
+    throw new NoModelInSourceError("в источнике нет названия модели или версии");
   }
   const parsed = ReleaseSchema.safeParse(candidate);
   if (!parsed.success) {

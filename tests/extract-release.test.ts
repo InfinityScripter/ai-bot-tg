@@ -8,7 +8,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
   },
 }));
 
-const { extractRelease } = await import("../src/llm/index.js");
+const { extractRelease, NoModelInSourceError } = await import("../src/llm/index.js");
 import { ProviderName } from "../src/enums.js";
 import { CandidateStore } from "../src/store/index.js";
 
@@ -111,7 +111,20 @@ describe("extractRelease (Anthropic path)", () => {
 
   it("throws when JSON fails schema validation (missing required vendor)", async () => {
     create.mockResolvedValueOnce(textResponse(JSON.stringify({ model: "GPT", version: "5" })));
-    await expect(extractRelease(ITEM, STORE)).rejects.toThrow(/валидаци/i);
+    const error = await extractRelease(ITEM, STORE).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(NoModelInSourceError);
+    expect((error as Error).message).toMatch(/валидаци/i);
+  });
+
+  it.each([
+    ["null", null],
+    ["blank", " "],
+  ])("reports a source with no named model (%s model/version) as not a release", async (_, v) => {
+    create.mockResolvedValueOnce(
+      textResponse(JSON.stringify({ ...NULLY, vendor: null, model: v, version: v })),
+    );
+    await expect(extractRelease(ITEM, STORE)).rejects.toBeInstanceOf(NoModelInSourceError);
   });
 });
 

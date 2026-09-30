@@ -1,9 +1,9 @@
 import { CONFIG } from "../config.js";
 import { enrichItemBody } from "../feeds/index.js";
-import { assertNewRelease } from "./duplicateRelease.js";
 import { renderReleasePreview } from "./renderRelease.js";
 import { CandidateKind, CandidateState } from "../enums.js";
 import { renderPreview, isModelNotFound } from "./render.js";
+import { assertNamesModel, assertNewRelease } from "./duplicateRelease.js";
 import { PublishError, publishToBlog, publishRelease } from "../blog/index.js";
 import {
   PROVIDERS,
@@ -11,6 +11,7 @@ import {
   extractRelease,
   hasActiveOverride,
   assertPublishable,
+  NoModelInSourceError,
   resolveActiveProvider,
 } from "../llm/index.js";
 
@@ -96,13 +97,16 @@ export async function runExtraction(
 ): Promise<string> {
   if (item.kind === CandidateKind.Release) {
     const post = await rewriteToPost(item, store);
+    let noModel = false;
     const release = await extractRelease(item, store).catch((err: unknown) => {
+      noModel = err instanceof NoModelInSourceError;
       console.warn(`[release] extraction failed for #${id}, post goes alone: ${String(err)}`);
       return null;
     });
-    store.attachRelease(id, { post, release });
+    const bundle = noModel ? { post, release, noModel } : { post, release };
+    store.attachRelease(id, bundle);
     const updated = store.get(id) ?? fallback;
-    return renderReleasePreview(updated, { post, release }, modelLabel);
+    return renderReleasePreview(updated, bundle, modelLabel);
   }
   const rewrite = await rewriteToPost(item, store);
   store.attachRewrite(id, rewrite);
@@ -206,8 +210,10 @@ export async function processClaimedCandidateAutomatically(
       : store.getRewrite(extractedCandidate);
   if (!extraction) throw new MissingExtractionError("Нет сохранённых данных.");
   assertPublishable(extractedCandidate, extraction);
-  if (extractedCandidate.kind === CandidateKind.Release)
+  if (extractedCandidate.kind === CandidateKind.Release) {
+    assertNamesModel(store, extractedCandidate);
     assertNewRelease(store, extractedCandidate);
+  }
 
   if (!store.claimForPublishing(candidate.id)) {
     throw new Error("Кандидат не готов к публикации.");

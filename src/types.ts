@@ -16,6 +16,8 @@ export type { ReleaseResult } from "./schemas/releaseSchema.js";
 export interface ReleaseBundle {
   post: RewriteResult;
   release: ReleaseResult | null;
+  /** The card came back without a model or version: the item is not a launch. */
+  noModel?: boolean;
 }
 
 /** A normalized item pulled from an RSS/Atom feed. */

@@ -4,8 +4,8 @@ import { CONFIG } from "../config.js";
 import { logEditError } from "./edit.js";
 import { CandidateState } from "../enums.js";
 import { crossPostToChannel } from "../blog/index.js";
+import { ReleaseToNewsError } from "./duplicateRelease.js";
 import { rawKeyboard, previewKeyboard } from "./keyboards.js";
-import { DuplicateReleaseError } from "./duplicateRelease.js";
 import { processClaimedCandidateAutomatically } from "./candidateActions.js";
 
 import type { Candidate } from "../types.js";
@@ -128,9 +128,9 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
       }
     } catch (err) {
       await progress;
-      if (err instanceof DuplicateReleaseError) {
-        // Not a failure: the model is already covered, and the article is still
-        // worth a digest line. The run counts it as handled.
+      if (err instanceof ReleaseToNewsError) {
+        // Not a failure: a repeat or a non-launch is still worth a digest line,
+        // just not its own post. The run counts it as handled.
         const digest = CONFIG.DIGEST_POSTS === "on";
         store.divertReleaseToNews(
           candidate.id,
@@ -138,7 +138,7 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
         );
         await editCard(
           candidate,
-          `↪️ ${err.message} уже опубликован, повтор не выпускаю: ${candidate.sourceTitle ?? candidate.sourceUrl}${
+          `↪️ ${err.message}: ${candidate.sourceTitle ?? candidate.sourceUrl}${
             digest ? "\nСтатья ушла в дневной дайджест." : ""
           }`,
         );

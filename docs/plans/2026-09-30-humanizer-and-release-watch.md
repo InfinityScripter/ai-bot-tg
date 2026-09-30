@@ -92,6 +92,16 @@ deleted from the blog.
   the last 14 days. A repeat is not a failure: the row becomes news in the
   daily digest queue (skipped when the digest is off), and the owner card says
   so. A release without an extracted card cannot be matched and publishes.
+- **No model named, no release post:** the week before, seven items the
+  confirm check accepted (AINews issues, papers, a tax article) failed card
+  extraction with `Expected string, received null`; after the soft-fail card
+  change each would have gone out as a standalone post. Extraction now throws
+  `NoModelInSourceError` when the model answers without a `model` or
+  `version` (the prompt asks for null there when the source is not one
+  launch), the bundle stores `noModel`, and the automatic runner sends the row
+  to the digest like a repeat. A timeout or broken JSON still publishes the
+  post alone: only an answer that names no model says the item is not a
+  launch.
 - **Changelog dates:** a date-only `releasedAt` is sent as midnight UTC; the
   changelog API rejected the GPT-6.1 Sol card for it. That card was sent by
   hand once the fix was verified.

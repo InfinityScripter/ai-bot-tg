@@ -3,8 +3,8 @@ import { releaseKey } from "../llm/index.js";
 import type { Candidate } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
 
-/** The release is already on the blog: the automatic runner sends it to the digest instead. */
-export class DuplicateReleaseError extends Error {}
+/** Not a standalone release post: the automatic runner sends the article to the digest. */
+export class ReleaseToNewsError extends Error {}
 
 /**
  * How far back a published release blocks a repeat. A launch is covered by
@@ -13,7 +13,14 @@ export class DuplicateReleaseError extends Error {}
  */
 const DUPLICATE_RELEASE_DAYS = 14;
 
-/** Throws DuplicateReleaseError when the bot already published this model release. */
+/** Throws ReleaseToNewsError when the extraction found no model in the source. */
+export function assertNamesModel(store: CandidateStore, candidate: Candidate): void {
+  if (store.getRelease(candidate)?.noModel) {
+    throw new ReleaseToNewsError("В статье нет конкретной модели, это не релиз");
+  }
+}
+
+/** Throws ReleaseToNewsError when the bot already published this model release. */
 export function assertNewRelease(store: CandidateStore, candidate: Candidate): void {
   const release = store.getRelease(candidate)?.release;
   if (!release) return;
@@ -23,6 +30,7 @@ export function assertNewRelease(store: CandidateStore, candidate: Candidate): v
     return c.id !== candidate.id && !!other && releaseKey(other) === key;
   });
   if (published) {
-    throw new DuplicateReleaseError(`${release.vendor} ${release.model} ${release.version}`);
+    const name = `${release.vendor} ${release.model} ${release.version}`;
+    throw new ReleaseToNewsError(`${name} уже опубликован, повтор не выпускаю`);
   }
 }
