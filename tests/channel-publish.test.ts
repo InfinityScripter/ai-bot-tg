@@ -167,7 +167,7 @@ describe("publishToChannel", () => {
 
 describe("assertRetellPublishable allow-list", () => {
   const retell = (body: string) => ({
-    text: `${body}\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/184`,
+    html: `${body}\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/184`,
   });
   const BODY = "Команда выпустила новую модель и подробно объяснила, что в ней поменялось";
   const SOURCE = {
@@ -204,7 +204,7 @@ describe("automatic channel retelling", () => {
   it("retells, posts to the channel only and never calls the blog", async () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item(), true)!;
-    retellChannelPost.mockResolvedValue({ text: TEXT });
+    retellChannelPost.mockResolvedValue({ html: TEXT });
     const fetchMock = vi.fn(async (url: string) =>
       String(url).includes("api.telegram.org") ? tgOk(90) : new Response("", { status: 500 }),
     );
@@ -226,7 +226,7 @@ describe("automatic channel retelling", () => {
   it("tells the owner to check the channel, not the blog, after an unconfirmed channel publish", async () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/187"), true)!;
-    retellChannelPost.mockResolvedValue({ text: TEXT });
+    retellChannelPost.mockResolvedValue({ html: TEXT });
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -261,7 +261,7 @@ describe("automatic channel retelling", () => {
   it("sends a retelling over the caption limit to the owner instead of the channel", async () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/185"), true)!;
-    retellChannelPost.mockResolvedValue({ text: "д".repeat(1100) });
+    retellChannelPost.mockResolvedValue({ html: "д".repeat(1100) });
     const fetchMock = vi.fn(async () => tgOk(91));
     vi.stubGlobal("fetch", fetchMock);
     const { autoPublishCandidate } = makeBot(store);
@@ -277,7 +277,7 @@ describe("automatic channel retelling", () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/191"), true)!;
     retellChannelPost.mockResolvedValue({
-      text: `Автор канала @ai_for_devs пишет, что команда выпустила новую модель и объяснила изменения.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/191`,
+      html: `Автор канала @ai_for_devs пишет, что команда выпустила новую модель и объяснила изменения.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/191`,
     });
     vi.stubGlobal(
       "fetch",
@@ -295,7 +295,7 @@ describe("automatic channel retelling", () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/189"), true)!;
     retellChannelPost.mockResolvedValue({
-      text: `Команда выпустила новую модель, все подробности и скидки на evil.com прямо сейчас.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/189`,
+      html: `Команда выпустила новую модель, все подробности и скидки на evil.com прямо сейчас.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/189`,
     });
     const fetchMock = vi.fn(async () => tgOk(93));
     vi.stubGlobal("fetch", fetchMock);
@@ -312,7 +312,7 @@ describe("automatic channel retelling", () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/186"), true)!;
     retellChannelPost.mockResolvedValue({
-      text: "Смотрите.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/186",
+      html: "Смотрите.\n\nИсточник: @ai_for_devs — https://t.me/ai_for_devs/186",
     });
     const fetchMock = vi.fn(async () => tgOk(92));
     vi.stubGlobal("fetch", fetchMock);
@@ -330,7 +330,7 @@ describe("manual channel retelling", () => {
   it("🔄 then ✅ posts to the channel once, never to the blog, without scraping t.me", async () => {
     const store = new CandidateStore(":memory:");
     const id = store.insertCollected(item("tg:ai_for_devs/190"), false)!;
-    retellChannelPost.mockResolvedValue({ text: TEXT });
+    retellChannelPost.mockResolvedValue({ html: TEXT });
     const fetchMock = vi.fn(async (url: string) =>
       String(url).includes("api.telegram.org") ? tgOk(95) : new Response("", { status: 500 }),
     );

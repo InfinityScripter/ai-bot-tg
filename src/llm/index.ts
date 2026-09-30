@@ -29,6 +29,7 @@ export {
   RETELL_MAX,
   finalizeRetell,
   withSourceLine,
+  cleanRetellHtml,
   RETELL_MAX_TOKENS,
   retellChannelPost,
   RETELL_TEMPERATURE,

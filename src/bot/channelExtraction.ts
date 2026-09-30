@@ -23,14 +23,14 @@ export function assertRetellPublishable(
   retell: ChannelRetell,
   source: Pick<FeedItem, "snippet" | "feedTitle">,
 ): void {
-  if (retell.text.length > CAPTION_LIMIT) {
-    throw new GateFailure(`пересказ длиннее ${CAPTION_LIMIT} символов (${retell.text.length})`);
+  if (retell.html.length > CAPTION_LIMIT) {
+    throw new GateFailure(`пересказ длиннее ${CAPTION_LIMIT} символов (${retell.html.length})`);
   }
-  if (!retell.text.includes("\nИсточник: ")) {
+  if (!retell.html.includes("\nИсточник: ")) {
     throw new GateFailure("в пересказе нет строки «Источник»");
   }
   // stripLinks can leave nothing of a reply that was only a link.
-  const body = (retell.text.split("\n\nИсточник: ")[0] ?? "").trim();
+  const body = (retell.html.split("\n\nИсточник: ")[0] ?? "").trim();
   if (body.length < 50) {
     throw new GateFailure(`пересказ почти пустой (${body.length} симв. до строки «Источник»)`);
   }
@@ -50,8 +50,8 @@ export function loadChannelExtraction(
   if (!retell) return null;
   const image = store.getFeedItem(candidate).imageUrls[0] ?? null;
   return {
-    title: `в канале: ${truncate(retell.text.split("\n")[0] ?? "", 80)}`,
-    publish: () => publishToChannel(retell.text, image),
+    title: `в канале: ${truncate(retell.html.split("\n")[0] ?? "", 80)}`,
+    publish: () => publishToChannel(retell.html, image),
     crossPost: null,
   };
 }

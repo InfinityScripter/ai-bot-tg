@@ -2,6 +2,7 @@ import { rmSync } from "node:fs";
 import { it, expect, describe, afterEach, beforeEach } from "vitest";
 
 import { CandidateStore } from "../src/store/index.js";
+import { parseRetell } from "../src/store/parseExtraction.js";
 import { CandidateKind, CandidateState } from "../src/enums.js";
 
 import type { FeedItem, ReleaseResult, RewriteResult } from "../src/types.js";
@@ -396,5 +397,15 @@ describe("seen keys with an age", () => {
     store.markSeenKeys(["link:https://ex.com/a"]);
     expect(store.isSeenSince("link:https://ex.com/a", 3)).toBe(true);
     store.close();
+  });
+});
+
+describe("parseRetell", () => {
+  it("reads the HTML retelling and an old plain-text one as escaped HTML", () => {
+    expect(parseRetell(JSON.stringify({ html: "<b>x</b>" }))).toEqual({ html: "<b>x</b>" });
+    expect(parseRetell(JSON.stringify({ text: "a < b & c" }))).toEqual({
+      html: "a &lt; b &amp; c",
+    });
+    expect(parseRetell("{}")).toBeNull();
   });
 });

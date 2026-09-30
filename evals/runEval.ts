@@ -324,7 +324,7 @@ async function main(): Promise<void> {
       } else {
         raw = readRecording(join("channel", `${c.id}.json`));
       }
-      findings = checkChannelRetell(withSourceLine(finalizeRetell(raw).text, c.item), c.item);
+      findings = checkChannelRetell(withSourceLine(finalizeRetell(raw).html, c.item), c.item);
     } catch (err) {
       findings = [
         { id: "channel.produce", ok: false, severity: "error" as const, detail: String(err) },

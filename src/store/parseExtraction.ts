@@ -1,3 +1,5 @@
+import { escapeHtml } from "../feeds/index.js";
+
 import type { RewriteResult, ReleaseBundle, ChannelRetell } from "../types.js";
 
 /** Parses the stored rewrite (rewrite_json column), or null. */
@@ -31,8 +33,10 @@ export function parseReleaseBundle(json: string | null): ReleaseBundle | null {
 export function parseRetell(json: string | null): ChannelRetell | null {
   if (!json) return null;
   try {
-    const parsed = JSON.parse(json) as Partial<ChannelRetell>;
-    return typeof parsed.text === "string" ? { text: parsed.text } : null;
+    const parsed = JSON.parse(json) as Partial<ChannelRetell> & { text?: unknown };
+    if (typeof parsed.html === "string") return { html: parsed.html };
+    // Rows retold before the HTML format stored plain text.
+    return typeof parsed.text === "string" ? { html: escapeHtml(parsed.text) } : null;
   } catch {
     return null;
   }

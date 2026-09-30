@@ -9,9 +9,9 @@ export function renderRetellPreview(
   modelLabel: string,
 ): string {
   return [
-    `📣 *Пересказ для канала* (${retell.text.length} симв.)`,
+    `📣 *Пересказ для канала* (${retell.html.length} симв.)`,
     "",
-    escapeMarkdown(retell.text),
+    escapeMarkdown(retell.html),
     "",
     `🤖 Модель: ${escapeMarkdown(modelLabel)}`,
     `Оригинал: ${escapeMarkdown(candidate.sourceUrl)}`,
