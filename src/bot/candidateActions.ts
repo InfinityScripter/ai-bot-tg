@@ -102,7 +102,12 @@ export async function runExtraction(
   if (item.kind === CandidateKind.Channel) {
     const retell = await retellChannelPost(item, store);
     store.attachRetell(id, retell);
-    return renderRetellPreview(store.get(id) ?? fallback, retell, modelLabel);
+    return renderRetellPreview(
+      store.get(id) ?? fallback,
+      retell,
+      modelLabel,
+      item.imageUrls.length,
+    );
   }
   if (item.kind === CandidateKind.Release) {
     const post = await rewriteToPost(item, store);

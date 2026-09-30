@@ -62,7 +62,7 @@ export function loadChannelExtraction(
   if (!retell) return null;
   const { imageUrls } = store.getFeedItem(candidate);
   return {
-    title: `в канале: ${truncate(retell.html.split("\n")[0] ?? "", 80)}`,
+    title: `в канале: ${truncate(visibleText(retell.html).split("\n")[0] ?? "", 80)}`,
     publish: () => publishToChannel(retell.html, imageUrls),
     crossPost: null,
   };

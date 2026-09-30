@@ -355,6 +355,7 @@ describe("automatic channel retelling", () => {
     expect(urls.filter((u) => u.includes("/api/post/new"))).toEqual([]);
     expect(urls.filter((u) => u.includes("api.telegram.org"))).toHaveLength(1);
     expect(texts.at(-1)).toContain("Автоопубликовано");
+    expect(texts.at(-1)).not.toContain("<b>");
     store.close();
   });
 
