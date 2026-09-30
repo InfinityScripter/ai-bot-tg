@@ -10,6 +10,19 @@ import type { probeAllModels } from "../health/index.js";
  * server). Pure declarations only (mirrors health/types.ts).
  */
 
+/** Counters of one release-watch sweep (see runReleaseWatch). */
+export interface ReleaseWatchSummary {
+  fetched: number;
+  /** Fresh unseen marker hits the model was asked about. */
+  checked: number;
+  /** Checks where the model could not tell (error, unreadable answer). */
+  unknown: number;
+  /** Confirmed releases inserted and handed to processCandidate. */
+  releases: number;
+  /** Releases whose processing threw (the automatic runner already showed the card). */
+  failed: number;
+}
+
 /** Summary of one collection run, returned for logging/visibility. */
 export interface RunSummary {
   fetched: number;

@@ -1,6 +1,7 @@
+import { renderPreview } from "./render.js";
 import { truncate, escapeMarkdown } from "../utils.js";
 
-import type { Candidate, ReleaseResult } from "../types.js";
+import type { Candidate, ReleaseBundle, ReleaseResult } from "../types.js";
 
 /** Formats a nullable price ($/1M tokens) — "—" when unknown so a null is visible. */
 function fmtPrice(value: number | null): string {
@@ -13,16 +14,12 @@ function fmtContext(value: number | null): string {
 }
 
 /**
- * Renders the RELEASE PREVIEW card (an extracted ModelRelease awaiting publish).
- * Price and context are shown PROMINENTLY — and rendered as "—" when null — so
- * the owner can catch a hallucinated (or wrongly-non-null) number before ✅. All
- * interpolated content is escaped so a model/vendor string can't break Markdown.
+ * Renders the changelog card part of a release preview. Price and context are
+ * shown PROMINENTLY — and rendered as "—" when null — so the owner can catch a
+ * hallucinated (or wrongly-non-null) number before ✅. All interpolated content
+ * is escaped so a model/vendor string can't break Markdown.
  */
-export function renderReleasePreview(
-  candidate: Candidate,
-  release: ReleaseResult,
-  modelLabel: string,
-): string {
+function renderReleaseCard(candidate: Candidate, release: ReleaseResult): string {
   const changes = release.changes.length
     ? release.changes.map((c) => `• ${escapeMarkdown(truncate(c, 160))}`).join("\n")
     : "_(изменения не указаны)_";
@@ -38,8 +35,22 @@ export function renderReleasePreview(
     "*Изменения:*",
     changes,
     "",
-    `🤖 Модель: ${escapeMarkdown(modelLabel)}`,
     `Источник: ${escapeMarkdown(release.sourceName ?? candidate.feedTitle ?? "неизвестен")}`,
-    escapeMarkdown(candidate.sourceUrl),
   ].join("\n");
+}
+
+/**
+ * Renders the RELEASE PREVIEW card: the blog post that will publish (same view
+ * as a news preview), then the changelog card that follows it, or a note that
+ * there is none.
+ */
+export function renderReleasePreview(
+  candidate: Candidate,
+  bundle: ReleaseBundle,
+  modelLabel: string,
+): string {
+  const card = bundle.release
+    ? renderReleaseCard(candidate, bundle.release)
+    : "_Карточка changelog не извлечена: пост уйдёт без неё._";
+  return [renderPreview(candidate, bundle.post, modelLabel), "", "*Changelog:*", card].join("\n");
 }

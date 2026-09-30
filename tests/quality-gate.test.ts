@@ -3,7 +3,7 @@ import { it, expect, describe } from "vitest";
 import { CandidateKind, CandidateState } from "../src/enums.js";
 import { GateFailure, assertPublishable } from "../src/llm/qualityGate.js";
 
-import type { Candidate, RewriteResult, ReleaseResult } from "../src/types.js";
+import type { Candidate, RewriteResult } from "../src/types.js";
 
 function candidate(overrides: Partial<Candidate> = {}): Candidate {
   return {
@@ -39,21 +39,6 @@ function rewrite(content: string): RewriteResult {
   };
 }
 
-function release(changes: string[]): ReleaseResult {
-  return {
-    vendor: "OpenAI",
-    model: "GPT",
-    version: "5",
-    releasedAt: "2026-01-01",
-    sourceUrl: "https://openai.com/x",
-    contextTokens: null,
-    priceIn: null,
-    priceOut: null,
-    changes,
-    sourceName: null,
-  };
-}
-
 const LONG = "a".repeat(400);
 
 describe("assertPublishable — news substance", () => {
@@ -71,20 +56,17 @@ describe("assertPublishable — news substance", () => {
   });
 });
 
-describe("assertPublishable — release substance", () => {
+describe("assertPublishable — release post", () => {
   const releaseCandidate = candidate({ kind: CandidateKind.Release });
 
-  it("passes a release with at least one change", () => {
-    expect(() => assertPublishable(releaseCandidate, release(["Faster inference"]))).not.toThrow();
+  it("passes a release whose post meets the news floor", () => {
+    expect(() => assertPublishable(releaseCandidate, rewrite(LONG))).not.toThrow();
   });
 
-  it("throws on a release with an empty changes list", () => {
-    expect(() => assertPublishable(releaseCandidate, release([]))).toThrow(GateFailure);
-  });
-
-  it("does not apply the news length floor to releases", () => {
-    // A release's own body isn't gated on length; one short change is enough.
-    expect(() => assertPublishable(releaseCandidate, release(["x"]))).not.toThrow();
+  it("applies the news length floor to a release post", () => {
+    expect(() => assertPublishable(releaseCandidate, rewrite("a".repeat(399)))).toThrow(
+      GateFailure,
+    );
   });
 });
 

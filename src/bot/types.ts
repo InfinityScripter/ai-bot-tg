@@ -50,7 +50,8 @@ export type ParsedCallback =
  */
 export interface LoadedExtraction {
   title: string;
-  publish: () => Promise<PublishOutcome>;
+  /** `warning` reports a soft failure after the post itself was published. */
+  publish: () => Promise<PublishOutcome & { warning?: string }>;
   crossPost: CrossPostContent;
 }
 
@@ -58,6 +59,7 @@ export interface LoadedExtraction {
 export interface PublishedCandidate {
   extracted: LoadedExtraction;
   postId: string;
+  warning?: string;
 }
 
 /**

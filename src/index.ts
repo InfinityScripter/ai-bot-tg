@@ -6,6 +6,7 @@ import { NOTIFY_LABELS, COLLECTION_LABELS } from "./labels.js";
 import {
   runCollection,
   scheduleDaily,
+  runReleaseWatch,
   startControlServer,
   createProcessCandidate,
 } from "./server/index.js";
@@ -26,6 +27,7 @@ async function main() {
   // owner can't tell a misconfigured filter from a genuine "no news today").
   let acceptingCollections = true;
   let activeCollection: Promise<string> | null = null;
+  let activeWatch: Promise<void> | null = null;
   const runOnce = async (): Promise<string> => {
     const processCandidate = await createProcessCandidate(store, {
       autoPublish: autoPublishCandidate,
@@ -43,7 +45,10 @@ async function main() {
   const run = (): Promise<string> => {
     if (!acceptingCollections) return Promise.resolve("Сервис останавливается, сбор не запущен.");
     if (activeCollection) return activeCollection;
-    const current = runOnce().finally(() => {
+    // Wait out a running release-watch sweep: its fresh release row still has
+    // auto_publish=1 + collected, and the collection's crash-recovery would
+    // pick it up a second time (a duplicate card or a failed double claim).
+    const current = (activeWatch ?? Promise.resolve()).then(runOnce).finally(() => {
       if (activeCollection === current) activeCollection = null;
     });
     activeCollection = current;
@@ -124,6 +129,49 @@ async function main() {
       : "[index] catalog import disabled (CATALOG_CRON_SCHEDULE unset)",
   );
 
+  // Release watch: extra feed sweeps (RELEASE_WATCH_CRON) so a new-model release
+  // publishes within one interval instead of waiting for the daily run. A sweep
+  // is skipped while a collection runs (it handles releases itself) or while the
+  // previous sweep is still going. A failure pings the owner once, then stays
+  // quiet until a sweep succeeds: at a 30-minute cadence every failure would spam.
+  const rejectedReleases = new Set<string>();
+  let watchFailing = false;
+  const sweep = async (): Promise<void> => {
+    try {
+      const processCandidate = await createProcessCandidate(store, {
+        autoPublish: autoPublishCandidate,
+        sendRawCard,
+      });
+      await runReleaseWatch(
+        store,
+        processCandidate,
+        rejectedReleases,
+        Date.now(),
+        () => !acceptingCollections,
+      );
+      watchFailing = false;
+    } catch (err) {
+      console.error(`[index] release watch failed: ${String(err)}`);
+      if (!watchFailing) await notifyOwner(NOTIFY_LABELS.releaseWatchFailed(err));
+      watchFailing = true;
+    }
+  };
+  const watchRun = async (): Promise<void> => {
+    if (!acceptingCollections || activeCollection || activeWatch) return;
+    activeWatch = sweep().finally(() => {
+      activeWatch = null;
+    });
+    await activeWatch;
+  };
+  const watchJob = CONFIG.RELEASE_WATCH_CRON
+    ? scheduleDaily(watchRun, CONFIG.RELEASE_WATCH_CRON)
+    : null;
+  console.log(
+    watchJob
+      ? `[index] release watch scheduled: ${CONFIG.RELEASE_WATCH_CRON} (${CONFIG.CRON_TZ})`
+      : "[index] release watch disabled (RELEASE_WATCH_CRON unset)",
+  );
+
   // The admin control server is started only when a token is configured. Unset
   // = no control server, bot still runs/publishes — so deploying this code
   // before the env var is added can never crash the pipeline.
@@ -158,9 +206,11 @@ async function main() {
     try {
       job?.stop();
       catalogJob?.stop();
+      watchJob?.stop();
       if (controlServer) await controlServer.close();
       await bot.stop(); // grammy: stops polling; does not drain handlers
       if (activeCollection) await activeCollection;
+      if (activeWatch) await activeWatch;
       await drain(); // wait for any in-flight publish to finish its DB writes
     } catch (err) {
       // eslint-disable-next-line no-console

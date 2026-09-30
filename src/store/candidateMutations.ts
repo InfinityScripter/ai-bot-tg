@@ -9,7 +9,7 @@ import type Database from "better-sqlite3";
 
 import { CandidateKind, CandidateState } from "../enums.js";
 
-import type { FeedItem, RewriteResult, ReleaseResult } from "../types.js";
+import type { FeedItem, RewriteResult, ReleaseBundle } from "../types.js";
 
 /**
  * Inserts a freshly-collected feed item as state 'collected'. Returns the new
@@ -118,14 +118,14 @@ export function setState(
 }
 
 /**
- * Stores an extracted entity JSON (a RewriteResult for news, a ReleaseResult for
+ * Stores an extracted entity JSON (a RewriteResult for news, a ReleaseBundle for
  * release) in the shared rewrite_json column and moves the candidate to
  * 'pending_review'. attachRewrite is the news-typed alias kept for callers.
  */
 export function attachExtraction(
   db: Database.Database,
   id: number,
-  extraction: RewriteResult | ReleaseResult,
+  extraction: RewriteResult | ReleaseBundle,
 ): void {
   db.prepare(
     `UPDATE candidates

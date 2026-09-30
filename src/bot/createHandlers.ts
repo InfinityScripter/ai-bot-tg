@@ -104,9 +104,10 @@ export function createHandlers(store: CandidateStore, bot: Bot) {
       await ctx.editMessageReplyMarkup().catch(logEditError("publish clear markup"));
 
       try {
-        const { extracted, postId } = await publishClaimedCandidate(store, candidate);
+        const { extracted, postId, warning } = await publishClaimedCandidate(store, candidate);
+        const note = warning ? `\n⚠️ ${escapeMarkdown(warning)}` : "";
         await ctx
-          .editMessageText(`✅ Опубликовано: *${escapeMarkdown(extracted.title)}*`, {
+          .editMessageText(`✅ Опубликовано: *${escapeMarkdown(extracted.title)}*${note}`, {
             parse_mode: "Markdown",
           })
           .catch(logEditError("publish success text"));

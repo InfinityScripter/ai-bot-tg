@@ -1,5 +1,6 @@
 import { CONFIG } from "../config.js";
 import { ProviderName } from "../enums.js";
+import { humanizeText } from "./humanize.js";
 import { completeChatJson } from "./chatCompletion.js";
 import { resolveActiveProvider } from "./providers.js";
 import { DigestPostSchema } from "../schemas/digestPostSchema.js";
@@ -75,6 +76,51 @@ export function finalizeDigestPost(raw: string | null, allowedUrls: Set<string>)
   return post;
 }
 
+/** Schema limit for intro and note (digestPostSchema). */
+const PROSE_MAX = 500;
+const LINK_OR_HTML = /\]\(|<[a-z/!]|https?:\/\//i;
+
+/**
+ * Humanizes one digest line. Intro and notes are inserted into the Markdown
+ * body as-is (renderDigestMarkdown), so unlike the post body there is no
+ * sanitizer after the pass: a reply that brings a link or HTML, or no longer
+ * fits the schema limit, is refused and the model's own line stays. Newlines
+ * are collapsed because one inside a note breaks the bullet list.
+ */
+async function humanizeLine(text: string): Promise<string> {
+  const line = text.replace(/\s+/g, " ").trim();
+  const humanized = (await humanizeText(line)).replace(/\s+/g, " ").trim();
+  return LINK_OR_HTML.test(humanized) || humanized.length > PROSE_MAX ? text : humanized;
+}
+
+/**
+ * Humanizer pass over the digest prose: the intro and every note, one call
+ * each. One call per line (~17 short calls a day) instead of one joined call
+ * because mapping a joined reply back by paragraph count can silently attach
+ * a note to the wrong headline when the model merges one paragraph and splits
+ * another. Headlines and URLs are never sent.
+ */
+async function humanizeDigest(post: DigestPost): Promise<DigestPost> {
+  const withNotes = async (entries: DigestEntry[]): Promise<DigestEntry[]> => {
+    const out: DigestEntry[] = [];
+    for (const entry of entries) {
+      out.push(entry.note ? { ...entry, note: await humanizeLine(entry.note) } : entry);
+    }
+    return out;
+  };
+  const { hot, news, materials, cases } = post.sections;
+  return {
+    ...post,
+    intro: await humanizeLine(post.intro),
+    sections: {
+      hot: await withNotes(hot),
+      news: await withNotes(news),
+      materials: await withNotes(materials),
+      cases: await withNotes(cases),
+    },
+  };
+}
+
 /**
  * Builds the daily digest post from the queued candidates via the active LLM
  * (or the mock). Resolves provider/model at call time (a /model override wins)
@@ -96,5 +142,5 @@ export async function buildDigestPost(
     temperature: CONFIG.REWRITE_TEMPERATURE,
     refusalLabel: "собирать дайджест-пост",
   });
-  return finalizeDigestPost(raw, new Set(candidates.map((c) => c.sourceUrl)));
+  return humanizeDigest(finalizeDigestPost(raw, new Set(candidates.map((c) => c.sourceUrl))));
 }

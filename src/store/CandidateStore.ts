@@ -10,7 +10,7 @@ import * as mutations from "./candidateMutations.js";
 import { SCHEMA, mapRow, MIGRATIONS, DIGEST_LAST_DATE_KEY } from "./candidateSchema.js";
 
 import type { CandidateRow, MockOverride, ModelOverride } from "./types.js";
-import type { FeedItem, Candidate, RewriteResult, ReleaseResult } from "../types.js";
+import type { FeedItem, Candidate, RewriteResult, ReleaseBundle } from "../types.js";
 
 /**
  * The candidate store. One SQLite file doubles as the dedup ledger and the
@@ -198,12 +198,12 @@ export class CandidateStore {
   }
 
   /**
-   * Stores an extracted release and moves the candidate to 'pending_review'. The
-   * release JSON shares the rewrite_json column (discriminated by `kind`), so the
-   * claim/publish lifecycle stays common with the news path.
+   * Stores a release bundle (post + changelog card) and moves the candidate to
+   * 'pending_review'. The JSON shares the rewrite_json column (discriminated by
+   * `kind`), so the claim/publish lifecycle stays common with the news path.
    */
-  attachRelease(id: number, release: ReleaseResult): void {
-    mutations.attachExtraction(this.db, id, release);
+  attachRelease(id: number, bundle: ReleaseBundle): void {
+    mutations.attachExtraction(this.db, id, bundle);
   }
 
   /** Clears the auto_publish flag (1 → 0) so a diverted item leaves the automatic lane. */
@@ -232,13 +232,17 @@ export class CandidateStore {
   }
 
   /**
-   * Parses and returns the stored release for a candidate, or null. Same column
-   * as getRewrite (rewrite_json), read only for kind='release' candidates.
+   * Parses and returns the stored release bundle for a candidate, or null. Same
+   * column as getRewrite (rewrite_json), read only for kind='release'
+   * candidates. Rows saved before the bundle format hold a bare changelog card
+   * with no post; they read as null, so the owner gets a 🔄 rewrite instead of
+   * a publish that would have nothing to post.
    */
-  getRelease(candidate: Candidate): ReleaseResult | null {
+  getRelease(candidate: Candidate): ReleaseBundle | null {
     if (!candidate.rewriteJson) return null;
     try {
-      return JSON.parse(candidate.rewriteJson) as ReleaseResult;
+      const parsed = JSON.parse(candidate.rewriteJson) as Partial<ReleaseBundle>;
+      return parsed.post ? (parsed as ReleaseBundle) : null;
     } catch {
       return null;
     }

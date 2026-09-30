@@ -72,16 +72,20 @@ locally, never commit a re-resolved lock — the resolved URLs must stay on
 
 ```
 cron / npm run fetch ─► feeds ─► keyword filter (FILTER_*) ─► relevance filter
-  ─► dedup (SQLite) ─► per candidate, read auto-publish flags (once/run, fail-closed):
-     ├─ switch ON  ─► rewrite/extract ─► quality gate ─► publish
-     │                                      └─ gate fails ─┐
-     └─ switch OFF ─────────────────────────────────────► divert to manual
+  ─► dedup (SQLite) ─► kind: release markers + LLM confirm (detectRelease.ts)
+  ─► per candidate, read auto-publish flags (once/run, fail-closed):
+     ├─ switch ON  ─► rewrite/extract ─► humanizer ─► quality gate ─► publish
+     │                                                    └─ gate fails ─┐
+     └─ switch OFF ───────────────────────────────────────────────────► divert to manual
         divert = clear auto_publish + RAW card in owner DM ─► 🔄 rewrite ─► ✅ publish
   publish:  news → POST {BLOG_API_URL}/api/post/new
-            release → POST {BLOG_API_URL}/api/changelog/new
+            release → post as news, then POST /api/changelog/new (card soft-fails)
   ─► optional cross-post to TELEGRAM_CHANNEL_ID (soft-fail: never breaks publish)
 
 manual URL-or-text ─► always the RAW → 🔄 → ✅ manual flow (never auto)
+
+RELEASE_WATCH_CRON ─► fresh unseen marker hits ─► LLM confirm ─► release path above
+  (non-releases stay unseen for the daily run; rejections cached in memory)
 ```
 
 Flags: `fetchAutoPublishFlags` reads `autoPublishReleases` / `autoPublishNews`

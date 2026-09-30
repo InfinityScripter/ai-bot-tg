@@ -1,24 +1,11 @@
 import { CONFIG } from "../config.js";
+import { RelevanceMode } from "../enums.js";
 import { emitRelevanceDecisions } from "../auditEmit.js";
-import { CandidateKind, RelevanceMode } from "../enums.js";
+import { detectKind, filterRelevant } from "../llm/index.js";
 import { fetchAllFeeds, parseKeywords, curateForQueue } from "../feeds/index.js";
-import { filterRelevant, VENDOR_MARKERS, RELEASE_MARKERS } from "../llm/index.js";
 
-import type { FeedItem } from "../types.js";
 import type { CandidateStore } from "../store/index.js";
 import type { RunSummary, ProcessCandidate } from "./types.js";
-
-/**
- * True when a feed item looks like an AI-model release announcement: a release
- * marker AND a vendor marker both hit its title+snippet. Precision-biased — a
- * bare "launch" (no vendor) or a vendor mention (no launch verb) stays 'news'.
- */
-function isReleaseItem(item: FeedItem): boolean {
-  const hay = `${item.title} ${item.snippet}`.toLowerCase();
-  const hasRelease = RELEASE_MARKERS.some((m) => hay.includes(m));
-  const hasVendor = VENDOR_MARKERS.some((m) => hay.includes(m));
-  return hasRelease && hasVendor;
-}
 
 // The bot installs @grammyjs/auto-retry, which waits out any 429 retry_after
 // and resubmits — grammY's recommended approach over proactive throttling. So
@@ -104,7 +91,7 @@ export async function runCollection(
   const remaining = Math.max(0, CONFIG.MAX_PER_RUN - recovered.length);
   for (let i = 0; i < kept.length && summary.fresh < remaining; i += 1) {
     const item = kept[i]!;
-    const kind = isReleaseItem(item) ? CandidateKind.Release : CandidateKind.News;
+    const kind = await detectKind(item, store);
     const id = store.insertCollected({ ...item, kind }, true);
     if (id === null) continue;
     summary.fresh += 1;

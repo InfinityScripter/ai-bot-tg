@@ -1,5 +1,12 @@
 import { CONFIG } from "../config.js";
-import { pingModel, PROVIDERS, isMockActive, resolveActiveProvider } from "../llm/index.js";
+import {
+  pingModel,
+  PROVIDERS,
+  isMockActive,
+  probeHemmingway,
+  lastHumanizeOutcome,
+  resolveActiveProvider,
+} from "../llm/index.js";
 
 import type { HealthCheck } from "./types.js";
 import type { CandidateStore } from "../store/index.js";
@@ -57,6 +64,26 @@ export async function checkBlog(fetchFn: typeof fetch): Promise<HealthCheck> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * The humanizer pass: is the key accepted right now, and did the latest pass
+ * go through. Both matter because the pass is fail-soft: a broken key or a
+ * reply that keeps failing the guards would otherwise only show in the journal
+ * while posts quietly publish un-humanized. Off (no key) is a valid setup.
+ */
+export async function checkHumanizer(fetchFn: typeof fetch): Promise<HealthCheck> {
+  const name = "Humanizer";
+  const apiKey = CONFIG.HEMMINGWAY_API_KEY;
+  if (!apiKey) return { name, ok: true, detail: "выключен (HEMMINGWAY_API_KEY не задан)" };
+  const probeError = await probeHemmingway(apiKey, fetchFn);
+  if (probeError) return { name, ok: false, detail: `hemmingway-27b: ${probeError}` };
+  const last = lastHumanizeOutcome();
+  if (!last) return { name, ok: true, detail: "ключ принят, прогонов с запуска не было" };
+  const at = last.at.toISOString();
+  return last.ok
+    ? { name, ok: true, detail: `ключ принят, последний прогон ${at} успешен` }
+    : { name, ok: false, detail: `последний прогон ${at} не прошёл: ${last.error}` };
 }
 
 export function processCheck(uptimeSec: () => number): HealthCheck {

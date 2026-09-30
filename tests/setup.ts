@@ -11,3 +11,6 @@ process.env.CRON_TZ = "Europe/Moscow";
 // Force the real Claude path in tests regardless of a local .env (which may set
 // REWRITE_MOCK=1 for manual no-credit testing). The rewriter tests mock the SDK.
 process.env.REWRITE_MOCK = "0";
+// The owner's shell exports HEMMINGWAY_API_KEY; an empty value keeps dotenv
+// from filling it and keeps the humanizer pass off (no network in tests).
+process.env.HEMMINGWAY_API_KEY = "";

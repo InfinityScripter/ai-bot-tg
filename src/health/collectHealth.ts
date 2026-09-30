@@ -1,12 +1,18 @@
 import { pingModel } from "../llm/index.js";
-import { checkBlog, processCheck, checkProvider, scheduleCheck } from "./probeChecks.js";
+import {
+  checkBlog,
+  processCheck,
+  checkProvider,
+  scheduleCheck,
+  checkHumanizer,
+} from "./probeChecks.js";
 
 import type { CandidateStore } from "../store/index.js";
 import type { HealthDeps, HealthReport } from "./types.js";
 
 /**
  * Collects a full readiness report: process uptime, next cron run, the active
- * LLM provider, the blog API, and the queue counts. Every probe is isolated, so
+ * LLM provider, the blog API, the humanizer pass, and the queue counts. Every probe is isolated, so
  * one failing subsystem never aborts the others. `healthy` is true only when all
  * checks pass; the queue summary is informational and never flips it.
  */
@@ -20,8 +26,12 @@ export async function collectHealth(
 
   const checks = [processCheck(uptimeSec), scheduleCheck(deps.nextRun)];
 
-  const [provider, blog] = await Promise.all([checkProvider(store, pingFn), checkBlog(fetchFn)]);
-  checks.push(provider, blog);
+  const [provider, blog, humanizer] = await Promise.all([
+    checkProvider(store, pingFn),
+    checkBlog(fetchFn),
+    checkHumanizer(fetchFn),
+  ]);
+  checks.push(provider, blog, humanizer);
 
   const queue = store.countsByState();
   const healthy = checks.every((c) => c.ok);

@@ -100,9 +100,13 @@ export function createAutoPublish(store: CandidateStore, bot: Bot) {
     if (!store.claimForRewriting(candidate.id)) throw new Error("Кандидат уже обрабатывается.");
     const progress = sendProgress(candidate);
     try {
-      const { extracted, postId } = await processClaimedCandidateAutomatically(store, candidate);
+      const { extracted, postId, warning } = await processClaimedCandidateAutomatically(
+        store,
+        candidate,
+      );
       await progress;
-      await editCard(candidate, `✅ Автоопубликовано: ${extracted.title}`);
+      const note = warning ? `\n⚠️ ${warning}` : "";
+      await editCard(candidate, `✅ Автоопубликовано: ${extracted.title}${note}`);
       try {
         await crossPostToChannel(bot.api, extracted.crossPost, postId, notificationSignal());
       } catch (err) {

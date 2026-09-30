@@ -1,9 +1,22 @@
+import type { RewriteResult } from "./schemas/rewriteSchema.js";
+import type { ReleaseResult } from "./schemas/releaseSchema.js";
 import type { PublishStatus, CandidateKind, CandidateState } from "./enums.js";
 
 // The zod schemas live in src/schemas/ (one file per entity); their inferred
 // result types are re-exported here so "./types.js" stays the one type hub.
 export type { RewriteResult } from "./schemas/rewriteSchema.js";
 export type { ReleaseResult } from "./schemas/releaseSchema.js";
+
+/**
+ * What a release candidate stores: the full blog post about the new model and,
+ * when extraction worked, its changelog card. The card is null when extraction
+ * failed: the post still publishes, the daily catalog import fills the
+ * changelog later.
+ */
+export interface ReleaseBundle {
+  post: RewriteResult;
+  release: ReleaseResult | null;
+}
 
 /** A normalized item pulled from an RSS/Atom feed. */
 export interface FeedItem {
@@ -60,7 +73,7 @@ export interface Candidate {
   state: CandidateState;
   /**
    * The stored extracted entity, JSON-encoded: a RewriteResult for kind='news'
-   * or a ReleaseResult for kind='release' (discriminated by `kind` — the two
+   * or a ReleaseBundle for kind='release' (discriminated by `kind` — the two
    * share this one column so the publish/claim lifecycle stays shared).
    */
   rewriteJson: string | null;

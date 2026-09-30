@@ -15,4 +15,6 @@ export const NOTIFY_LABELS = {
     `⚠️ Ежедневный сбор новостей упал с ошибкой:\n${String(err)}`,
   catalogImportFailed: (err: unknown) =>
     `⚠️ Импорт каталога моделей упал с ошибкой:\n${String(err)}`,
+  releaseWatchFailed: (err: unknown) =>
+    `⚠️ Проверка фидов на релизы моделей упала с ошибкой (повторю молча до первого успеха):\n${String(err)}`,
 } as const;

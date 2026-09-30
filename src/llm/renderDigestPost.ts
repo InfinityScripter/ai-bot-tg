@@ -25,7 +25,7 @@ const FOOTER =
 /** One digest line: the linked headline, then the optional takeaway. */
 function renderEntry(entry: DigestEntry): string {
   const note = entry.note?.trim();
-  return `🔹 [${entry.headline}](${entry.url})${note ? ` — ${note}` : ""}`;
+  return `🔹 [${entry.headline}](${entry.url})${note ? `: ${note}` : ""}`;
 }
 
 /** Renders the full post body (without the title — the blog shows it above). */

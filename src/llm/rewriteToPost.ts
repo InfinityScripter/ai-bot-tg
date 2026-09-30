@@ -1,5 +1,6 @@
 import { CONFIG } from "../config.js";
 import { ProviderName } from "../enums.js";
+import { humanizeText } from "./humanize.js";
 import { normalizeTags } from "../blog/index.js";
 import { truncate, stripHtml } from "../utils.js";
 import { completeChatJson } from "./chatCompletion.js";
@@ -105,7 +106,8 @@ export function finalizeRewrite(raw: string | null, item: FeedItem): RewriteResu
 /**
  * Rewrites a feed item into a unique blog post. Resolves the active provider +
  * model at call time (a stored /model override wins over the env default), then
- * dispatches through the shared chat core (or the no-LLM mock). Throws on
+ * dispatches through the shared chat core (or the no-LLM mock), and finally
+ * runs the body through the humanizer pass (skipped for the mock). Throws on
  * refusal or invalid output — the caller marks the candidate rewrite_failed and
  * surfaces the error in the Telegram DM, so one failure never aborts the batch.
  */
@@ -121,5 +123,10 @@ export async function rewriteToPost(item: FeedItem, store: CandidateStore): Prom
     temperature: CONFIG.REWRITE_TEMPERATURE,
     refusalLabel: "обрабатывать новость",
   });
-  return finalizeRewrite(raw, item);
+  const post = finalizeRewrite(raw, item);
+  // The humanizer pass rewrites prose only, so the result goes through the
+  // same link/image allow-list and source-line self-heal again: a link it
+  // invented or a source line it reworded never reaches the blog.
+  const content = await humanizeText(post.content);
+  return content === post.content ? post : { ...post, content: finalizeContent(content, item) };
 }

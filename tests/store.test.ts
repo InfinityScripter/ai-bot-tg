@@ -135,7 +135,7 @@ describe("CandidateStore", () => {
       expect(store.getFeedItem(c).kind).toBe(CandidateKind.Release);
     });
 
-    it("attachRelease stores a release readable via getRelease and moves to pending_review", () => {
+    it("attachRelease stores a post + card bundle readable via getRelease", () => {
       const release: ReleaseResult = {
         vendor: "OpenAI",
         model: "GPT",
@@ -149,10 +149,17 @@ describe("CandidateStore", () => {
         sourceName: null,
       };
       const id = store.insertCollected(item({ kind: CandidateKind.Release }))!;
-      store.attachRelease(id, release);
+      const bundle = { post: REWRITE, release };
+      store.attachRelease(id, bundle);
       const c = store.get(id)!;
       expect(c.state).toBe(CandidateState.PendingReview);
-      expect(store.getRelease(c)).toEqual(release);
+      expect(store.getRelease(c)).toEqual(bundle);
+    });
+
+    it("reads a pre-bundle row (bare changelog card, no post) as missing", () => {
+      const id = store.insertCollected(item({ kind: CandidateKind.Release }))!;
+      store.attachRewrite(id, { vendor: "OpenAI" } as unknown as RewriteResult);
+      expect(store.getRelease(store.get(id)!)).toBeNull();
     });
   });
 

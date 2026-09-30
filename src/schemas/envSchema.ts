@@ -76,6 +76,15 @@ export const EnvSchema = z
      * already has — so the window errs wide on purpose.
      */
     CATALOG_IMPORT_DAYS: z.coerce.number().int().positive().default(7),
+    /**
+     * Cron expression (in CRON_TZ) for the release watch: a feed sweep between
+     * daily runs that publishes a confirmed new-model release at once instead of
+     * waiting for the next CRON_SCHEDULE. OPTIONAL: unset = no watch job. The
+     * sweep itself is free (RSS fetches); the model is asked only about fresh
+     * items that hit the release markers, once per item, so a frequent schedule
+     * does not multiply LLM spend.
+     */
+    RELEASE_WATCH_CRON: z.string().min(1).optional(),
     /** Optional CSV override of the default feed list. */
     RSS_FEEDS: z.string().optional(),
     /**
@@ -136,6 +145,12 @@ export const EnvSchema = z
      * fits the $5 free-tier credit. (GLM-flash there is a reasoning model →
      * empty content; qwen :free is 429-prone — both avoided as the default.) */
     OPENROUTER_MODEL: z.string().default("deepseek/deepseek-chat"),
+    /**
+     * hemmingway-27b key for the final humanizer pass over published text (post
+     * body, digest intro and notes). OPTIONAL: unset or empty = the pass is
+     * skipped and text publishes exactly as the rewrite model wrote it.
+     */
+    HEMMINGWAY_API_KEY: z.string().optional(),
     /** Max candidates surfaced per run, to cap Claude spend on a noisy day. */
     MAX_PER_RUN: z.coerce.number().int().positive().default(15),
     /**

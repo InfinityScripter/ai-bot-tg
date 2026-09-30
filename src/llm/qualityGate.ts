@@ -1,6 +1,4 @@
-import { CandidateKind } from "../enums.js";
-
-import type { Candidate, RewriteResult, ReleaseResult } from "../types.js";
+import type { Candidate, RewriteResult } from "../types.js";
 
 /**
  * Quality gate for AUTO-publish only. A gate failure is not an error to swallow:
@@ -10,9 +8,8 @@ import type { Candidate, RewriteResult, ReleaseResult } from "../types.js";
  * auto-posted. Manual publish (the owner tapping ✅) deliberately bypasses this.
  *
  * Two checks beyond the zod schemas' `.min(1)`:
- *  1. substance — news needs a body of real length (a headline-only stub is not
- *     a post); a release needs at least one extracted change (an empty changes[]
- *     means the extractor found nothing worth announcing).
+ *  1. substance — the post (news, or the post of a release) needs a body of
+ *     real length: a headline-only stub is not a post.
  *  2. source — the article URL's host is not on a small junk blocklist (link
  *     shorteners, social/aggregator permalinks, parking). BLOCKLIST, not
  *     allowlist: most sources are fine, and Hacker News legitimately links out
@@ -68,29 +65,17 @@ function hasBlockedSource(sourceUrl: string): boolean {
 
 /**
  * Asserts an extracted candidate is fit to auto-publish, else throws GateFailure.
- * `extraction` is the already-validated RewriteResult (news) or ReleaseResult
- * (release), discriminated by candidate.kind.
+ * `post` is the already-validated blog post: the news rewrite, or the post of a
+ * release bundle. A release's changelog card is not gated: it is optional and
+ * publishes after the post (see publishReleaseCard).
  */
-export function assertPublishable(
-  candidate: Candidate,
-  extraction: RewriteResult | ReleaseResult,
-): void {
+export function assertPublishable(candidate: Candidate, post: RewriteResult): void {
   if (hasBlockedSource(candidate.sourceUrl)) {
     throw new GateFailure(`источник не в списке доверенных (${candidate.sourceUrl})`);
   }
-
-  if (candidate.kind === CandidateKind.Release) {
-    const release = extraction as ReleaseResult;
-    if (release.changes.length < 1) {
-      throw new GateFailure("релиз без единого извлечённого изменения — нечего публиковать");
-    }
-    return;
-  }
-
-  const rewrite = extraction as RewriteResult;
-  if (rewrite.content.trim().length < MIN_NEWS_CONTENT) {
+  if (post.content.trim().length < MIN_NEWS_CONTENT) {
     throw new GateFailure(
-      `текст поста слишком короткий (${rewrite.content.trim().length} симв., нужно ≥ ${MIN_NEWS_CONTENT})`,
+      `текст поста слишком короткий (${post.content.trim().length} симв., нужно ≥ ${MIN_NEWS_CONTENT})`,
     );
   }
 }

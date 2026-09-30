@@ -92,7 +92,7 @@ describe("renderDigestMarkdown / toDigestRewrite", () => {
     expect(md).toContain("**➡️ Полезные материалы:**");
     // Empty section is omitted entirely.
     expect(md).not.toContain("Обсуждения и кейсы");
-    expect(md).toContain("🔹 [OpenAI выпустила X](https://ex.com/a) — коротко о сути");
+    expect(md).toContain("🔹 [OpenAI выпустила X](https://ex.com/a): коротко о сути");
     // No note → no dangling dash.
     expect(md).toContain("🔹 [Docker запустила Sandboxes](https://ex.com/b)\n");
     expect(md).toContain("пишите в комментариях");
