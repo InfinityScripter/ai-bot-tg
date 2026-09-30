@@ -127,6 +127,13 @@ describe("CandidateStore", () => {
       expect(store.get(id)?.kind).toBe(CandidateKind.News);
     });
 
+    it("keeps kind 'channel' through a round trip", () => {
+      const id = store.insertCollected(
+        item({ dedupKey: "tg:x/1", url: "https://t.me/x/1", kind: CandidateKind.Channel }),
+      )!;
+      expect(store.get(id)!.kind).toBe(CandidateKind.Channel);
+    });
+
     it("persists kind='release' and round-trips it through get + getFeedItem", () => {
       const id = store.insertCollected(item({ kind: CandidateKind.Release }))!;
       const c = store.get(id)!;

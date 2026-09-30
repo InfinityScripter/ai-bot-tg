@@ -50,12 +50,14 @@ export interface DigestSendResult {
 }
 
 /**
- * The two auto-publish master switches, read from the blog admin settings. When
+ * The auto-publish master switches, read from the blog admin settings. When
  * false, the matching candidate kind is diverted to the owner's manual approval
- * instead of auto-publishing. Read fail-closed: any read failure yields both
+ * instead of auto-publishing. Read fail-closed: any read failure yields all
  * false (see fetchAutoPublishFlags).
  */
 export interface AutoPublishFlags {
   releases: boolean;
   news: boolean;
+  /** Retellings of other Telegram channels, posted to our channel only. */
+  channels: boolean;
 }

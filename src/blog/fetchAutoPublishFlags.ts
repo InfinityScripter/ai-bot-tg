@@ -5,15 +5,15 @@ import type { AutoPublishFlags } from "./types.js";
 const FLAGS_TIMEOUT_MS = 10_000;
 
 /** Fail-closed value: automation off, everything diverts to manual approval. */
-const OFF: AutoPublishFlags = { releases: false, news: false };
+const OFF: AutoPublishFlags = { releases: false, news: false, channels: false };
 
 /**
- * Reads the two auto-publish master switches from the blog admin settings so the
+ * Reads the auto-publish master switches from the blog admin settings so the
  * collector can decide, per candidate kind, whether to auto-publish or divert to
  * the owner's manual approval.
  *
  * FAIL-CLOSED by design: any failure — network error, timeout, non-2xx, or an
- * unreadable/unexpected body — returns { releases:false, news:false }. A blog
+ * unreadable/unexpected body — returns { releases:false, news:false, channels:false }. A blog
  * outage must never let the bot auto-publish against an intended "off"; instead
  * every item reaches the owner as a manual card, so nothing is lost. The owner is
  * not separately alerted that automation is off — the manual cards ARE the signal.
@@ -39,7 +39,13 @@ export async function fetchAutoPublishFlags(): Promise<AutoPublishFlags> {
       return OFF;
     }
     const data = (await res.json()) as {
-      data?: { flags?: { autoPublishReleases?: unknown; autoPublishNews?: unknown } };
+      data?: {
+        flags?: {
+          autoPublishReleases?: unknown;
+          autoPublishNews?: unknown;
+          autoPublishChannels?: unknown;
+        };
+      };
     };
     const flags = data.data?.flags;
     // Read strictly: only an explicit boolean true enables. Missing/undefined
@@ -47,6 +53,7 @@ export async function fetchAutoPublishFlags(): Promise<AutoPublishFlags> {
     return {
       releases: flags?.autoPublishReleases === true,
       news: flags?.autoPublishNews === true,
+      channels: flags?.autoPublishChannels === true,
     };
   } catch (err) {
     console.warn(

@@ -99,6 +99,8 @@ export enum InputKind {
 export enum CandidateKind {
   News = "news",
   Release = "release",
+  /** A retelling of a post from another Telegram channel; published to our channel only. */
+  Channel = "channel",
 }
 
 /** The audit action mirrored into the backend log for a relevance decision. */

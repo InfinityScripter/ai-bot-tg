@@ -24,13 +24,31 @@ describe("fetchAutoPublishFlags", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const flags = await fetchAutoPublishFlags();
-    expect(flags).toEqual({ releases: true, news: false });
+    expect(flags).toEqual({ releases: true, news: false, channels: false });
 
     // Hits the admin settings route with the service token.
     const call = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(call[0])).toBe("http://localhost:7272/api/admin/settings");
     const headers = call[1].headers as Record<string, string>;
     expect(headers.Authorization).toMatch(/^Bearer /);
+  });
+
+  it("reads autoPublishChannels as the channels flag", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        settingsResponse({
+          autoPublishReleases: false,
+          autoPublishNews: false,
+          autoPublishChannels: true,
+        }),
+      ),
+    );
+    await expect(fetchAutoPublishFlags()).resolves.toEqual({
+      releases: false,
+      news: false,
+      channels: true,
+    });
   });
 
   it("treats a top-level (mis-nested) flags shape as off — guards the envelope bug", async () => {
@@ -45,7 +63,11 @@ describe("fetchAutoPublishFlags", () => {
           ),
       ),
     );
-    await expect(fetchAutoPublishFlags()).resolves.toEqual({ releases: false, news: false });
+    await expect(fetchAutoPublishFlags()).resolves.toEqual({
+      releases: false,
+      news: false,
+      channels: false,
+    });
   });
 
   it("only an explicit boolean true enables (truthy non-true stays off)", async () => {
@@ -53,7 +75,11 @@ describe("fetchAutoPublishFlags", () => {
       "fetch",
       vi.fn(async () => settingsResponse({ autoPublishReleases: "true", autoPublishNews: 1 })),
     );
-    await expect(fetchAutoPublishFlags()).resolves.toEqual({ releases: false, news: false });
+    await expect(fetchAutoPublishFlags()).resolves.toEqual({
+      releases: false,
+      news: false,
+      channels: false,
+    });
   });
 
   it("fails closed (off) on a non-2xx response", async () => {
@@ -61,7 +87,11 @@ describe("fetchAutoPublishFlags", () => {
       "fetch",
       vi.fn(async () => new Response("nope", { status: 500 })),
     );
-    await expect(fetchAutoPublishFlags()).resolves.toEqual({ releases: false, news: false });
+    await expect(fetchAutoPublishFlags()).resolves.toEqual({
+      releases: false,
+      news: false,
+      channels: false,
+    });
   });
 
   it("fails closed (off) when fetch throws (network/timeout)", async () => {
@@ -71,7 +101,11 @@ describe("fetchAutoPublishFlags", () => {
         throw new Error("network down");
       }),
     );
-    await expect(fetchAutoPublishFlags()).resolves.toEqual({ releases: false, news: false });
+    await expect(fetchAutoPublishFlags()).resolves.toEqual({
+      releases: false,
+      news: false,
+      channels: false,
+    });
   });
 
   it("fails closed (off) on an unreadable body", async () => {
@@ -79,7 +113,11 @@ describe("fetchAutoPublishFlags", () => {
       "fetch",
       vi.fn(async () => new Response("not json", { status: 200 })),
     );
-    await expect(fetchAutoPublishFlags()).resolves.toEqual({ releases: false, news: false });
+    await expect(fetchAutoPublishFlags()).resolves.toEqual({
+      releases: false,
+      news: false,
+      channels: false,
+    });
   });
 
   it("missing flag keys (older backend) stay off", async () => {
@@ -87,6 +125,10 @@ describe("fetchAutoPublishFlags", () => {
       "fetch",
       vi.fn(async () => settingsResponse({ pdCollection: false, dogsBooking: true })),
     );
-    await expect(fetchAutoPublishFlags()).resolves.toEqual({ releases: false, news: false });
+    await expect(fetchAutoPublishFlags()).resolves.toEqual({
+      releases: false,
+      news: false,
+      channels: false,
+    });
   });
 });

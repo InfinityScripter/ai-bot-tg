@@ -57,7 +57,7 @@ afterEach(() => {
 
 describe("createProcessCandidate — flag-gated auto-vs-divert", () => {
   it("reads the flags exactly once (a run uses one snapshot), not per candidate", async () => {
-    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: true });
+    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: true, channels: false });
     const autoPublish = vi.fn(async () => {});
     const sendRawCard = vi.fn(async () => {});
 
@@ -69,7 +69,7 @@ describe("createProcessCandidate — flag-gated auto-vs-divert", () => {
   });
 
   it("news flag ON → auto-publishes, never diverts", async () => {
-    fetchAutoPublishFlags.mockResolvedValue({ releases: false, news: true });
+    fetchAutoPublishFlags.mockResolvedValue({ releases: false, news: true, channels: false });
     const autoPublish = vi.fn(async () => {});
     const sendRawCard = vi.fn(async () => {});
     const candidate = insertAuto(store, CandidateKind.News);
@@ -84,7 +84,7 @@ describe("createProcessCandidate — flag-gated auto-vs-divert", () => {
   });
 
   it("news flag OFF → diverts to manual: clears auto_publish AND sends a raw card", async () => {
-    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: false });
+    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: false, channels: false });
     const autoPublish = vi.fn(async () => {});
     const sendRawCard = vi.fn(async () => {});
     const candidate = insertAuto(store, CandidateKind.News);
@@ -99,7 +99,7 @@ describe("createProcessCandidate — flag-gated auto-vs-divert", () => {
   });
 
   it("routes on kind independently: releases ON + news OFF publishes a release, diverts news", async () => {
-    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: false });
+    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: false, channels: false });
     const autoPublish = vi.fn(async () => {});
     const sendRawCard = vi.fn(async () => {});
     const release = insertAuto(store, CandidateKind.Release);
@@ -115,12 +115,37 @@ describe("createProcessCandidate — flag-gated auto-vs-divert", () => {
     expect(sendRawCard).toHaveBeenCalledWith(news);
   });
 
+  it("routes a channel post by the channels flag, not news or releases", async () => {
+    fetchAutoPublishFlags.mockResolvedValue({ releases: false, news: false, channels: true });
+    const autoPublish = vi.fn(async () => {});
+    const sendRawCard = vi.fn(async () => {});
+
+    const process = await createProcessCandidate(store, { autoPublish, sendRawCard }, true);
+    await process(insertAuto(store, CandidateKind.Channel));
+
+    expect(autoPublish).toHaveBeenCalledTimes(1);
+    expect(sendRawCard).not.toHaveBeenCalled();
+    expect(store.listDigestQueue()).toHaveLength(0);
+  });
+
+  it("diverts a channel post to the owner when the channels flag is off", async () => {
+    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: true, channels: false });
+    const autoPublish = vi.fn(async () => {});
+    const sendRawCard = vi.fn(async () => {});
+
+    const process = await createProcessCandidate(store, { autoPublish, sendRawCard });
+    await process(insertAuto(store, CandidateKind.Channel));
+
+    expect(autoPublish).not.toHaveBeenCalled();
+    expect(sendRawCard).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps a diverted row recoverable when sendRawCard fails (clears the flag only after the card sends)", async () => {
     // Regression: the flag must be cleared AFTER the card sends. If sendRawCard
     // throws, the row must stay auto_publish=1/collected so listRecoveredAutomatic
     // re-diverts it next run — clearing first would strand it (auto_publish=0 +
     // collected is invisible to every recovery query; dedup key already seen).
-    fetchAutoPublishFlags.mockResolvedValue({ releases: false, news: false });
+    fetchAutoPublishFlags.mockResolvedValue({ releases: false, news: false, channels: false });
     const autoPublish = vi.fn(async () => {});
     const sendRawCard = vi.fn(async () => {
       throw new Error("Telegram 403");
@@ -136,7 +161,7 @@ describe("createProcessCandidate — flag-gated auto-vs-divert", () => {
   });
 
   it("digest mode: a news item is queued (no publish, no card), flags untouched per item", async () => {
-    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: true });
+    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: true, channels: false });
     const autoPublish = vi.fn(async () => {});
     const sendRawCard = vi.fn(async () => {});
     const news = insertAuto(store, CandidateKind.News);
@@ -153,7 +178,7 @@ describe("createProcessCandidate — flag-gated auto-vs-divert", () => {
   });
 
   it("digest mode: releases keep the per-item flag-gated path", async () => {
-    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: false });
+    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: false, channels: false });
     const autoPublish = vi.fn(async () => {});
     const sendRawCard = vi.fn(async () => {});
     const release = insertAuto(store, CandidateKind.Release);
@@ -166,7 +191,7 @@ describe("createProcessCandidate — flag-gated auto-vs-divert", () => {
   });
 
   it("fail-closed: both flags off (blog outage shape) diverts every kind", async () => {
-    fetchAutoPublishFlags.mockResolvedValue({ releases: false, news: false });
+    fetchAutoPublishFlags.mockResolvedValue({ releases: false, news: false, channels: false });
     const autoPublish = vi.fn(async () => {});
     const sendRawCard = vi.fn(async () => {});
     const release = insertAuto(store, CandidateKind.Release);

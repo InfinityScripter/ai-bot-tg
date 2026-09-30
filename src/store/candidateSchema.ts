@@ -79,7 +79,9 @@ export const DIGEST_LAST_DATE_KEY = "digest_post_last_date";
 
 /** Narrows a stored `kind` string to the enum; anything unexpected → News. */
 function toKind(value: string): CandidateKind {
-  return value === CandidateKind.Release ? CandidateKind.Release : CandidateKind.News;
+  return (Object.values(CandidateKind) as string[]).includes(value)
+    ? (value as CandidateKind)
+    : CandidateKind.News;
 }
 
 export function mapRow(row: CandidateRow): Candidate {

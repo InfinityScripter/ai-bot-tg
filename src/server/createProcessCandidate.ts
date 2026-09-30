@@ -67,7 +67,12 @@ export async function createProcessCandidate(
       store.queueForDigest(candidate.id);
       return;
     }
-    const wantAuto = candidate.kind === CandidateKind.Release ? flags.releases : flags.news;
+    const wantAuto =
+      candidate.kind === CandidateKind.Release
+        ? flags.releases
+        : candidate.kind === CandidateKind.Channel
+          ? flags.channels
+          : flags.news;
     if (wantAuto) {
       await deps.autoPublish(candidate);
       return;
