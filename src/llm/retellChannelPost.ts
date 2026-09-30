@@ -93,5 +93,8 @@ export async function retellChannelPost(
   const humanized = cleanRetellHtml(await humanizeText(body), item);
   const keep =
     humanized !== "" && visibleText(humanized).length <= RETELL_MAX && sameMarkup(humanized, body);
+  if (!keep && humanized !== body) {
+    console.warn("[retell] humanizer changed the markup or went over the cap, kept the model HTML");
+  }
   return { html: withSourceLine(keep ? humanized : body, item) };
 }
