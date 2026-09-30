@@ -99,7 +99,6 @@ async function main(): Promise<void> {
       finalizeRetell,
       RETELL_MAX_TOKENS,
       RETELL_TEMPERATURE,
-      withSourceLine,
       completeChatJson,
       resolveActiveProvider,
       PROVIDERS,
@@ -324,7 +323,7 @@ async function main(): Promise<void> {
       } else {
         raw = readRecording(join("channel", `${c.id}.json`));
       }
-      findings = checkChannelRetell(withSourceLine(finalizeRetell(raw).html, c.item), c.item);
+      findings = checkChannelRetell(finalizeRetell(raw).html, c.item);
     } catch (err) {
       findings = [
         { id: "channel.produce", ok: false, severity: "error" as const, detail: String(err) },
