@@ -92,7 +92,17 @@ function writeRecording(relPath: string, raw: string): void {
 async function main(): Promise<void> {
   // Dynamic imports AFTER env bootstrap (config validates on import).
   const [
-    { extractJson, finalizeRewrite, completeChatJson, resolveActiveProvider, PROVIDERS },
+    {
+      extractJson,
+      finalizeRewrite,
+      finalizeRetell,
+      withSourceLine,
+      completeChatJson,
+      resolveActiveProvider,
+      PROVIDERS,
+      RETELL_SYSTEM_PROMPT,
+      buildRetellUserContent,
+    },
     { CONFIG },
     { ProviderName },
     { CandidateStore },
@@ -105,8 +115,10 @@ async function main(): Promise<void> {
     { checkRewrite },
     { checkRelevance, parseRelevanceReply },
     { checkRelease, parseReleaseReply },
+    { checkChannelRetell },
     { CONFIRM_RELEASE_SYSTEM_PROMPT, buildConfirmReleaseUserContent },
     { RELEASE_CASES },
+    { CHANNEL_CASES },
     { judgeRewrite },
     { judgeGate, parseJudgeFloor },
     { REWRITE_CASES },
@@ -121,8 +133,10 @@ async function main(): Promise<void> {
     import("./checks/rewriteChecks.js"),
     import("./checks/relevanceChecks.js"),
     import("./checks/releaseChecks.js"),
+    import("./checks/channelChecks.js"),
     import("../src/llm/detectRelease.js"),
     import("./fixtures/releaseCases.js"),
+    import("./fixtures/channelCases.js"),
     import("./judge/runJudge.js"),
     import("./judge/judgeGate.js"),
     import("./fixtures/rewriteCases.js"),
@@ -283,8 +297,45 @@ async function main(): Promise<void> {
   }
   const releaseOk = printSummary("RELEASE", releaseReports);
 
+  // ---- CHANNEL RETELL ----
+  // eslint-disable-next-line no-console
+  console.log("=== CHANNEL ===");
+  const channelReports: import("./report.js").CaseReport[] = [];
+  for (const c of CHANNEL_CASES) {
+    if (ARGS.only && c.id !== ARGS.only) continue;
+
+    let findings;
+    try {
+      let raw: string;
+      if (ARGS.mode === "live") {
+        const { provider, model } = resolveActiveProvider(store);
+        raw =
+          (await completeChatJson(provider, model, {
+            system: RETELL_SYSTEM_PROMPT,
+            user: buildRetellUserContent(c.item),
+            maxTokens: 1200,
+            temperature: 0.6,
+            refusalLabel: "пересказывать пост",
+          })) ?? "";
+        if (ARGS.record) writeRecording(join("channel", `${c.id}.json`), raw);
+      } else {
+        raw = readRecording(join("channel", `${c.id}.json`));
+      }
+      findings = checkChannelRetell(withSourceLine(finalizeRetell(raw).text, c.item), c.item);
+    } catch (err) {
+      findings = [
+        { id: "channel.produce", ok: false, severity: "error" as const, detail: String(err) },
+      ];
+    }
+
+    const failed = !findingsPass(findings);
+    channelReports.push({ id: c.id, about: c.about, findings, failed });
+    printCase({ id: c.id, about: c.about, findings, failed });
+  }
+  const channelOk = printSummary("CHANNEL", channelReports);
+
   store.close();
-  process.exit(rewriteOk && relevanceOk && releaseOk ? 0 : 1);
+  process.exit(rewriteOk && relevanceOk && releaseOk && channelOk ? 0 : 1);
 }
 
 main().catch((err) => {

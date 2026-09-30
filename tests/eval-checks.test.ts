@@ -4,6 +4,7 @@ import { isCasePassing } from "../evals/checks/types.js";
 import { finalizeRewrite } from "../src/llm/rewriteToPost.js";
 import { parseJudgeVerdict } from "../evals/judge/runJudge.js";
 import { judgeGate, parseJudgeFloor } from "../evals/judge/judgeGate.js";
+import { checkChannelRetell } from "../evals/checks/channelChecks.js";
 import { checkRelease, parseReleaseReply } from "../evals/checks/releaseChecks.js";
 import { checkRelevance, parseRelevanceReply } from "../evals/checks/relevanceChecks.js";
 import {
@@ -426,5 +427,34 @@ describe("release-confirm checks", () => {
     expect(checkRelease(false, false).every((f) => f.ok)).toBe(true);
     expect(checkRelease(true, false).find((f) => f.id === "release.verdict")?.ok).toBe(false);
     expect(checkRelease(null, true)[0]).toMatchObject({ id: "release.parse", ok: false });
+  });
+});
+
+describe("checkChannelRetell", () => {
+  const item = {
+    dedupKey: "u",
+    url: "https://t.me/c/1",
+    title: "t",
+    snippet: "В посте 3 агента и цена $20.",
+    feedTitle: "@c",
+    imageUrl: null,
+    imageUrls: [],
+    publishedAt: null,
+  };
+  const ok = (t: string) =>
+    checkChannelRetell(t, item)
+      .filter((f) => !f.ok)
+      .map((f) => f.id);
+
+  it("passes a short retelling with the source line and known numbers", () => {
+    expect(ok("Автор собрал 3 агента за $20.\n\nИсточник: @c — https://t.me/c/1")).toEqual([]);
+  });
+  it("flags length, missing source, extra links, new numbers and markdown", () => {
+    expect(ok("x".repeat(950))).toEqual(
+      expect.arrayContaining(["channel.length", "channel.source"]),
+    );
+    expect(
+      ok("Смотрите https://ex.com и 7 агентов **жирно**\n\nИсточник: @c — https://t.me/c/1"),
+    ).toEqual(expect.arrayContaining(["channel.links", "channel.numbers", "channel.markdown"]));
   });
 });
