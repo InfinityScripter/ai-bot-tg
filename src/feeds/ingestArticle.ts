@@ -48,7 +48,7 @@ const OG_DESC_RE_ALT =
 const TITLE_TAG_RE = /<title[^>]*>([^<]*)<\/title>/i;
 
 /** Decodes the HTML entities common in meta/title text, named and numeric. */
-function decodeEntities(input: string): string {
+export function decodeEntities(input: string): string {
   return (
     input
       .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))

@@ -88,6 +88,12 @@ export const EnvSchema = z
     /** Optional CSV override of the default feed list. */
     RSS_FEEDS: z.string().optional(),
     /**
+     * Optional CSV override of the Telegram source channels (see
+     * src/feeds/defaultChannels.ts). "@" optional; a leading "!" marks a
+     * priority channel. Replaces the whole default list when set.
+     */
+    TG_SOURCE_CHANNELS: z.string().optional(),
+    /**
      * Which backend rewrites a feed item into a post:
      *   'anthropic' — Claude (needs ANTHROPIC_API_KEY, paid)
      *   'gemini'    — Google Gemini (needs GEMINI_API_KEY; free tier is geo/quota limited)
