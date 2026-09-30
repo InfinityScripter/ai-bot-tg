@@ -254,6 +254,19 @@ describe("publishToChannel", () => {
     ]);
   });
 
+  it("sends a retelling over the caption limit as text without downloading photos", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = route(() => tgOk(85));
+    vi.stubGlobal("fetch", fetchMock);
+    const long = `<b>${"д".repeat(1010)}</b>${CREDIT(184)}`;
+
+    await expect(publishToChannel(long, [IMG_A, IMG_B])).resolves.toEqual({ postId: "tg:85" });
+
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).not.toContain(IMG_A);
+    expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendMessage"]);
+    expect(warn.mock.calls.some(([m]) => /\[channels\].*1024/.test(String(m)))).toBe(true);
+  });
+
   it("treats an unreadable photo reply as maybe-posted, not as a reason to resend as text", async () => {
     const fetchMock = route(() => new Response("null", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

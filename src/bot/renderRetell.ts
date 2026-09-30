@@ -1,5 +1,6 @@
 import { escapeMarkdown } from "../utils.js";
 import { visibleText } from "../feeds/index.js";
+import { CAPTION_LIMIT } from "../blog/index.js";
 
 import type { Candidate, ChannelRetell } from "../types.js";
 
@@ -11,8 +12,10 @@ export function renderRetellPreview(
   photoCount: number,
 ): string {
   const text = visibleText(retell.html);
+  const withoutPhotos = text.length > CAPTION_LIMIT && photoCount > 0;
   return [
     `📣 *Пересказ для канала* (${text.length} симв., фото: ${photoCount})`,
+    ...(withoutPhotos ? [`⚠️ Пересказ длиннее ${CAPTION_LIMIT} — уйдёт без фото`] : []),
     "",
     escapeMarkdown(text),
     "",

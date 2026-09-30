@@ -1,4 +1,5 @@
 import { CONFIG } from "../config.js";
+import { visibleText } from "../feeds/index.js";
 import { PublishError } from "./publishPost.js";
 import { downloadImage } from "./downloadImage.js";
 
@@ -116,7 +117,17 @@ function photoRequest(chatId: string, html: string, photos: Blob[]): [string, Fo
 export async function publishToChannel(html: string, imageUrls: string[]): Promise<PublishOutcome> {
   const chatId = CONFIG.TELEGRAM_CHANNEL_ID;
   if (!chatId) throw new PublishError("TELEGRAM_CHANNEL_ID не задан — некуда публиковать", false);
-  const photos = (await Promise.all(imageUrls.slice(0, MAX_PHOTOS).map(downloadImage))).filter(
+  // Only the manual path gets here with a long retelling (the auto gate stops it);
+  // Telegram would refuse it as a caption, so it goes out as text right away.
+  const visible = visibleText(html).length;
+  const tooLong = visible > CAPTION_LIMIT && imageUrls.length > 0;
+  if (tooLong) {
+    console.warn(
+      `[channels] ${visible} characters exceed the ${CAPTION_LIMIT} caption limit, sending text without photos`,
+    );
+  }
+  const usable = tooLong ? [] : imageUrls.slice(0, MAX_PHOTOS);
+  const photos = (await Promise.all(usable.map(downloadImage))).filter(
     (photo): photo is Blob => photo !== null,
   );
   // An album Telegram refused goes out with its first photo before giving up on photos.
@@ -125,7 +136,7 @@ export async function publishToChannel(html: string, imageUrls: string[]): Promi
     const id = await sendPhotos(...photoRequest(chatId, html, attempt));
     if (id !== null) return { postId: `tg:${id}` };
   }
-  if (imageUrls.length > 0 && photos.length === 0) {
+  if (usable.length > 0 && photos.length === 0) {
     console.warn(`[channels] none of ${imageUrls.length} photos usable, sending text`);
   }
   const id = await call("sendMessage", {

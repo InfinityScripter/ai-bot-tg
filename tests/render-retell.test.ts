@@ -39,4 +39,15 @@ describe("renderRetellPreview", () => {
     expect(card).not.toContain("<b>");
     expect(card).not.toContain("href");
   });
+
+  it("warns that a retelling over the caption limit goes out without its photos", () => {
+    const long = { html: `<b>${"д".repeat(1030)}</b>` };
+    expect(renderRetellPreview(CANDIDATE, long, "glm", 2)).toContain(
+      "длиннее 1024 — уйдёт без фото",
+    );
+    expect(renderRetellPreview(CANDIDATE, long, "glm", 0)).not.toContain("без фото");
+    expect(renderRetellPreview(CANDIDATE, { html: "<b>коротко</b>" }, "glm", 2)).not.toContain(
+      "без фото",
+    );
+  });
 });
