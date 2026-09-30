@@ -12,9 +12,9 @@ export { extractJson, completeChatJson } from "./chatCompletion.js";
 export { VENDOR_MARKERS, RELEASE_MARKERS } from "./releaseMarkers.js";
 export { extractRelease, NoModelInSourceError } from "./extractRelease.js";
 export { ON_TOPIC_MARKERS, OFF_TOPIC_MARKERS } from "./relevanceMarkers.js";
-export { DRESS_SYSTEM_PROMPT, buildDressUserContent } from "./dressPrompt.js";
 export { humanizeText, probeHemmingway, lastHumanizeOutcome } from "./humanize.js";
 export { detectKind, releaseKey, isReleaseItem, confirmRelease } from "./detectRelease.js";
+export { RUBRIC_GUIDE, DRESS_SYSTEM_PROMPT, buildDressUserContent } from "./dressPrompt.js";
 export { buildDigestPost, finalizeDigestPost, countDigestEntries } from "./buildDigestPost.js";
 export { toDigestRewrite, digestSummaryLine, renderDigestMarkdown } from "./renderDigestPost.js";
 export {
@@ -33,6 +33,12 @@ export type {
 } from "./types.js";
 
 export {
+  DIGEST_ITEM_MAX,
+  DIGEST_TITLE_MAX,
+  DIGEST_ITEM_SYSTEM_PROMPT,
+  buildDigestItemShortenContent,
+} from "./digestItemPrompt.js";
+export {
   finalizeDress,
   dropInventions,
   dressForChannel,
@@ -40,6 +46,14 @@ export {
   DRESS_TIMEOUT_MS,
   DRESS_TEMPERATURE,
 } from "./dressForChannel.js";
+export {
+  itemProblem,
+  inlineItemHtml,
+  writeDigestItem,
+  finalizeDigestItem,
+  DIGEST_ITEM_MAX_TOKENS,
+  DIGEST_ITEM_TEMPERATURE,
+} from "./writeDigestItem.js";
 export {
   withDress,
   finalizeRetell,

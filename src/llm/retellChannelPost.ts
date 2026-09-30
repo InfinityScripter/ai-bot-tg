@@ -78,7 +78,8 @@ export function cleanRetellHtml(html: string, item: FeedItem): string {
   return sanitizeTelegramHtml(lines.join("\n"), { allowedHrefs: hrefsOf(item.html ?? "") });
 }
 
-function sameMarkup(a: string, b: string): boolean {
+/** The same tags and the same link targets: the humanizer may reword, not re-mark. */
+export function sameMarkup(a: string, b: string): boolean {
   const hrefSet = (html: string) => [...new Set(hrefsOf(html))].sort();
   return (
     tagNamesOf(a).join() === tagNamesOf(b).join() && hrefSet(a).join("\n") === hrefSet(b).join("\n")
