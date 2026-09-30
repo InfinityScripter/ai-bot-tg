@@ -49,6 +49,12 @@ describe("describeChannelWatch", () => {
     });
   });
 
+  it("stays ok but says so when the picked post failed to process", () => {
+    const check = describeChannelWatch(last({ summary: summary({ processFailed: true }) }));
+    expect(check.ok).toBe(true);
+    expect(check.detail).toBe("страниц 12, подходящих 5, последний пост не обработан");
+  });
+
   it("stays ok but lists the pages when 1 of 12 failed", () => {
     const s = summary({ pages: 11, failed: ["abc"] });
     const check = describeChannelWatch(last({ summary: s }));

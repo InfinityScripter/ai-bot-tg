@@ -107,6 +107,7 @@ export function scheduleCheck(nextRun: (() => Date | null) | undefined): HealthC
 /**
  * The latest channel sweep: never ran, failed, or how many pages it read. A few
  * unreadable pages keep the row green (they are listed); half or more turn it red.
+ * A picked post that failed to process stays green: one bad post is not a broken sweep.
  */
 export function describeChannelWatch(last: ReturnType<typeof lastChannelWatch>): HealthCheck {
   const name = "Каналы";
@@ -116,10 +117,11 @@ export function describeChannelWatch(last: ReturnType<typeof lastChannelWatch>):
   if (!s) return { name, ok: true, detail: "нет данных" };
   if (s.skipped === "limit") return { name, ok: true, detail: "дневной лимит выбран" };
   const failed = s.failed.length ? `, не прочитались: ${s.failed.join(", ")}` : "";
+  const processFailed = s.processFailed ? ", последний пост не обработан" : "";
   return {
     name,
     ok: s.failed.length * 2 < s.pages + s.failed.length,
-    detail: `страниц ${s.pages}, подходящих ${s.eligible}${failed}`,
+    detail: `страниц ${s.pages}, подходящих ${s.eligible}${failed}${processFailed}`,
   };
 }
 
