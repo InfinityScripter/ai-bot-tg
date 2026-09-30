@@ -47,8 +47,13 @@ const OG_DESC_RE_ALT =
 /** Matches the contents of the <title> element. */
 const TITLE_TAG_RE = /<title[^>]*>([^<]*)<\/title>/i;
 
-/** Decodes the HTML entities common in meta/title text, named and numeric. */
+/** Decodes the HTML entities common in meta/title text, named and numeric; trims. */
 export function decodeEntities(input: string): string {
+  return decodeEntityRefs(input).trim();
+}
+
+/** decodeEntities without the trim, for text runs between tags. */
+export function decodeEntityRefs(input: string): string {
   return (
     input
       .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
@@ -62,7 +67,6 @@ export function decodeEntities(input: string): string {
       .replace(/&gt;/g, ">")
       // Ampersand LAST so a decoded "&amp;#38;" can't re-form another entity.
       .replace(/&amp;/g, "&")
-      .trim()
   );
 }
 
