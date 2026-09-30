@@ -144,3 +144,43 @@ stay under the 200-line lint budget.
 
 Part 2 (funnel), private channels, per-channel posting quotas, reposting media
 albums or video.
+
+## Revision (2026-09-30, after the first live post): formatted retellings with photos
+
+The first live retelling (ai_for_devs/640) went out as plain text with no
+photos: the owner found it unreadable next to the original (bold headline,
+blockquote, links, a two-photo album). Two defects and one design change.
+
+**Defects.** Telegram rejected the `cdn4.telesco.pe` photo URL, and the
+publisher silently fell back to text. The parser kept only the first photo of
+an album.
+
+**Decisions (owner):** voice of the original, reworded (no "Автор канала
+пишет"); same structure and links; all photos; one post — photos plus a
+caption of at most 1024 visible characters (long sources are compressed).
+
+**Design.**
+1. Parser keeps a sanitized HTML copy of the post text (b/strong, i/em, u, s,
+   a[href absolute], blockquote, code, pre; `<br>` → newline; Telegram emoji
+   images → their emoji; everything else unwrapped to text) and every photo of
+   the block (max 10). New column `candidates.source_html` (additive
+   migration); `FeedItem.html`, `Candidate.sourceHtml`.
+2. Retell prompt gets the source HTML and returns `{"html": "..."}` in
+   Telegram HTML: same structure, own words, ≤ 900 visible characters, links
+   only from the source. The humanizer runs on the HTML; its result is kept
+   only if the tag structure and the href set match the model output and the
+   visible length stays within the cap.
+3. Code sanitizer (no dependency): allowed tags only, balanced (unclosed tags
+   closed, stray closers dropped), `<a>` kept only when its href is one of the
+   source's links (trailing slash ignored), otherwise unwrapped; text escaped.
+   Credit line appended by code: `Источник: <a href="<post url>">@channel</a>`.
+4. Gate on visible text: ≤ 1024, credit present, body ≥ 50, no domain or
+   @handle absent from the source's visible text (source channel handle
+   allowed).
+5. Publisher downloads the photos (timeout, size cap, image content type) and
+   uploads them as files: one → sendPhoto, 2–10 → sendMediaGroup (caption on
+   the first), none/all failed → sendMessage; parse_mode HTML, previews off.
+   Every fallback is logged. maybePosted semantics unchanged.
+6. Owner preview card shows the visible text and the photo count.
+7. CHANNEL evals switch to the `{"html"}` reply; recordings are re-recorded
+   by the owner.
