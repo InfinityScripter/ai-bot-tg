@@ -60,10 +60,10 @@ export function loadChannelExtraction(
 ): LoadedExtraction | null {
   const retell = store.getRetell(candidate);
   if (!retell) return null;
-  const image = store.getFeedItem(candidate).imageUrls[0] ?? null;
+  const { imageUrls } = store.getFeedItem(candidate);
   return {
     title: `в канале: ${truncate(retell.html.split("\n")[0] ?? "", 80)}`,
-    publish: () => publishToChannel(retell.html, image),
+    publish: () => publishToChannel(retell.html, imageUrls),
     crossPost: null,
   };
 }

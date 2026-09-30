@@ -82,34 +82,132 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const IMG_A = "https://cdn4.telesco.pe/file/a.jpg";
+const IMG_B = "https://cdn4.telesco.pe/file/b.jpg";
+
+function image(type = "image/jpeg", bytes = 3): Response {
+  return new Response(new Uint8Array(bytes), { status: 200, headers: { "content-type": type } });
+}
+
+/** Routes Bot API calls to `telegram`, every other URL (a photo download) to `download`. */
+function route(
+  telegram: (method: string, init: RequestInit) => Response | Promise<Response>,
+  download: (url: string) => Response | Promise<Response> = () => image(),
+) {
+  return vi.fn(async (url: string, init: RequestInit = {}) =>
+    String(url).includes("api.telegram.org")
+      ? telegram(String(url).split("/").pop() ?? "", init)
+      : download(String(url)),
+  );
+}
+
+const telegramCalls = (fetchMock: ReturnType<typeof route>) =>
+  fetchMock.mock.calls
+    .filter(([u]) => String(u).includes("api.telegram.org"))
+    .map(([u, init]) => ({ method: String(u).split("/").pop(), body: init?.body }));
+
 describe("publishToChannel", () => {
-  it("sends a photo with the caption and returns tg:<message_id>", async () => {
-    const fetchMock = vi.fn(async () => tgOk(77));
+  it("downloads the photo and uploads it with the HTML caption", async () => {
+    const fetchMock = route(() => tgOk(77));
     vi.stubGlobal("fetch", fetchMock);
 
-    const out = await publishToChannel(TEXT, "https://cdn4.telesco.pe/file/a.jpg");
+    const out = await publishToChannel(TEXT, [IMG_A]);
 
     expect(out).toEqual({ postId: "tg:77" });
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toMatch(/\/sendPhoto$/);
-    expect(JSON.parse(String(init.body))).toMatchObject({
+    const [call] = telegramCalls(fetchMock);
+    expect(call?.method).toBe("sendPhoto");
+    const form = call?.body as FormData;
+    expect(form).toBeInstanceOf(FormData);
+    expect(form.get("chat_id")).toBe("@ai_first_news");
+    expect(form.get("caption")).toBe(TEXT);
+    expect(form.get("parse_mode")).toBe("HTML");
+    expect(form.get("photo")).toBeInstanceOf(Blob);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(IMG_A);
+  });
+
+  it("sends an album as one media group with the caption on the first photo", async () => {
+    const fetchMock = route(
+      () =>
+        new Response(
+          JSON.stringify({ ok: true, result: [{ message_id: 81 }, { message_id: 82 }] }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(publishToChannel(TEXT, [IMG_A, IMG_B])).resolves.toEqual({ postId: "tg:81" });
+
+    const [call] = telegramCalls(fetchMock);
+    expect(call?.method).toBe("sendMediaGroup");
+    const form = call?.body as FormData;
+    expect(JSON.parse(String(form.get("media")))).toEqual([
+      { type: "photo", media: "attach://p0", caption: TEXT, parse_mode: "HTML" },
+      { type: "photo", media: "attach://p1" },
+    ]);
+    expect(form.get("p0")).toBeInstanceOf(Blob);
+    expect(form.get("p1")).toBeInstanceOf(Blob);
+  });
+
+  it("skips photos that fail to download, are not images or are too big", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = route(
+      () => tgOk(79),
+      (url) => {
+        if (url.endsWith("404.jpg")) return new Response("", { status: 404 });
+        if (url.endsWith("html.jpg")) return image("text/html");
+        if (url.endsWith("huge.jpg")) return image("image/jpeg", 10 * 1024 * 1024 + 1);
+        if (url.endsWith("net.jpg")) throw new TypeError("fetch failed");
+        return image();
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await publishToChannel(TEXT, [
+      "https://cdn/404.jpg",
+      "https://cdn/html.jpg",
+      "https://cdn/huge.jpg",
+      "https://cdn/net.jpg",
+      "ftp://cdn/x.jpg",
+      IMG_A,
+    ]);
+
+    expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendPhoto"]);
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).not.toContain("ftp://cdn/x.jpg");
+    expect(warn.mock.calls.filter(([m]) => String(m).startsWith("[channels]"))).toHaveLength(5);
+  });
+
+  it("sends an HTML text message without a preview when no photo is usable", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = route(
+      () => tgOk(80),
+      () => new Response("", { status: 404 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(publishToChannel(TEXT, [IMG_A])).resolves.toEqual({ postId: "tg:80" });
+    await publishToChannel(TEXT, []);
+
+    const calls = telegramCalls(fetchMock);
+    expect(calls.map((c) => c.method)).toEqual(["sendMessage", "sendMessage"]);
+    expect(JSON.parse(String(calls[0]?.body))).toEqual({
       chat_id: "@ai_first_news",
-      photo: "https://cdn4.telesco.pe/file/a.jpg",
-      caption: TEXT,
+      text: TEXT,
+      parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
     });
   });
 
   it("falls back to a text message when Telegram rejects the photo", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: false, description: "wrong file" }), { status: 400 }),
-      )
-      .mockResolvedValueOnce(tgOk(78));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = route((method) =>
+      method === "sendPhoto"
+        ? new Response(JSON.stringify({ ok: false, description: "wrong file" }), { status: 400 })
+        : tgOk(78),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(publishToChannel(TEXT, "https://cdn/x.jpg")).resolves.toEqual({ postId: "tg:78" });
-    expect(String(fetchMock.mock.calls[1]?.[0])).toMatch(/\/sendMessage$/);
+    await expect(publishToChannel(TEXT, [IMG_A])).resolves.toEqual({ postId: "tg:78" });
+    expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendPhoto", "sendMessage"]);
   });
 
   it("marks a network failure as maybe-posted and a 4xx as not posted", async () => {
@@ -119,7 +217,7 @@ describe("publishToChannel", () => {
         throw new TypeError("fetch failed");
       }),
     );
-    await expect(publishToChannel(TEXT, null)).rejects.toMatchObject({ maybePosted: true });
+    await expect(publishToChannel(TEXT, [])).rejects.toMatchObject({ maybePosted: true });
 
     vi.stubGlobal(
       "fetch",
@@ -130,32 +228,30 @@ describe("publishToChannel", () => {
           }),
       ),
     );
-    await expect(publishToChannel(TEXT, null)).rejects.toMatchObject({ maybePosted: false });
+    await expect(publishToChannel(TEXT, [])).rejects.toMatchObject({ maybePosted: false });
   });
 
   it("does not fall back to text after an ambiguous photo failure", async () => {
-    const fetchMock = vi.fn(async () => new Response("oops", { status: 502 }));
+    const fetchMock = route(() => new Response("oops", { status: 502 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(publishToChannel(TEXT, "https://cdn/x.jpg")).rejects.toMatchObject({
+    await expect(publishToChannel(TEXT, [IMG_A, IMG_B])).rejects.toMatchObject({
       maybePosted: true,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendMediaGroup"]);
   });
 
   it("does not fall back to text after a photo network error and hides the token", async () => {
-    const fetchMock = vi.fn(async () => {
+    const fetchMock = route(() => {
       throw new TypeError("fetch failed");
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const err = (await publishToChannel(TEXT, "https://cdn/x.jpg").catch(
-      (e: unknown) => e,
-    )) as Error;
+    const err = (await publishToChannel(TEXT, [IMG_A]).catch((e: unknown) => e)) as Error;
 
     expect(err).toMatchObject({ maybePosted: true });
     expect(err.message).not.toContain("test:telegram-token");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(telegramCalls(fetchMock)).toHaveLength(1);
   });
 
   it("never puts the bot token into an error message", async () => {
@@ -163,7 +259,7 @@ describe("publishToChannel", () => {
       "fetch",
       vi.fn(async () => new Response("oops", { status: 502 })),
     );
-    const err = (await publishToChannel(TEXT, null).catch((e: unknown) => e)) as Error;
+    const err = (await publishToChannel(TEXT, []).catch((e: unknown) => e)) as Error;
     expect(err.message).not.toContain("test:telegram-token");
   });
 });
@@ -259,6 +355,27 @@ describe("automatic channel retelling", () => {
     expect(urls.filter((u) => u.includes("/api/post/new"))).toEqual([]);
     expect(urls.filter((u) => u.includes("api.telegram.org"))).toHaveLength(1);
     expect(texts.at(-1)).toContain("Автоопубликовано");
+    store.close();
+  });
+
+  it("publishes every photo of the source post as one album", async () => {
+    const store = new CandidateStore(":memory:");
+    const id = store.insertCollected(
+      { ...item(), imageUrl: IMG_A, imageUrls: [IMG_A, IMG_B] },
+      true,
+    )!;
+    retellChannelPost.mockResolvedValue({ html: TEXT });
+    const fetchMock = route(
+      () =>
+        new Response(JSON.stringify({ ok: true, result: [{ message_id: 96 }] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { autoPublishCandidate } = makeBot(store);
+
+    await autoPublishCandidate(store.get(id)!);
+
+    expect(store.get(id)!.blogPostId).toBe("tg:96");
+    expect(telegramCalls(fetchMock).map((c) => c.method)).toEqual(["sendMediaGroup"]);
     store.close();
   });
 
