@@ -46,15 +46,24 @@ export function withSourceLine(html: string, item: Pick<FeedItem, "url" | "feedT
 
 /**
  * Model (or humanizer) HTML reduced to what may be published: Telegram tags
- * only, links only to the source post's own targets, no credit line of its
- * own. The prompt alone is not a control (OWASP LLM05).
+ * only, links only to the source post's own targets, no credit line or
+ * trailing channel signature of its own. The prompt alone is not a control
+ * (OWASP LLM05).
  */
 export function cleanRetellHtml(html: string, item: FeedItem): string {
-  const withoutCredit = html
+  const lines = html
     .split("\n")
-    .filter((line) => !visibleText(line).trimStart().startsWith("Источник:"))
-    .join("\n");
-  return sanitizeTelegramHtml(withoutCredit, { allowedHrefs: hrefsOf(item.html ?? "") });
+    .filter((line) => !visibleText(line).trimStart().startsWith("Источник:"));
+  while (lines.length > 0 && visibleText(lines.at(-1) ?? "").trim() === "") lines.pop();
+  // Posts end with the author's "@channel" signature; the credit line already names it.
+  const signature = item.feedTitle.toLowerCase();
+  if (
+    visibleText(lines.at(-1) ?? "")
+      .trim()
+      .toLowerCase() === signature
+  )
+    lines.pop();
+  return sanitizeTelegramHtml(lines.join("\n"), { allowedHrefs: hrefsOf(item.html ?? "") });
 }
 
 function sameMarkup(a: string, b: string): boolean {

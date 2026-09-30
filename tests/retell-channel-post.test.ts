@@ -73,6 +73,18 @@ describe("cleanRetellHtml", () => {
     ).toBe(`<b>Суть</b>: <a href="${LINK}/">статья</a> и скидки`);
   });
 
+  it("drops a trailing channel signature, which the credit line already gives", () => {
+    expect(
+      cleanRetellHtml('<b>Суть</b>\n\n<a href="https://t.me/ai_for_devs">@AI_for_devs</a> \n\n', {
+        ...ITEM,
+        html: `${ITEM.html}\n<a href="https://t.me/ai_for_devs">@ai_for_devs</a>`,
+      }),
+    ).toBe("<b>Суть</b>");
+    expect(cleanRetellHtml("<i>@ai_for_devs</i>\nСуть поста.", ITEM)).toBe(
+      "<i>@ai_for_devs</i>\nСуть поста.",
+    );
+  });
+
   it("balances broken markup and drops tags Telegram does not know", () => {
     expect(cleanRetellHtml("<b>Суть <i>поста</b><br><h1>Заголовок</h1>", ITEM)).toBe(
       "<b>Суть <i>поста</i></b>\nЗаголовок",
@@ -119,6 +131,7 @@ describe("retellChannelPost", () => {
     ];
     expect(req.user).toContain("<b>Первая строка</b>");
     expect(req.system).toContain('{"html"');
+    expect(req.system).toContain("подпись канала");
     store.close();
   });
 
