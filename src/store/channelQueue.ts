@@ -71,15 +71,30 @@ export class ChannelQueue {
       .run(CandidateState.Skipped, CandidateState.DigestQueued, now - maxAgeMs).changes;
   }
 
-  /** digest_queued → publishing for the given channel rows in one statement; returns how many. */
+  /**
+   * digest_queued → publishing for all the given channel rows or none: if any
+   * of them is not queued (a concurrent publisher holds it, or it expired),
+   * nothing changes and 0 is returned. Otherwise returns ids.length.
+   */
   claim(ids: number[]): number {
     if (ids.length === 0) return 0;
-    return this.db
-      .prepare(
-        `UPDATE candidates SET state = ?, updated_at = datetime('now')
-          WHERE kind = 'channel' AND state = ? AND id IN (${placeholders(ids)})`,
-      )
-      .run(CandidateState.Publishing, CandidateState.DigestQueued, ...ids).changes;
+    const claimAll = this.db.transaction((): number => {
+      const { n } = this.db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM candidates
+            WHERE kind = 'channel' AND state = ? AND id IN (${placeholders(ids)})`,
+        )
+        .get(CandidateState.DigestQueued, ...ids) as { n: number };
+      if (n !== ids.length) return 0;
+      this.db
+        .prepare(
+          `UPDATE candidates SET state = ?, updated_at = datetime('now')
+            WHERE kind = 'channel' AND state = ? AND id IN (${placeholders(ids)})`,
+        )
+        .run(CandidateState.Publishing, CandidateState.DigestQueued, ...ids);
+      return ids.length;
+    });
+    return claimAll();
   }
 
   /** publishing → digest_queued after a send that surely did not post (4xx, 429, 403). */

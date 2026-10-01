@@ -35,7 +35,6 @@ export async function publishIssue(
   }
   const ids = article.items.map((item) => item.candidateId);
   if (store.channelQueue.claim(ids) !== ids.length) {
-    store.channelQueue.requeue(ids);
     await tell(`⚠️ Очередь выпуска «${slot.title}» изменилась до отправки, выпуск не отправлен.`);
     return { ok: false, outcome: "очередь изменилась до отправки" };
   }
@@ -45,8 +44,14 @@ export async function publishIssue(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (err instanceof PublishError && err.maybePosted) {
-      for (const id of ids) store.setState(id, CandidateState.NeedsVerification, message);
       store.channelQueue.setLastSlot(slot.key);
+      try {
+        for (const id of ids) store.setState(id, CandidateState.NeedsVerification, message);
+      } catch (stateErr) {
+        console.error(
+          `[digest-issue] ${slot.key} may be in the channel, parking the posts failed: ${String(stateErr)}`,
+        );
+      }
       await tell(
         `❓ Выпуск «${slot.title}» не подтверждён: ${message}\n\nОн МОГ выйти. Проверьте канал: повторно бот его не отправит.`,
       );
@@ -59,10 +64,16 @@ export async function publishIssue(
   store.channelQueue.setLastSlot(slot.key);
   try {
     for (const id of ids) store.setPublished(id, `tg:${sent.messageId}`);
+  } catch (err) {
+    console.error(
+      `[digest-issue] ${slot.key} is in the channel, marking the posts published failed: ${String(err)}`,
+    );
+  }
+  try {
     store.markSeenKeys(article.items.flatMap((item) => item.linkKeys));
   } catch (err) {
     console.error(
-      `[digest-issue] ${slot.key} is in the channel, bookkeeping failed: ${String(err)}`,
+      `[digest-issue] ${slot.key} is in the channel, marking the link keys seen failed: ${String(err)}`,
     );
   }
   if (!sent.rejected) return { ok: true, outcome: `опубликован (${newsCount(ids.length)})` };

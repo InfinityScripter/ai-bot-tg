@@ -71,13 +71,23 @@ describe("ChannelQueue", () => {
   it("claims queued channel rows atomically and returns them on requeue", () => {
     const a = store.channelQueue.add(post("a", 1), 1)!;
     const b = store.channelQueue.add(post("a", 2), 1)!;
-    store.setState(b, CandidateState.Skipped);
-    expect(store.channelQueue.claim([a, b])).toBe(1);
+    expect(store.channelQueue.claim([a, b])).toBe(2);
     expect(store.get(a)!.state).toBe(CandidateState.Publishing);
     store.channelQueue.requeue([a, b]);
     expect(store.get(a)!.state).toBe(CandidateState.DigestQueued);
-    expect(store.get(b)!.state).toBe(CandidateState.Skipped);
+    expect(store.get(b)!.state).toBe(CandidateState.DigestQueued);
     expect(store.channelQueue.claim([])).toBe(0);
+  });
+
+  it("a partial claim changes no row", () => {
+    const a = store.channelQueue.add(post("a", 1), 1)!;
+    const b = store.channelQueue.add(post("a", 2), 1)!;
+    const c = store.channelQueue.add(post("a", 3), 1)!;
+    expect(store.channelQueue.claim([b])).toBe(1);
+    expect(store.channelQueue.claim([a, b, c])).toBe(0);
+    expect(store.get(a)!.state).toBe(CandidateState.DigestQueued);
+    expect(store.get(b)!.state).toBe(CandidateState.Publishing);
+    expect(store.get(c)!.state).toBe(CandidateState.DigestQueued);
   });
 
   it("remembers the last issue slot", () => {

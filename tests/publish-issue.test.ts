@@ -150,7 +150,10 @@ describe("publishIssue", () => {
 
     expect(result.ok).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    for (const id of ids) expect(store.get(id)!.state).toBe(CandidateState.NeedsVerification);
+    for (const id of ids) {
+      expect(store.get(id)!.state).toBe(CandidateState.NeedsVerification);
+      expect(linkSeen(id)).toBe(false);
+    }
     expect(store.channelQueue.lastSlot()).toBe(SLOT.key);
     expect(notes[0]).toContain("МОГ");
   });
@@ -208,6 +211,59 @@ describe("publishIssue", () => {
     expect(result.ok).toBe(true);
     expect(store.channelQueue.lastSlot()).toBe(SLOT.key);
     for (const id of ids) expect(store.get(id)!.state).toBe(CandidateState.Publishing);
+  });
+
+  it("marks the link keys seen even when setPublished throws", async () => {
+    const ids = [queued(1), queued(2), queued(3)];
+    stub(ok(703));
+    vi.spyOn(store, "setPublished").mockImplementation(() => {
+      throw new Error("disk I/O error");
+    });
+
+    await publishIssue(store, issue(ids), notify);
+
+    for (const id of ids) expect(linkSeen(id)).toBe(true);
+  });
+
+  it("records the slot even when parking the posts throws in the maybe-posted branch", async () => {
+    const ids = [queued(1), queued(2), queued(3)];
+    stub(tg(502, { ok: false, description: "Bad Gateway" }));
+    vi.spyOn(store, "setState").mockImplementation(() => {
+      throw new Error("disk I/O error");
+    });
+
+    const result = await publishIssue(store, issue(ids), notify);
+
+    expect(result.ok).toBe(false);
+    expect(store.channelQueue.lastSlot()).toBe(SLOT.key);
+    expect(notes[0]).toContain("МОГ");
+  });
+
+  it("an overlapping call neither requeues nor resends what the first call is sending", async () => {
+    const ids = [queued(1), queued(2), queued(3)];
+    let release!: (response: Response) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = publishIssue(store, issue(ids), notify);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const second = await publishIssue(store, issue(ids), notify);
+    expect(second.ok).toBe(false);
+    for (const id of ids) expect(store.get(id)!.state).toBe(CandidateState.Publishing);
+
+    const third = await publishIssue(store, issue(ids), notify);
+    expect(third.ok).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    release(ok(704));
+    await expect(first).resolves.toMatchObject({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the outcome when the owner note cannot be delivered", async () => {
