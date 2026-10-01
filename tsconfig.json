@@ -17,6 +17,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src", "tests", "evals"],
+  "include": ["src", "tests", "evals", "scripts"],
   "exclude": ["node_modules", "dist"]
 }

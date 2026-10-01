@@ -297,6 +297,10 @@ src/
     ├── runCollection.ts   # npm run fetch — разовый сбор без polling
     ├── testModels.ts      # npm run test:models — доступность провайдеров с хоста
     └── backfillChannel.ts # npm run backfill:channel — разовый анонс бэк-каталога в TG-канал
+
+scripts/
+├── channelDigestDryRun.ts # npm run digest:dry-run — проба выпуска в личку владельца
+└── dryRunGuards.ts        # защита пробы: только владелец, БД read-only, пометка «[проба]»
 ```
 
 Конвенции: один модуль ≤ 200 строк кода (ESLint `max-lines`, error);
@@ -402,6 +406,14 @@ npm run fetch        # разовый сбор из шелла и выход (б
 npm run test:models  # какие провайдеры доступны с этого хоста (гео/сеть)
 
 npm run backfill:channel -- --dry-run   # план бэкфилла TG-канала (ничего не шлёт)
+
+# Живая проба выпуска дайджеста каналов: реальный пайплайн в памяти, статья с «[проба]»
+# уходит только в личку владельца (не в канал), боевая БД открывается read-only ради модели.
+# Запускать на VDS после деплоя, окружение сервиса подтягивает systemd:
+ssh blog 'systemd-run --quiet --wait --pipe --collect --unit=digest-dry-run \
+  -p WorkingDirectory=/opt/blog-app/ai-bot-tg \
+  -p EnvironmentFile=/opt/blog-app/ai-bot-tg/.env.production \
+  "$(command -v npm)" run digest:dry-run'
 
 npm test             # vitest (сеть замокана, ключи не нужны)
 npm run ts           # tsc --noEmit
