@@ -100,6 +100,27 @@ export const EnvSchema = z
      * slot. OPTIONAL: unset = no issue; posts only queue and age out after 24 h.
      */
     CHANNEL_DIGEST_CRON: z.string().min(1).optional(),
+    /**
+     * Numeric id (-100…) of the ONE group chat where the bot answers people who
+     * mention it or reply to it (the channel's discussion group). OPTIONAL:
+     * unset = the responder is off and every update keeps going through the
+     * owner lock exactly as before.
+     */
+    CHAT_REPLY_CHAT_ID: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z.coerce.number().int().optional(),
+    ),
+    /** Max model calls per rolling hour in the group; over it the bot stays silent. */
+    CHAT_REPLY_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),
+    /**
+     * Codex CLI used for group replies (runs on the owner's ChatGPT subscription,
+     * not on API credits). May point to a wrapper script that runs codex as a
+     * separate OS user with no access to the bot's files.
+     */
+    CHAT_REPLY_CODEX_BIN: z.string().min(1).default("codex"),
+    CHAT_REPLY_MODEL: z.string().min(1).default("gpt-6-luna"),
+    /** Wall-clock cap for one codex run; a probe answered in 5–13 s. */
+    CHAT_REPLY_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000),
     /** Optional CSV override of the default feed list. */
     RSS_FEEDS: z.string().optional(),
     /**

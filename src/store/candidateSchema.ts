@@ -5,6 +5,8 @@
  * stays focused on behaviour, not DDL.
  */
 
+import type Database from "better-sqlite3";
+
 import { CandidateKind, CandidateState } from "../enums.js";
 
 import type { Candidate } from "../types.js";
@@ -67,6 +69,21 @@ export const MIGRATIONS = [
   `ALTER TABLE candidates ADD COLUMN published_at INTEGER`,
   `ALTER TABLE candidates ADD COLUMN view_score REAL`,
 ];
+
+/**
+ * Applies MIGRATIONS to an open database. ALTER ADD COLUMN throws if the column
+ * already exists, which is the "already migrated" case — safe to ignore.
+ */
+export function applyMigrations(db: Database.Database): void {
+  for (const sql of MIGRATIONS) {
+    try {
+      db.exec(sql);
+    } catch (err) {
+      if (err instanceof Error && /duplicate column name/i.test(err.message)) continue;
+      throw err;
+    }
+  }
+}
 // The UNIQUE constraint on dedup_key already creates an index; state-запросы
 // (listByState / countsByState / claim / prune) кроет idx_candidates_state
 // из SCHEMA — CREATE INDEX IF NOT EXISTS безопасен для существующих БД.

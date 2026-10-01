@@ -9,7 +9,7 @@ import { ChannelQueue } from "./channelQueue.js";
 import * as queries from "./candidateQueries.js";
 import * as mutations from "./candidateMutations.js";
 import { parseRetell, parseRewrite, parseReleaseBundle } from "./parseExtraction.js";
-import { SCHEMA, mapRow, MIGRATIONS, DIGEST_LAST_DATE_KEY } from "./candidateSchema.js";
+import { SCHEMA, mapRow, applyMigrations, DIGEST_LAST_DATE_KEY } from "./candidateSchema.js";
 
 import type { CandidateRow, MockOverride, ModelOverride } from "./types.js";
 import type { FeedItem, Candidate, ChannelRetell, RewriteResult, ReleaseBundle } from "../types.js";
@@ -35,16 +35,7 @@ export class CandidateStore {
     this.db.pragma("busy_timeout = 5000");
     this.db.pragma("synchronous = NORMAL");
     this.db.exec(SCHEMA);
-    // Apply additive migrations; ALTER ADD COLUMN throws if it already exists,
-    // which is the "already migrated" case — safe to ignore.
-    for (const sql of MIGRATIONS) {
-      try {
-        this.db.exec(sql);
-      } catch (err) {
-        if (err instanceof Error && /duplicate column name/i.test(err.message)) continue;
-        throw err;
-      }
-    }
+    applyMigrations(this.db);
     // Recover rows stuck in a transient in-flight state from a crash/deploy
     // (systemd SIGTERM on CI auto-deploy) mid-rewrite/publish: 'rewriting' →
     // 'collected' (re-offer the 🔄 card), 'publishing' → 'needs_verification'
@@ -293,6 +284,11 @@ export class CandidateStore {
   /** Low-level setter for a settings key. Exposed mainly for tests. */
   setRawSetting(key: string, value: string): void {
     settings.setRawSetting(this.db, key, value);
+  }
+
+  /** Low-level getter for a settings key; the group responder keeps its state here. */
+  getRawSetting(key: string): string | null {
+    return settings.getRawSetting(this.db, key);
   }
 
   /** The active provider/model override, or null if none is set. */

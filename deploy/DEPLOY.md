@@ -110,6 +110,48 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now blog-newsbot
 ```
 
+## 4a. Group responder (optional)
+
+The bot can answer in the channel's discussion group when someone mentions it
+or replies to it. Replies run through the Codex CLI on the owner's ChatGPT
+subscription (no API credits); every Codex tool is disabled and the child gets
+no bot tokens in its environment (`src/chatReply/runCodex.ts`).
+
+1. Add the bot to the discussion group as a member. Privacy mode in @BotFather
+   can stay ON: the bot only needs mentions and replies to itself.
+2. Install Codex for the service user and log it in. The login is the owner's
+   ChatGPT session; copy it from a machine where `codex login status` says
+   "Logged in using ChatGPT":
+
+   ```bash
+   sudo npm i -g @openai/codex
+   sudo install -d -o www-data -g www-data -m 700 /opt/blog-app/ai-bot-tg/data/codex
+   # from the owner's Mac:
+   scp ~/.codex/auth.json root@VDS_HOST:/opt/blog-app/ai-bot-tg/data/codex/auth.json
+   sudo chown www-data:www-data /opt/blog-app/ai-bot-tg/data/codex/auth.json
+   sudo chmod 600 /opt/blog-app/ai-bot-tg/data/codex/auth.json
+   sudo -u www-data env CODEX_HOME=/opt/blog-app/ai-bot-tg/data/codex codex login status
+   ```
+
+   `CODEX_HOME` lives under `data/` on purpose: the unit runs with
+   `ProtectSystem=strict` and `ProtectHome=true`, and `data/` is its only
+   writable path. Codex writes there on every run (session state, token
+   refresh in `auth.json`); a read-only home makes every reply fall back to the
+   paid provider without any visible error. `data/` is git-ignored and survives
+   the git-pull deploy.
+3. Add `Environment=CODEX_HOME=/opt/blog-app/ai-bot-tg/data/codex` to the
+   `[Service]` section of `blog-newsbot.service`, then `daemon-reload` and
+   restart. After the first mention, `journalctl -u blog-newsbot | grep
+   "codex failed"` must be empty — otherwise replies run on the fallback.
+4. Mention the bot once in the group and read its id from the journal:
+   `journalctl -u blog-newsbot | grep chatReply` prints
+   `mention in a chat that is not CHAT_REPLY_CHAT_ID: -100…`. Put that id into
+   `CHAT_REPLY_CHAT_ID` in `.env.production` and restart.
+
+`/chat` in the owner DM turns the responder off and on (kept in SQLite). When
+Codex fails (quota spent, session expired, timeout) the active rewrite provider
+answers instead; when both fail the bot stays silent.
+
 ## 5. Verify
 
 ```bash
