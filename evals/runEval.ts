@@ -111,6 +111,13 @@ async function main(): Promise<void> {
       buildDressUserContent,
       DRESS_MAX_TOKENS,
       DRESS_TEMPERATURE,
+      finalizeDigestItem,
+      inlineItemHtml,
+      DIGEST_ITEM_MAX,
+      DIGEST_ITEM_SYSTEM_PROMPT,
+      DIGEST_ITEM_MAX_TOKENS,
+      DIGEST_ITEM_TEMPERATURE,
+      buildDigestItemShortenContent,
     },
     { CONFIG },
     { visibleText },
@@ -135,6 +142,8 @@ async function main(): Promise<void> {
     { REWRITE_CASES },
     { RELEVANCE_CASES },
     report,
+    { checkDigestItem },
+    { DIGEST_ITEM_CASES },
   ] = await Promise.all([
     import("../src/llm/index.js"),
     import("../src/config.js"),
@@ -155,6 +164,8 @@ async function main(): Promise<void> {
     import("./fixtures/rewriteCases.js"),
     import("./fixtures/relevanceCases.js"),
     import("./report.js"),
+    import("./checks/digestItemChecks.js"),
+    import("./fixtures/digestItemCases.js"),
   ]);
 
   const { printCase, printSummary, findingsPass } = report;
@@ -402,8 +413,63 @@ async function main(): Promise<void> {
   }
   const dressOk = printSummary("DRESS", dressReports);
 
+  // ---- DIGEST ITEM ---- (ids item-*: --only records this suite alone)
+  // eslint-disable-next-line no-console
+  console.log("=== DIGEST_ITEM ===");
+  const itemReports: import("./report.js").CaseReport[] = [];
+  for (const c of DIGEST_ITEM_CASES) {
+    if (ARGS.only && c.id !== ARGS.only) continue;
+
+    let findings;
+    try {
+      let raw: string;
+      if (ARGS.mode === "live") {
+        const { provider, model } = resolveActiveProvider(store);
+        const ask = async (user: string) =>
+          (await completeChatJson(provider, model, {
+            system: DIGEST_ITEM_SYSTEM_PROMPT,
+            user,
+            maxTokens: DIGEST_ITEM_MAX_TOKENS,
+            temperature: DIGEST_ITEM_TEMPERATURE,
+            refusalLabel: "писать карточку дайджеста",
+          })) ?? "";
+        raw = await ask(buildRetellUserContent(c.item));
+        // Production asks once more to shorten a card over the cap; record what it would keep.
+        const first = finalizeDigestItem(raw);
+        const draft = first && { ...first, html: inlineItemHtml(first.html, c.item) };
+        if (draft && visibleText(draft.html).length > DIGEST_ITEM_MAX) {
+          const kept = await ask(buildDigestItemShortenContent(c.item, draft))
+            .then((reply) => ({ reply, card: finalizeDigestItem(reply) }))
+            .catch((err: unknown) => {
+              // eslint-disable-next-line no-console
+              console.warn(`  shorten call failed, the draft stands: ${String(err)}`);
+              return null;
+            });
+          const shorter =
+            kept?.card &&
+            visibleText(inlineItemHtml(kept.card.html, c.item)).length <
+              visibleText(draft.html).length;
+          if (kept && shorter) raw = kept.reply;
+        }
+        if (ARGS.record) writeRecording(join("digest-item", `${c.id}.json`), raw);
+      } else {
+        raw = readRecording(join("digest-item", `${c.id}.json`));
+      }
+      findings = checkDigestItem(raw, c.item, c.expectSkip, c.forbidden);
+    } catch (err) {
+      findings = [
+        { id: "item.produce", ok: false, severity: "error" as const, detail: String(err) },
+      ];
+    }
+
+    const failed = !findingsPass(findings);
+    itemReports.push({ id: c.id, about: c.about, findings, failed });
+    printCase({ id: c.id, about: c.about, findings, failed });
+  }
+  const itemOk = printSummary("DIGEST_ITEM", itemReports);
+
   store.close();
-  process.exit(rewriteOk && relevanceOk && releaseOk && channelOk && dressOk ? 0 : 1);
+  process.exit(rewriteOk && relevanceOk && releaseOk && channelOk && dressOk && itemOk ? 0 : 1);
 }
 
 main().catch((err) => {
