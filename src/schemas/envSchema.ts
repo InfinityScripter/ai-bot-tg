@@ -110,8 +110,13 @@ export const EnvSchema = z
       (v) => (v === "" ? undefined : v),
       z.coerce.number().int().optional(),
     ),
-    /** Max model calls per rolling hour in the group; over it the bot stays silent. */
-    CHAT_REPLY_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),
+    /**
+     * Max replies per rolling hour through the PAID fallback provider; over it a
+     * reply Codex could not give is skipped. Codex replies are not capped: they
+     * run on the owner's subscription, and an exhausted quota just makes Codex
+     * fail — which is exactly when this cap starts to matter.
+     */
+    CHAT_REPLY_FALLBACK_PER_HOUR: z.coerce.number().int().positive().default(20),
     /**
      * Codex CLI used for group replies (runs on the owner's ChatGPT subscription,
      * not on API credits). May point to a wrapper script that runs codex as a

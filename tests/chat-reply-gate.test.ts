@@ -5,7 +5,7 @@ import { it, vi, expect, describe, afterEach, beforeEach } from "vitest";
 // Must be set before src/config.ts is first imported (dynamic imports below).
 const GROUP_ID = -1001234567890;
 process.env.CHAT_REPLY_CHAT_ID = String(GROUP_ID);
-process.env.CHAT_REPLY_MAX_PER_HOUR = "2";
+process.env.CHAT_REPLY_FALLBACK_PER_HOUR = "2";
 
 const generateReply = vi.fn();
 vi.mock("../src/chatReply/generateReply.js", () => ({
@@ -41,7 +41,7 @@ async function makeBot() {
 let nextId = 100;
 function groupMessage(
   text: string,
-  opts: { from?: number; chat?: number; replyToBot?: string } = {},
+  opts: { from?: number; chat?: number; replyToBot?: string; replyToPost?: string } = {},
 ): Update {
   nextId += 1;
   const chat = { id: opts.chat ?? GROUP_ID, type: "supergroup", title: "Чат" };
@@ -64,8 +64,29 @@ function groupMessage(
               from: { id: BOT_ID, is_bot: true, first_name: "Bot" },
             },
           }),
+      ...(opts.replyToPost === undefined
+        ? {}
+        : { reply_to_message: channelPostMessage(opts.replyToPost, 6) }),
     },
   } as Update;
+}
+
+/** A channel post as Telegram copies it into the linked discussion group. */
+function channelPostMessage(text: string | undefined, messageId: number) {
+  return {
+    message_id: messageId,
+    date: 0,
+    chat: { id: GROUP_ID, type: "supergroup", title: "Чат" },
+    from: { id: 777000, is_bot: false, first_name: "Telegram" },
+    sender_chat: { id: -100555, type: "channel", title: "AI First" },
+    is_automatic_forward: true,
+    ...(text === undefined ? {} : { caption: text }),
+  };
+}
+
+function channelPost(text?: string): Update {
+  nextId += 1;
+  return { update_id: nextId, message: channelPostMessage(text, nextId) } as Update;
 }
 
 function ownerDm(text: string): Update {
@@ -167,14 +188,53 @@ describe("group responder routing", () => {
     expect(generateReply).toHaveBeenCalledOnce();
   });
 
-  it("stops calling the model after CHAT_REPLY_MAX_PER_HOUR answers", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("answers past the hourly cap: CHAT_REPLY_FALLBACK_PER_HOUR only limits the paid path", async () => {
     const { bot, drain } = await makeBot();
     for (let i = 0; i < 3; i += 1) {
       await bot.handleUpdate(groupMessage(`@${BOT_USERNAME} вопрос ${i}`));
+      await drain();
     }
+    expect(generateReply).toHaveBeenCalledTimes(3);
+    const takePaidSlot = generateReply.mock.calls[0]?.[3] as () => boolean;
+    expect([takePaidSlot(), takePaidSlot(), takePaidSlot()]).toEqual([true, true, false]);
+  });
+
+  it("shows the model the channel post a mention replies to", async () => {
+    const { bot, drain } = await makeBot();
+    await bot.handleUpdate(
+      groupMessage(`@${BOT_USERNAME} что скажешь?`, { replyToPost: "Луна обогнала Sol в тестах" }),
+    );
     await drain();
-    expect(generateReply).toHaveBeenCalledTimes(2);
+    expect(generateReply.mock.calls[0]?.[2]).toContain("Луна обогнала Sol в тестах");
+  });
+
+  it("comments on a new channel post with its own take, under that post", async () => {
+    const { bot, drain, sent } = await makeBot();
+    const update = channelPost("Codex собрал песочницу для агентов");
+    await bot.handleUpdate(update);
+    await drain();
+    expect(generateReply).toHaveBeenCalledOnce();
+    expect(generateReply.mock.calls[0]?.[2]).toContain("Codex собрал песочницу для агентов");
+    expect(sent()[0]?.payload).toMatchObject({
+      chat_id: GROUP_ID,
+      reply_parameters: { message_id: update.message?.message_id },
+    });
+  });
+
+  it("skips a channel post without text, like an album photo with no caption", async () => {
+    const { bot, drain } = await makeBot();
+    await bot.handleUpdate(channelPost());
+    await drain();
+    expect(generateReply).not.toHaveBeenCalled();
+  });
+
+  it("remembers its comment, so a later question about the post has the context", async () => {
+    const { bot, drain } = await makeBot();
+    await bot.handleUpdate(channelPost("Codex собрал песочницу для агентов"));
+    await drain();
+    await bot.handleUpdate(groupMessage(`@${BOT_USERNAME} а ты что думаешь про пост выше?`));
+    await drain();
+    expect(generateReply.mock.calls[1]?.[2]).toContain("Codex собрал песочницу для агентов");
   });
 
   it("remembers the exchange and shows it in the next prompt", async () => {

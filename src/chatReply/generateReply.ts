@@ -22,13 +22,14 @@ function parseReply(text: string | null): ChatReply | null {
 /**
  * Codex first (the owner's subscription), then the bot's active rewrite
  * provider (API credits) when Codex fails — quota spent, logged out, timeout,
- * or an unusable reply. Null when both fail: the caller stays silent rather
- * than posting an error into a public chat.
+ * or an unusable reply — as long as `takePaidSlot` grants one. Null when both
+ * fail: the caller stays silent rather than posting an error into a public chat.
  */
 export async function generateReply(
   store: CandidateStore,
   system: string,
   user: string,
+  takePaidSlot: () => boolean,
 ): Promise<ChatReply | null> {
   try {
     const reply = parseReply(await runCodex(`${system}\n\n${user}`));
@@ -40,6 +41,10 @@ export async function generateReply(
 
   const { provider, model } = resolveActiveProvider(store);
   if (provider === ProviderName.Mock) return null;
+  if (!takePaidSlot()) {
+    console.warn("[chatReply] paid fallback skipped: CHAT_REPLY_FALLBACK_PER_HOUR cap reached");
+    return null;
+  }
   try {
     const text = await completeChatJson(provider, model, {
       system,

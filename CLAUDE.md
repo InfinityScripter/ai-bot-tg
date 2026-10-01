@@ -90,9 +90,10 @@ RELEASE_WATCH_CRON ─► fresh unseen marker hits ─► LLM confirm ─► rel
 CHANNEL_WATCH_CRON ─► t.me/s pages ─► fresh originals ─► relevance ─► queue kind=channel digest_queued + refresh view scores (prod `15 8-22 * * *`: offset from RELEASE_WATCH_CRON)
 CHANNEL_DIGEST_CRON ─► pick ≤7 ─► item writer per post ─► one rich article (sendRichMessage) ─► autoPublishChannels? channel : owner ✅/❌ (prod `0 11,19 * * *`)
 
-group reply ─► CHAT_REPLY_CHAT_ID only, @mention or reply to the bot ─► ≤ CHAT_REPLY_MAX_PER_HOUR
-  ─► Codex CLI on the owner's subscription, every tool disabled, token-free env
-  ─► fallback: active rewrite provider ─► both fail = silence (src/chatReply/;
+group reply ─► CHAT_REPLY_CHAT_ID only: @mention / reply to the bot (+ the channel post it
+  replies to), or a new channel post (its automatic forward) ─► ≤3 queued
+  ─► Codex CLI on the owner's subscription, every tool disabled, token-free env, uncapped
+  ─► fallback: active rewrite provider, ≤ CHAT_REPLY_FALLBACK_PER_HOUR ─► both fail = silence (src/chatReply/;
   its middleware runs BEFORE the owner lock and swallows every group update)
 
 every channel post (retell, news/release/digest announcement) ─► branded PNG cover

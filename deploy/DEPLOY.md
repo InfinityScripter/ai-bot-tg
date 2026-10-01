@@ -113,7 +113,8 @@ sudo systemctl enable --now blog-newsbot
 ## 4a. Group responder (optional)
 
 The bot can answer in the channel's discussion group when someone mentions it
-or replies to it. Replies run through the Codex CLI on the owner's ChatGPT
+or replies to it, and it opens the discussion of every new channel post with a
+short comment of its own. Replies run through the Codex CLI on the owner's ChatGPT
 subscription (no API credits); every Codex tool is disabled and the child gets
 no bot tokens in its environment (`src/chatReply/runCodex.ts`).
 
@@ -183,7 +184,8 @@ no bot tokens in its environment (`src/chatReply/runCodex.ts`).
 
 `/chat` in the owner DM turns the responder off and on (kept in SQLite). When
 Codex fails (quota spent, session expired, timeout) the active rewrite provider
-answers instead; when both fail the bot stays silent.
+answers instead, at most `CHAT_REPLY_FALLBACK_PER_HOUR` (default 20) times per
+rolling hour; when both fail the bot stays silent. Codex replies are not capped.
 
 ## 5. Verify
 

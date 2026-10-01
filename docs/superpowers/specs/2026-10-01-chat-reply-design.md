@@ -27,9 +27,15 @@ opinions, short replies, allowed to refuse and to stay silent.
 - **Fallback:** a Codex failure or an off-contract reply goes to the active
   rewrite provider through `completeChatJson`; both failing means silence, never
   an error message in a public chat.
-- **Cost guard:** 20 model calls per rolling hour (in memory, reset by a
-  restart), at most 3 mentions waiting; extra mentions are dropped. The Codex
-  quota is shared with the owner's own coding work.
+- **Cost guard:** at most 3 answers waiting; extra ones are dropped. Only the
+  paid fallback is capped: `CHAT_REPLY_FALLBACK_PER_HOUR` (20) per rolling hour,
+  in memory. Codex replies are uncapped (owner's decision, 2026-10-01: the
+  first cap of 20 calls covered Codex too) — a spammer can spend the shared
+  Plus quota, after which the paid path is still bounded.
+- **Channel posts:** every post copied into the group (automatic forward)
+  gets one comment in the bot's voice, unless the model chooses silence; a
+  mention that replies to a post carries the post text into the prompt. The
+  post goes into memory, so a later "what about the post above" has context.
 - **Throughput:** answers run one at a time in the background — a Codex turn
   takes 5–15 s and awaiting it would freeze the owner's commands.
 - **Memory:** the last 50 exchanges per chat in the `settings` table; the prompt
@@ -40,4 +46,4 @@ opinions, short replies, allowed to refuse and to stay silent.
 
 - Rolling summaries per person (Hope keeps them); the raw recent exchanges are
   enough to start and cost no extra model calls.
-- Reading the whole group (privacy mode off) and speaking unprompted.
+- Reading the whole group and speaking unprompted beyond channel posts.

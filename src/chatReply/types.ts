@@ -19,4 +19,6 @@ export interface IncomingMessage {
   text: string;
   /** Text of the bot's own message this one replies to, if any. */
   repliedToBot: string | null;
+  /** Text of the channel post this one replies to (its copy in the group), if any. */
+  post: string | null;
 }
