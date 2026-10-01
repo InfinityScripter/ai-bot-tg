@@ -87,7 +87,8 @@ manual URL-or-text ─► always the RAW → 🔄 → ✅ manual flow (never aut
 RELEASE_WATCH_CRON ─► fresh unseen marker hits ─► LLM confirm ─► release path above
   (non-releases stay unseen for the daily run; rejections cached in memory)
 
-CHANNEL_WATCH_CRON ─► t.me/s pages ─► fresh originals ─► relevance ─► pick 1 ─► retell+humanizer+dress ─► channel only (prod `15 10-21 * * *`: offset from RELEASE_WATCH_CRON)
+CHANNEL_WATCH_CRON ─► t.me/s pages ─► fresh originals ─► relevance ─► queue kind=channel digest_queued + refresh view scores (prod `15 8-22 * * *`: offset from RELEASE_WATCH_CRON)
+CHANNEL_DIGEST_CRON ─► pick ≤7 ─► item writer per post ─► one rich article (sendRichMessage) ─► autoPublishChannels? channel : owner ✅/❌ (prod `0 11,19 * * *`)
 
 every channel post (retell, news/release/digest announcement) ─► branded PNG cover
   (src/blog/renderCover.ts) + dress (rubric, "why" line, cover text; fail-soft:
