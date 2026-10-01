@@ -9,7 +9,10 @@ opinions, short replies, allowed to refuse and to stay silent.
 ## Decisions
 
 - **Trigger:** only a message in `CHAT_REPLY_CHAT_ID` that mentions the bot or
-  replies to one of its messages. Privacy mode can stay on.
+  replies to one of its messages. The bot must be a group admin (no rights
+  needed): with privacy mode on, Telegram does not deliver `@mentions` to a
+  plain member (found at rollout, 2026-10-01). Anonymous admins are not
+  answered — their messages come from `GroupAnonymousBot`.
 - **Routing:** the responder middleware runs before the owner lock and swallows
   every update from its group, so the owner's own group messages never reach
   manual ingest or owner commands.

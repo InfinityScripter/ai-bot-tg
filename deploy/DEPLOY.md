@@ -117,8 +117,18 @@ or replies to it. Replies run through the Codex CLI on the owner's ChatGPT
 subscription (no API credits); every Codex tool is disabled and the child gets
 no bot tokens in its environment (`src/chatReply/runCodex.ts`).
 
-1. Add the bot to the discussion group as a member. Privacy mode in @BotFather
-   can stay ON: the bot only needs mentions and replies to itself.
+1. Add the bot to the discussion group and make it an admin with every right
+   switched off. Admins receive every group message; with privacy mode ON
+   (the @BotFather default) a plain member gets only commands and replies to
+   its own messages — an `@mention` never arrives, and the bot looks dead.
+   The alternative is `/setprivacy` → Disable in @BotFather and re-adding the
+   bot, which affects every group it is in.
+
+   Test from your own name, not as the group: an anonymous admin ("Send
+   Anonymously…", the message signed with the group's name) reaches the bot
+   from Telegram's `GroupAnonymousBot`, and the responder ignores messages from
+   bots. Turn off "Remain Anonymous" in your admin rights. Channel commenters
+   write as themselves and are answered normally.
 2. Install Codex and log it in as the unit's `User=`. The login is the
    owner's ChatGPT session; copy it from a machine where `codex login status`
    says "Logged in using ChatGPT". Pin the version the owner runs locally:
