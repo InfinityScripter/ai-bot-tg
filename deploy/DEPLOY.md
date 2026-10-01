@@ -110,6 +110,71 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now blog-newsbot
 ```
 
+## 4a. Group responder (optional)
+
+The bot can answer in the channel's discussion group when someone mentions it
+or replies to it. Replies run through the Codex CLI on the owner's ChatGPT
+subscription (no API credits); every Codex tool is disabled and the child gets
+no bot tokens in its environment (`src/chatReply/runCodex.ts`).
+
+1. Add the bot to the discussion group as a member. Privacy mode in @BotFather
+   can stay ON: the bot only needs mentions and replies to itself.
+2. Install Codex and log it in as the unit's `User=`. The login is the
+   owner's ChatGPT session; copy it from a machine where `codex login status`
+   says "Logged in using ChatGPT". Pin the version the owner runs locally:
+   `runCodex.ts` passes flags (`--ignore-rules`, `--disable`,
+   `--output-schema`) that older releases reject.
+
+   The production box (2026-10) predates the hardened unit in this repo: its
+   `/etc/systemd/system/blog-newsbot.service` runs as `root`, without
+   `ProtectSystem`/`ReadWritePaths`. Check with `systemctl cat blog-newsbot`
+   and use the matching variant:
+
+   ```bash
+   sudo npm i -g @openai/codex@0.155.0
+   # unit runs as root (production today):
+   sudo install -d -m 700 /opt/blog-app/ai-bot-tg/data/codex
+   # unit runs as www-data (deploy/blog-newsbot.service):
+   sudo install -d -o www-data -g www-data -m 700 /opt/blog-app/ai-bot-tg/data/codex
+
+   # from the owner's Mac (ssh alias `blog` = root@VDS, port 3333):
+   scp ~/.codex/auth.json blog:/opt/blog-app/ai-bot-tg/data/codex/auth.json
+
+   sudo chmod 600 /opt/blog-app/ai-bot-tg/data/codex/auth.json
+   # www-data only:
+   sudo chown www-data:www-data /opt/blog-app/ai-bot-tg/data/codex/auth.json
+   # prefix with `sudo -u www-data` for a www-data unit:
+   sudo env CODEX_HOME=/opt/blog-app/ai-bot-tg/data/codex codex login status
+   ```
+
+   `CODEX_HOME` lives under `data/` on purpose: the hardened unit runs with
+   `ProtectSystem=strict` and `ProtectHome=true`, and `data/` is its only
+   writable path. Codex writes there on every run (session state, token
+   refresh in `auth.json`); a read-only home makes every reply fall back to the
+   paid provider without any visible error. `data/` is git-ignored and survives
+   the git-pull deploy.
+3. Point the unit at that home with a drop-in, so the unit file itself stays
+   untouched:
+
+   ```bash
+   sudo mkdir -p /etc/systemd/system/blog-newsbot.service.d
+   printf '[Service]\nEnvironment=CODEX_HOME=/opt/blog-app/ai-bot-tg/data/codex\n' \
+     | sudo tee /etc/systemd/system/blog-newsbot.service.d/codex.conf
+   sudo systemctl daemon-reload && sudo systemctl restart blog-newsbot
+   systemctl show blog-newsbot -p Environment
+   ```
+
+   After the first mention, `journalctl -u blog-newsbot | grep "codex failed"`
+   must be empty — otherwise replies run on the fallback.
+4. Mention the bot once in the group and read its id from the journal:
+   `journalctl -u blog-newsbot | grep chatReply` prints
+   `mention in a chat that is not CHAT_REPLY_CHAT_ID: -100…`. Put that id into
+   `CHAT_REPLY_CHAT_ID` in `.env.production` and restart.
+
+`/chat` in the owner DM turns the responder off and on (kept in SQLite). When
+Codex fails (quota spent, session expired, timeout) the active rewrite provider
+answers instead; when both fail the bot stays silent.
+
 ## 5. Verify
 
 ```bash

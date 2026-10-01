@@ -40,6 +40,11 @@ export const COMMANDS: CommandSpec[] = [
     description: "собрать дневной дайджест-пост из очереди новостей (DIGEST_POSTS=on)",
   },
   {
+    command: "chat",
+    buttonTitle: undefined,
+    description: "включить/выключить ответы бота в чате при канале",
+  },
+  {
     command: "health",
     buttonTitle: "🩺 Проверка",
     action: MenuAction.Health,

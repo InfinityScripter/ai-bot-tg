@@ -8,6 +8,7 @@ import { autoRetry } from "./autoRetry.js";
 import { createIngest } from "./createIngest.js";
 import { createDigestFlow } from "./digestFlow.js";
 import { createHandlers } from "./createHandlers.js";
+import { createChatReply } from "../chatReply/index.js";
 import { createDigestPostFlow } from "./digestPostFlow.js";
 import { createAutoPublish } from "./createAutoPublish.js";
 import { createChannelDigestFlow } from "./channelDigestFlow.js";
@@ -52,6 +53,7 @@ export function createBot(
   );
   const { runChannelIssue, onChannelDigestCallback, isChannelDigestCallback } =
     createChannelDigestFlow(bot, store);
+  const chatReply = createChatReply(bot, store);
 
   // Global error boundary: grammy rethrows an uncaught handler error out of the
   // polling loop, which exits the process (systemd then restart-loops). This
@@ -77,6 +79,10 @@ export function createBot(
       console.error(`[bot] unhandled error on update ${updateId}: ${String(e)}`);
     }
   });
+
+  // The group responder sees its group's updates first and never passes them
+  // on, so nothing from the group reaches the owner-only handlers below.
+  bot.use(chatReply.middleware);
 
   // Owner-lock: silently ignore every update from anyone but the owner —
   // commands and callbacks alike. ctx.from is set for messages, callbacks,
@@ -125,6 +131,7 @@ export function createBot(
   bot.command("ping", (ctx) => ctx.reply("pong"));
   bot.command("fetch", runFetch);
   bot.command("model", runModel);
+  bot.command("chat", chatReply.onToggle);
   bot.command("digest", runDigest);
   bot.command("digestpost", async (ctx) => {
     await ctx.reply("Собираю дневной дайджест…");
@@ -196,7 +203,7 @@ export function createBot(
     .catch((err) => console.warn(`[bot] setMyCommands failed: ${String(err)}`));
 
   const drain = async (): Promise<void> => {
-    await Promise.all([drainHandlers(), drainAutoPublish()]);
+    await Promise.all([drainHandlers(), drainAutoPublish(), chatReply.drain()]);
   };
 
   return {
