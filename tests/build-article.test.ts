@@ -48,7 +48,7 @@ describe("buildArticle", () => {
         "<h5>В выпуске</h5>",
         '<ol><li><a href="#n1">🔥 Anthropic сделали GLM отличную рекламу</a></li></ol>',
         '<a name="n1"></a><blockquote><h5>🔥 Anthropic сделали GLM отличную рекламу</h5>' +
-          "<p>Текст <b>важный</b>.</p><cite>#модель · @ai_for_devs</cite></blockquote>" +
+          "<p>Текст <b>важный</b>.</p><cite>#модель</cite></blockquote>" +
           '<tg-slideshow><img src="tg://photo?id=p0"/><img src="tg://photo?id=p1"/></tg-slideshow>',
       ].join("\n"),
     );
@@ -65,9 +65,7 @@ describe("buildArticle", () => {
     });
     expect(article.html).not.toContain("id=cover");
     expect(article.html).toContain('</blockquote><img src="tg://photo?id=p0"/>\n<a name="n2">');
-    expect(article.html).toContain(
-      '<cite>#модель · @ai_for_devs</cite></blockquote>\n<a name="n3">',
-    );
+    expect(article.html).toContain('<cite>#модель</cite></blockquote>\n<a name="n3">');
     expect(article.html).toContain(
       '<tg-slideshow><img src="tg://photo?id=p1"/><img src="tg://photo?id=p2"/></tg-slideshow>',
     );
@@ -128,8 +126,8 @@ describe("buildFallbackText", () => {
     ]);
     expect(text).toBe(
       "<b>AI за утро · 1 октября</b>\n\n" +
-        "<b>🔥 Новость 1</b>\nТекст новости 1.\n#модель · @ai_for_devs\n\n" +
-        "<b>✍️ Новость 2</b>\nТекст новости 2.\n#инструмент · @aimastersme",
+        "<b>🔥 Новость 1</b>\nТекст новости 1.\n#модель\n\n" +
+        "<b>✍️ Новость 2</b>\nТекст новости 2.\n#инструмент",
     );
   });
 
@@ -149,6 +147,6 @@ describe("buildFallbackText", () => {
 
   it("escapes the rubric the way the article does", () => {
     const text = buildFallbackText(TITLE, [item(1, { rubric: "<b>" as ChannelRubric })]);
-    expect(text).toContain("#&lt;b&gt; · @ai_for_devs");
+    expect(text).toContain("#&lt;b&gt;");
   });
 });

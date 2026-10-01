@@ -42,9 +42,7 @@ function render(title: string, withCover: boolean, items: IssueItem[]) {
     ...items.map(
       (item, i) =>
         `<a name="n${i + 1}"></a><blockquote><h5>${heading(item)}</h5><p>${item.html}</p>` +
-        `<cite>#${escapeHtml(item.rubric)} · ${escapeHtml(item.channel)}</cite></blockquote>${gallery(
-          item.photos,
-        )}`,
+        `<cite>#${escapeHtml(item.rubric)}</cite></blockquote>${gallery(item.photos)}`,
     ),
   ].join("\n");
   return { html, photos };
@@ -58,7 +56,7 @@ function fits(html: string): boolean {
 /**
  * The issue as one rich article in the owner's F4 layout (trial of 2026-10-01):
  * cover, h3 title, «В выпуске» contents with anchors, then per card a
- * blockquote (h5 heading, text, `#rubric · @channel`) with the post's photos
+ * blockquote (h5 heading, text, `#rubric`) with the post's photos
  * under it: a slideshow for several, a bare image for one. Cards are dropped
  * from the end until the limits hold; photos past the media budget are left out.
  */

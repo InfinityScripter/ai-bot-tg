@@ -7,7 +7,7 @@ export const TEXT_LIMIT = 4096;
 
 /**
  * The issue as one Telegram HTML message, for when Telegram rejects the rich
- * article: bold headings, the card text and its `#rubric · @channel` line, no
+ * article: bold headings, the card text and its `#rubric` line, no
  * photos. Whole cards are cut from the end (a cut inside a card would break
  * its tags) until the message fits; throws when not even one card fits.
  */
@@ -16,7 +16,7 @@ export function buildFallbackText(title: string, items: IssueItem[]): string {
   const cards = items.map(
     (item) =>
       `<b>${escapeHtml(item.emoji)} ${escapeHtml(item.title)}</b>\n${item.html}\n` +
-      `#${escapeHtml(item.rubric)} · ${escapeHtml(item.channel)}`,
+      `#${escapeHtml(item.rubric)}`,
   );
   for (let n = cards.length; n > 0; n -= 1) {
     const text = [head, ...cards.slice(0, n)].join("\n\n");

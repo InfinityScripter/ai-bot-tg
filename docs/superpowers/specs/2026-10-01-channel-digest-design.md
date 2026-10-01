@@ -14,7 +14,8 @@ trials in his DM on 2026-10-01 (variant «F4»).
 | Digest vs retellings | Digest only; hourly retellings are retired |
 | Frequency | Two issues a day: 11:00 and 19:00 Europe/Moscow |
 | Item layout | Heading + 2–4 sentences + photos (carousel when several) |
-| Styling | «F4»: `h3` issue title, `h5` «В выпуске» + contents, each item a `blockquote` with an `h5` heading (emoji + title), paragraph, `cite` line; photos under the card |
+| Styling | «F4»: `h3` issue title, `h5` «В выпуске» + contents, each item a `blockquote` with an `h5` heading (emoji + title), paragraph, `cite` line with the rubric hashtag only; photos under the card |
+| Source channel | Not shown: the `cite` line is `#rubric` only (owner, 2026-10-01, for testing) |
 | Buttons | None: no «Коротко», no «Оригинал», no «Поделиться» |
 | From the branding work (`2026-10-01-channel-post-branding-design.md`) | Branded cover image at the top of the article; rubric hashtag on each item. No «Зачем тебе это» line |
 | Pipeline shape | Queue all day, assemble at issue time (not scrape-at-issue, not one-call article) |
@@ -34,7 +35,7 @@ script `.superpowers/sdd/trial-styles.ts`, variant F4):
 <blockquote>
   <h5>🔥 Anthropic сделали GLM отличную рекламу</h5>
   <p>…2–4 sentences, inline tags and source links only…</p>
-  <cite>#модель · @ai_for_devs</cite>
+  <cite>#модель</cite>
 </blockquote>
 <tg-slideshow><img src="tg://photo?id=p0"/><img src="tg://photo?id=p1"/></tg-slideshow>
 …next item…
@@ -44,8 +45,8 @@ script `.superpowers/sdd/trial-styles.ts`, variant F4):
 - Photos: more than one → `<tg-slideshow>` (at most 4 per item); one → a bare
   `<img>`; none → nothing. Rich messages allow 50 media in total, so the
   budget is 1 cover + 7 × 4 photos = 29.
-- The `cite` line: `#<rubric> · @<channel>`. No link to the original post
-  (owner's choice); `@channel` is the attribution.
+- The `cite` line: `#<rubric>` only. The source channel is not shown (owner,
+  2026-10-01) and there is no link to the original post (owner's choice).
 - Cover: `renderCover` from the branding work with rubric `дайджест`, the
   issue title and date, and as fact line the item count («6 новостей»).
   No cover when rendering fails; the article goes out without it.
@@ -119,7 +120,7 @@ CHANNEL_DIGEST_CRON (0 11,19 * * *) ─► claim queue ─► pick 5–7 ─► 
   is claimed atomically (`claimDigestBatch`, filtered by `kind=channel`); a
   published slot is recorded and never sent twice.
 - Telegram rejects the rich message (4xx) → fallback `sendMessage` in
-  Telegram HTML: bold headings, text, `#rubric · @channel`, no photos, cut from
+  Telegram HTML: bold headings, text, `#rubric`, no photos, cut from
   the end to 4096 characters. Owner notified that the article was rejected.
 - Network error or 5xx on send → maybe posted: no resend, candidates →
   `needs_verification`, owner asked to check the channel (existing behaviour).

@@ -14,7 +14,7 @@ export interface IssueSlot {
 /** One queued post written up as a card of the article. */
 export interface IssueItem {
   candidateId: number;
-  /** "@channel", as the cite line shows it. */
+  /** "@channel" of the source post; the digest does not show it. */
   channel: string;
   emoji: string;
   rubric: ChannelRubric;
