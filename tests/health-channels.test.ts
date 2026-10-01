@@ -1,6 +1,20 @@
-import { it, expect, describe } from "vitest";
+import { it, vi, expect, describe, afterEach } from "vitest";
 
-import { withIssue, describeChannelWatch } from "../src/health/probeChecks.js";
+const config = vi.hoisted(() => ({
+  CHANNEL_WATCH_CRON: undefined as string | undefined,
+  CHANNEL_DIGEST_CRON: undefined as string | undefined,
+}));
+vi.mock("../src/config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/config.js")>();
+  return {
+    CONFIG: new Proxy(actual.CONFIG, {
+      get: (t, k) => (k in config ? config[k as keyof typeof config] : t[k as keyof typeof t]),
+    }),
+  };
+});
+
+const { withIssue, checkChannels, describeChannelWatch } =
+  await import("../src/health/probeChecks.js");
 
 import type { ChannelWatchSummary } from "../src/server/types.js";
 
@@ -87,5 +101,39 @@ describe("withIssue", () => {
       outcome: "опубликован (5 новостей)",
     };
     expect(withIssue(row, issue)).toMatchObject({ ok: true });
+  });
+});
+
+describe("checkChannels", () => {
+  afterEach(() => {
+    config.CHANNEL_WATCH_CRON = undefined;
+    config.CHANNEL_DIGEST_CRON = undefined;
+  });
+
+  it("is green and off when both crons are unset", () => {
+    expect(checkChannels()).toEqual({
+      name: "Каналы",
+      ok: true,
+      detail: "выключено (CHANNEL_WATCH_CRON не задан)",
+    });
+  });
+
+  it("is red when posts are collected but no issue ever goes out", () => {
+    config.CHANNEL_WATCH_CRON = "15 10-21 * * *";
+    expect(checkChannels()).toEqual({
+      name: "Каналы",
+      ok: false,
+      detail: "выпуск выключен (CHANNEL_DIGEST_CRON не задан)",
+    });
+  });
+
+  it("reports the sweep when both crons are set", () => {
+    config.CHANNEL_WATCH_CRON = "15 10-21 * * *";
+    config.CHANNEL_DIGEST_CRON = "0 11,19 * * *";
+    expect(checkChannels()).toMatchObject({
+      name: "Каналы",
+      ok: true,
+      detail: "ещё не запускалось",
+    });
   });
 });

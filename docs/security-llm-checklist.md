@@ -26,6 +26,9 @@ the secrets worth stealing.
       inside an article must have no mechanism to act on.
 - [ ] New prompt = new eval case: adversarial fixture with instructions
       embedded in the source text (`npm run eval`).
+- [ ] `writeDigestItem` (digest card writer) reads an untrusted channel post:
+      its prompt says to ignore instructions inside the post, and the
+      `item-injection` eval case holds that line.
 
 ### LLM05 — Improper output handling
 - [ ] **[invariant]** `finalizeRewrite` parses output Markdown into an AST,
@@ -34,6 +37,11 @@ the secrets worth stealing.
       treatment — model output never reaches `innerHTML`/API payloads raw.
 - [ ] Structured outputs go through zod schemas in `src/schemas/` — no
       `JSON.parse` + trust.
+- [ ] The rich digest article (`buildArticle`): titles and emoji are escaped,
+      the rubric comes from an enum (the model cannot pick `digest`), card html
+      goes through `sanitizeTelegramHtml` with the source-link allow-list, and
+      numbers/domains/@handles are checked against the source post
+      (`itemProblem`) before a card goes out.
 
 ### LLM02 / LLM07 — Secret and system prompt disclosure
 - [ ] No secrets in prompts: `BOT_API_TOKEN`, `BOT_CONTROL_TOKEN`, provider

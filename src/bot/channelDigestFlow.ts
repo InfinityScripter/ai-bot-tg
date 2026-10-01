@@ -9,6 +9,7 @@ import { fetchAutoPublishFlags } from "../blog/index.js";
 import {
   issueSlot,
   newsCount,
+  isPastSlot,
   recordIssue,
   publishIssue,
   assembleIssue,
@@ -44,8 +45,9 @@ export function createChannelDigestFlow(bot: Bot, store: CandidateStore) {
 
   async function sendPreview(issue: AssembledIssue): Promise<void> {
     const { slot, article } = issue;
+    let rejected: string | null;
     try {
-      await deliverArticle(CONFIG.OWNER_TELEGRAM_ID, article, issue.fallbackText);
+      ({ rejected } = await deliverArticle(CONFIG.OWNER_TELEGRAM_ID, article, issue.fallbackText));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       recordIssue(slot.key, { ok: false, outcome: `превью не отправилось: ${message}` });
@@ -54,8 +56,11 @@ export function createChannelDigestFlow(bot: Bot, store: CandidateStore) {
     }
     pending = issue;
     recordIssue(slot.key, { ok: true, outcome: "ждёт решения владельца" });
+    const warning = rejected
+      ? `⚠️ Telegram не принял статью (${rejected}), в канал уйдёт текстовая версия.\n\n`
+      : "";
     await notify(
-      `Выпуск «${slot.title}» выше: ${newsCount(article.items.length)}. Автопубликация каналов выключена. Опубликовать в канале?`,
+      `${warning}Выпуск «${slot.title}» выше: ${newsCount(article.items.length)}. Автопубликация каналов выключена. Опубликовать в канале?`,
       previewKeyboard(slot.key),
     );
   }
@@ -127,6 +132,16 @@ export function createChannelDigestFlow(bot: Bot, store: CandidateStore) {
       await ctx
         .editMessageText(`❌ Выпуск «${draft.slot.title}» пропущен, новости остались в очереди.`)
         .catch(logEditError("channel-digest skip text"));
+      return;
+    }
+    if (isPastSlot(slotKey, Date.now())) {
+      await ackSilently(ctx, { text: "Превью устарело." });
+      recordIssue(slotKey, { ok: true, outcome: "превью устарело" });
+      await ctx
+        .editMessageText(
+          `⚠️ Превью «${draft.slot.title}» устарело: начался следующий выпуск. Новости остались в очереди, их заберёт следующий выпуск.`,
+        )
+        .catch(logEditError("channel-digest stale text"));
       return;
     }
     await ackSilently(ctx, { text: "Публикую…" });

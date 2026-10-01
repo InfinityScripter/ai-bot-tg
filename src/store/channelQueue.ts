@@ -71,6 +71,18 @@ export class ChannelQueue {
       .run(CandidateState.Skipped, CandidateState.DigestQueued, now - maxAgeMs).changes;
   }
 
+  /** digest_queued → skipped with a reason; a row claimed or published meanwhile stays as it is. */
+  skipQueued(id: number, reason: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE candidates SET state = ?, error = ?, updated_at = datetime('now')
+            WHERE id = ? AND kind = 'channel' AND state = ?`,
+        )
+        .run(CandidateState.Skipped, reason, id, CandidateState.DigestQueued).changes === 1
+    );
+  }
+
   /**
    * digest_queued → publishing for all the given channel rows or none: if any
    * of them is not queued (a concurrent publisher holds it, or it expired),

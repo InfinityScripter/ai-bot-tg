@@ -18,7 +18,7 @@ WorkingDirectory=/opt/blog-app/ai-bot-tg
 EnvironmentFile=/opt/blog-app/ai-bot-tg/.env.production
 
 # Run the TypeScript entrypoint directly with tsx (no build step needed).
-# Pin the node path if nvm is used; adjust to the box's node 18+ install.
+# Pin the node path if nvm is used; adjust to the box's node 20+ install.
 ExecStart=/usr/bin/node --import tsx /opt/blog-app/ai-bot-tg/src/index.ts
 
 # index.ts handles SIGTERM/SIGINT: stops cron, stops polling, drains in-flight

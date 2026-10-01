@@ -4,7 +4,7 @@
   "description": "Telegram news bot: collects RSS daily, rewrites via Claude, owner approves in Telegram, publishes to the blog.",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

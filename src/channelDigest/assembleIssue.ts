@@ -1,10 +1,10 @@
 import { newsCount } from "./issueSlot.js";
+import { ChannelRubric } from "../enums.js";
 import { buildArticle } from "./buildArticle.js";
 import { writeDigestItem } from "../llm/index.js";
 import { resolveChannels } from "../feeds/index.js";
 import { buildFallbackText } from "./fallbackText.js";
 import { downloadImage } from "../blog/downloadImage.js";
-import { ChannelRubric, CandidateState } from "../enums.js";
 import { coverSpecFor, tryRenderCover } from "../blog/index.js";
 import { LINK_MEMORY_DAYS } from "../server/selectChannelPost.js";
 import { pickIssueItems, linkKeysOfCandidate } from "./pickIssueItems.js";
@@ -29,7 +29,7 @@ async function writeItems(store: CandidateStore, picked: QueuedPost[]): Promise<
     try {
       const card = await writeDigestItem(post, store);
       if (!card) {
-        store.setState(candidate.id, CandidateState.Skipped, "не новость (решила модель)");
+        store.channelQueue.skipQueued(candidate.id, "не новость (решила модель)");
         console.log(`[digest-issue] #${candidate.id} is not news, skipped`);
         continue;
       }

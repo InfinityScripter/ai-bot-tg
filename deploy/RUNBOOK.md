@@ -235,6 +235,8 @@ git reset --hard <last-good-sha> && npm ci --omit=dev --no-audit --no-fund && sy
 
 SQLite ledger survives both. See [DEPLOY.md](DEPLOY.md) §7.
 
+Deploy timing: do not deploy at 11:00 or 19:00 Europe/Moscow while a digest issue is being assembled. On stop the bot waits for the in-flight assembly (minutes), the unit has `TimeoutStopSec=20`; if it is killed the issue is not lost: rows are claimed only right before the send, and an interrupted send goes to `needs_verification` on boot.
+
 ---
 
 ## 8. Housekeeping — reclaiming disk

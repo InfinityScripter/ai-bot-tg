@@ -68,6 +68,22 @@ describe("ChannelQueue", () => {
     expect(store.get(fresh)!.state).toBe(CandidateState.DigestQueued);
   });
 
+  it("skips a queued row, with the reason; a claimed or published row is left alone", () => {
+    const queued = store.channelQueue.add(post("a", 1), 1)!;
+    const claimed = store.channelQueue.add(post("a", 2), 1)!;
+    const published = store.channelQueue.add(post("a", 3), 1)!;
+    store.channelQueue.claim([claimed, published]);
+    store.setPublished(published, "tg:1");
+
+    expect(store.channelQueue.skipQueued(queued, "не новость")).toBe(true);
+    expect(store.channelQueue.skipQueued(claimed, "не новость")).toBe(false);
+    expect(store.channelQueue.skipQueued(published, "не новость")).toBe(false);
+
+    expect(store.get(queued)).toMatchObject({ state: CandidateState.Skipped });
+    expect(store.get(claimed)!.state).toBe(CandidateState.Publishing);
+    expect(store.get(published)!.state).toBe(CandidateState.Published);
+  });
+
   it("claims queued channel rows atomically and returns them on requeue", () => {
     const a = store.channelQueue.add(post("a", 1), 1)!;
     const b = store.channelQueue.add(post("a", 2), 1)!;

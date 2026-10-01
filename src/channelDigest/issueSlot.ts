@@ -24,6 +24,14 @@ export function issueSlot(now: number, timeZone: string = CONFIG.CRON_TZ): Issue
   };
 }
 
+/** Slot keys in time order: the evening issue comes after the morning one of the same day. */
+const slotRank = (key: string) => key.replace("/morning", "/0").replace("/evening", "/1");
+
+/** True when `key` is an earlier issue than the one `now` falls in. */
+export function isPastSlot(key: string, now: number): boolean {
+  return slotRank(key) < slotRank(issueSlot(now).key);
+}
+
 const NEWS_FORMS: Partial<Record<Intl.LDMLPluralRule, string>> = { one: "новость", few: "новости" };
 
 /** "1 новость", "3 новости", "6 новостей": the cover's fact line and the owner's notes. */

@@ -138,5 +138,7 @@ export function withIssue(check: HealthCheck, issue: IssueStatus | null): Health
 export function checkChannels(): HealthCheck {
   if (!CONFIG.CHANNEL_WATCH_CRON)
     return { name: "Каналы", ok: true, detail: "выключено (CHANNEL_WATCH_CRON не задан)" };
+  if (!CONFIG.CHANNEL_DIGEST_CRON)
+    return { name: "Каналы", ok: false, detail: "выпуск выключен (CHANNEL_DIGEST_CRON не задан)" };
   return withIssue(describeChannelWatch(lastChannelWatch()), lastChannelIssue());
 }

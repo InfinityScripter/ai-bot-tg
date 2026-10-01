@@ -49,7 +49,7 @@ sudo -u www-data git clone git@github.com:InfinityScripter/ai-bot-tg.git .
 sudo -u www-data npm ci --omit=dev --no-audit --no-fund   # runtime-only (deps + tsx); bot runs via tsx, no build
 ```
 
-Node 18+ is required (croner). Check: `node -v`.
+Node 20+ is required (the digest writer uses a RegExp `v` flag). Check: `node -v`.
 
 ## 3. Configure the bot env
 

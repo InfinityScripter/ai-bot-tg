@@ -91,6 +91,22 @@ describe("assembleIssue", () => {
     for (const id of [a, c, d, e]) expect(store.get(id!)!.state).toBe(CandidateState.DigestQueued);
   });
 
+  it("does not turn a row published meanwhile into skipped when the model says not-news", async () => {
+    const [a, b, c] = ["a", "b", "c"].map((ch) => queue(ch));
+    writeDigestItem.mockImplementationOnce(async () => {
+      store.channelQueue.claim([a!]);
+      store.setPublished(a!, "tg:1");
+      return null;
+    });
+    writeDigestItem.mockResolvedValue(null);
+
+    await assembleIssue(store, SLOT, NOW);
+
+    expect(store.get(a!)!.state).toBe(CandidateState.Published);
+    expect(store.get(b!)!.state).toBe(CandidateState.Skipped);
+    expect(store.get(c!)!.state).toBe(CandidateState.Skipped);
+  });
+
   it("builds nothing when fewer than 3 cards come out, leaves the posts queued", async () => {
     const ids = ["a", "b", "c"].map((ch) => queue(ch));
     writeDigestItem

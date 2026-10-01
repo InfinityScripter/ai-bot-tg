@@ -25,13 +25,17 @@ const SLOT = { key: "2026-10-01/morning", title: "AI за утро · 1 октя
 const OWNER = 123456789;
 
 /** Records every sendRichMessage (chat and html) in `log`, in order; every Bot API call answers ok. */
-function telegram(log: string[] = []) {
+function telegram(log: string[] = [], rejectOwnerRich: string | null = null) {
   const rich: { chat: string; html: string }[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init: RequestInit = {}) => {
       if (String(url).endsWith("/sendRichMessage")) {
         const form = init.body as FormData;
+        if (rejectOwnerRich && String(form.get("chat_id")) === String(OWNER))
+          return new Response(JSON.stringify({ ok: false, description: rejectOwnerRich }), {
+            status: 400,
+          });
         rich.push({
           chat: String(form.get("chat_id")),
           html: JSON.parse(String(form.get("rich_message"))).html,
@@ -125,8 +129,9 @@ function issueFor(ids: number[], slot = SLOT): AssembledIssue {
   };
 }
 
-function setup(channels: boolean, log: string[] = []) {
-  const rich = telegram(log);
+function setup(channels: boolean, log: string[] = [], rejectOwnerRich: string | null = null) {
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+  const rich = telegram(log, rejectOwnerRich);
   const store = new CandidateStore(":memory:");
   const ids = queued(store);
   assembleIssue.mockResolvedValue({ assembled: issueFor(ids), picked: 3, written: 3 });
@@ -201,6 +206,55 @@ describe("channel digest flow", () => {
 
     expect(rich.map((r) => r.chat)).toEqual([String(OWNER), "@ai_first_news"]);
     expect(rich[1]!.html).toBe(rich[0]!.html);
+    expect(store.get(ids[0]!)!.state).toBe(CandidateState.Published);
+    store.close();
+  });
+
+  it("tells the owner when Telegram rejected the article and the channel will get text", async () => {
+    const { rich, store, runChannelIssue, sent } = setup(false, [], "RICH_MESSAGE_INVALID");
+
+    await runChannelIssue(NOW);
+
+    expect(rich).toEqual([]);
+    expect(sent.at(-1)?.text).toContain(
+      "⚠️ Telegram не принял статью (RICH_MESSAGE_INVALID), в канал уйдёт текстовая версия.",
+    );
+    expect(sent.at(-1)?.text).toContain("Опубликовать в канале");
+    expect(sent.at(-1)?.markup).toContain(`cdig_publish:${SLOT.key}`);
+    store.close();
+  });
+
+  it("does not add the rejection note when the article went through", async () => {
+    const { store, runChannelIssue, sent } = setup(false);
+
+    await runChannelIssue(NOW);
+
+    expect(sent.at(-1)?.text).not.toContain("Telegram не принял");
+    store.close();
+  });
+
+  it("refuses ✅ under a preview from an earlier slot, even one that is still pending", async () => {
+    const { rich, store, ids, bot, runChannelIssue } = setup(false);
+    await runChannelIssue(NOW);
+
+    vi.setSystemTime(Date.parse("2026-10-01T13:00:00Z"));
+    await bot.handleUpdate(tap(`cdig_publish:${SLOT.key}`));
+
+    expect(rich.map((r) => r.chat)).toEqual([String(OWNER)]);
+    expect(store.get(ids[0]!)!.state).toBe(CandidateState.DigestQueued);
+    expect(store.channelQueue.lastSlot()).toBeNull();
+    expect(lastChannelIssue()).toMatchObject({ slot: SLOT.key, outcome: "превью устарело" });
+    store.close();
+  });
+
+  it("still publishes a preview of the current slot late in the same slot", async () => {
+    const { rich, store, ids, bot, runChannelIssue } = setup(false);
+    await runChannelIssue(NOW);
+
+    vi.setSystemTime(Date.parse("2026-10-01T11:59:00Z"));
+    await bot.handleUpdate(tap(`cdig_publish:${SLOT.key}`));
+
+    expect(rich.map((r) => r.chat)).toEqual([String(OWNER), "@ai_first_news"]);
     expect(store.get(ids[0]!)!.state).toBe(CandidateState.Published);
     store.close();
   });
