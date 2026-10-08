@@ -1,8 +1,8 @@
-import { runCodex } from "./runCodex.js";
 import { ProviderName } from "../enums.js";
+import { runCodex } from "../llm/runCodex.js";
 import { resolveActiveProvider } from "../llm/providers.js";
-import { ChatReplySchema } from "../schemas/chatReplySchema.js";
 import { extractJson, completeChatJson } from "../llm/chatCompletion.js";
+import { ChatReplySchema, CHAT_REPLY_JSON_SCHEMA } from "../schemas/chatReplySchema.js";
 
 import type { CandidateStore } from "../store/index.js";
 import type { ChatReply } from "../schemas/chatReplySchema.js";
@@ -32,7 +32,9 @@ export async function generateReply(
   takePaidSlot: () => boolean,
 ): Promise<ChatReply | null> {
   try {
-    const reply = parseReply(await runCodex(`${system}\n\n${user}`));
+    const reply = parseReply(
+      await runCodex(`${system}\n\n${user}`, { schema: CHAT_REPLY_JSON_SCHEMA }),
+    );
     if (reply) return reply;
     console.warn("[chatReply] codex returned no valid reply, using the fallback provider");
   } catch (err) {

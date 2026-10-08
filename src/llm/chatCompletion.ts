@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import { CONFIG } from "../config.js";
+import { runCodex } from "./runCodex.js";
 import { ProviderKind } from "../enums.js";
 import { chatUrl, PROVIDERS } from "./providers.js";
 
@@ -11,7 +12,8 @@ import type { ProviderSpec, ChatJsonRequest } from "./types.js";
  * The one provider-agnostic chat-completion core shared by every LLM feature
  * (rewrite, digest, release extraction, relevance classify). Each feature keeps
  * its own prompt, mock and result validation; THIS module owns how a provider is
- * actually called — the Anthropic SDK path and the OpenAI-compatible fetch path,
+ * actually called — the Anthropic SDK path, the OpenAI-compatible fetch path and
+ * the Codex CLI path (runCodex.ts; maxTokens/temperature do not apply there),
  * with a single place for auth, sampling params, refusal handling and error
  * labeling. Supporting a new provider kind touches only this file.
  */
@@ -157,6 +159,8 @@ export async function completeChatJson(
   const text =
     spec.kind === ProviderKind.Anthropic
       ? await completeWithAnthropic(model, req)
-      : await completeWithOpenAICompat(spec, model, req);
+      : spec.kind === ProviderKind.CodexCli
+        ? await runCodex(`${req.system}\n\n${req.user}`, { model })
+        : await completeWithOpenAICompat(spec, model, req);
   return extractJson(text);
 }

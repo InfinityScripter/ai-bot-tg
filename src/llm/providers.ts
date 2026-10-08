@@ -72,6 +72,16 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     // thinking ON and the same retell came back empty.
     extraBody: { reasoning: { effort: "low" } },
   },
+  [ProviderName.Codex]: {
+    label: "Codex (подписка)",
+    kind: ProviderKind.CodexCli,
+    // No API key: the credential is the ChatGPT login in CODEX_HOME, which a
+    // wrapper (CHAT_REPLY_CODEX_BIN) may keep out of this process's reach. So
+    // no 🔑 guess here — the ping before saving runs a real turn and tells.
+    apiKey: () => "chatgpt-login",
+    defaultModel: CONFIG.CHAT_REPLY_MODEL,
+    fallbackModels: [CONFIG.CHAT_REPLY_MODEL],
+  },
   [ProviderName.Mock]: {
     label: "Mock (без LLM)",
     kind: ProviderKind.Mock,

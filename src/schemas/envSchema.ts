@@ -193,6 +193,21 @@ export const EnvSchema = z
      * empty content; qwen :free is 429-prone — both avoided as the default.) */
     OPENROUTER_MODEL: z.string().default("deepseek/deepseek-chat"),
     /**
+     * The owner's avatar (src/avatar/): the bot's mode in every group the OWNER
+     * added it to, other than CHAT_REPLY_CHAT_ID. Its own SQLite file (groups,
+     * profile, blog index), apart from the news ledger.
+     */
+    AVATAR_SQLITE_PATH: z.string().min(1).default("./data/avatar.db"),
+    /** Silence in a group before the avatar considers chiming in unasked. */
+    AVATAR_QUIET_MS: z.coerce.number().int().positive().default(90_000),
+    /** Min gap between unasked turns in one chat; also how long the owner counts as present. */
+    AVATAR_COOLDOWN_MS: z.coerce.number().int().positive().default(600_000),
+    /**
+     * Max answered turns per group per UTC day; unasked turns get at most half,
+     * so a chatty group cannot use up the answers to direct mentions.
+     */
+    AVATAR_DAILY_CALLS: z.coerce.number().int().positive().default(60),
+    /**
      * hemmingway-27b key for the final humanizer pass over published text (post
      * body, digest intro and notes). OPTIONAL: unset or empty = the pass is
      * skipped and text publishes exactly as the rewrite model wrote it.

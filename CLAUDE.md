@@ -96,6 +96,13 @@ group reply ─► CHAT_REPLY_CHAT_ID only: @mention / reply to the bot (+ the c
   ─► fallback: active rewrite provider, ≤ CHAT_REPLY_FALLBACK_PER_HOUR ─► both fail = silence (src/chatReply/;
   its middleware runs BEFORE the owner lock and swallows every group update)
 
+avatar ─► every OTHER group the owner added the bot to (a stranger's invite = leave;
+  a promotion is never an invite): RAM history; @mention / reply = answer now, else one
+  unasked turn after AVATAR_QUIET_MS silence ─► gate (daily cap, unasked ≤ half, cooldown,
+  owner present) ─► the responder's Codex-first generateReply, voice from /profile + blog
+  FTS5 index (src/avatar/; its middleware runs right after chatReply's and stops EVERY
+  group update — owner text in a group must never reach manual ingest)
+
 every channel post (retell, news/release/digest announcement) ─► branded PNG cover
   (src/blog/renderCover.ts) + dress (rubric, "why" line, cover text; fail-soft:
   no dress = plain post, no cover = the old photos)
@@ -128,8 +135,12 @@ Double button presses are cut off by **atomic UPDATE claims**
 
 - `providers.ts` — the single registry (URLs, key accessors, default/fallback
   models). Adding a provider touches this file plus, at most, `chatCompletion.ts`.
-- `chatCompletion.ts` — the ONE provider-agnostic call core: an Anthropic SDK path
-  and an OpenAI-compatible `fetch` path (Gemini/GLM/DeepSeek/OpenRouter, no SDKs).
+- `chatCompletion.ts` — the ONE provider-agnostic call core: an Anthropic SDK path,
+  an OpenAI-compatible `fetch` path (Gemini/GLM/DeepSeek/OpenRouter, no SDKs) and the
+  Codex CLI path (`ProviderName.Codex`, the owner's ChatGPT subscription).
+- `runCodex.ts` — the ONE `codex exec` runner (group responder, avatar, Codex
+  provider): read-only, every tool and Codex's own memory off, token-free env, one
+  run per process at a time (one login per serialized stream).
   Every call carries a hard timeout + retry cap (`LLM_TIMEOUT_MS`,
   `LLM_MAX_RETRIES`) — without them one stalled call freezes `/fetch`, since
   collection classifies serially. Keep any new LLM feature on this core.

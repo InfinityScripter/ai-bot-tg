@@ -283,3 +283,50 @@ the bot. The rewrite runs on the 🔄 tap, not at collection.
 `REWRITE_MOCK=1` (or `REWRITE_PROVIDER=mock`) in the bot env = skip the LLM,
 publish a copy of the source (saves credits). Set provider to a real one for
 real rewrites.
+
+## Codex на подписке ChatGPT (ответчик, аватар, `/model`)
+
+Codex вызывают три места: ответчик в группе канала, аватар в группах владельца
+и провайдер «Codex (подписка)» в `/model`. Все идут через `src/llm/runCodex.ts`
+строго по одному: один вход на процесс.
+
+- **Как устроено на сервере (проверено 2026-10-09).** Юнит `blog-newsbot` на
+  сервере работает от `root` и без hardening — он отличается от
+  `deploy/blog-newsbot.service` в репо. Не копируй файл из репо поверх: бот
+  сменит пользователя и потеряет доступ к `data/`. Codex подключён добавкой
+  `/etc/systemd/system/blog-newsbot.service.d/codex.conf`:
+  `Environment=CODEX_HOME=/opt/blog-app/ai-bot-tg/data/codex`. Бинарник —
+  `/usr/bin/codex`, версия `codex-cli 0.155.0`.
+- **Версия CLI закреплена.** Имена в `DISABLED_CODEX_FEATURES`
+  (`src/llm/runCodex.ts`) зависят от версии. Перед обновлением CLI повтори
+  пробу: простой вопрос и «выполни команду hostname» с теми же флагами; в
+  `--json` не должно быть событий выполнения команд.
+- **Вход (делает владелец).** Сначала в ChatGPT включи вход по коду устройства
+  (Settings → Security). Потом:
+
+  ```bash
+  ssh -t myserver 'CODEX_HOME=/opt/blog-app/ai-bot-tg/data/codex codex login --device-auth'
+  ```
+
+  Команда покажет ссылку и код: открой ссылку, войди, введи код.
+- **Симптом «codex exited 1: … 401 Unauthorized» / «access token could not be
+  refreshed»** — вход протух. Лечится той же командой входа. С 2026-10-06 по
+  2026-10-09 так и было: ответчик молча уходил на платную запасную модель.
+- **Проверка после входа:** в боте `/model` → «Codex (подписка)» → модель: бот
+  сделает пинг настоящим вызовом и сохранит выбор только при успехе.
+- **Откат рерайта:** `/model` → OpenRouter → `openai/gpt-6-luna`.
+
+## Аватар владельца в группах
+
+Режим того же бота, отдельной службы нет. Выкатывается обычным пушем в `main`.
+
+1. Владелец добавляет бота в группу и делает его админом без прав: иначе бот
+   видит только упоминания. Бот пишет владельцу в личку, что он в группе.
+2. Владелец пишет боту в личку `/profile текст о себе`, затем `/avatar` —
+   статус, память блога, последние ошибки.
+3. Память блога наполняется сама при первом сообщении в группе аватара;
+   вручную — `/reindex`.
+4. Выключить везде: `/avatar off`. Выйти из группы: `/avatar leave <id>`.
+5. Журнал: `journalctl -u blog-newsbot -f | grep '\[avatar\]'` — каждый ход
+   пишет строку (ответ, молчание, отказ правил, ошибка модели).
+6. Своя база: `data/avatar.db` рядом с `candidates.db`.

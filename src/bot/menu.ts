@@ -45,6 +45,21 @@ export const COMMANDS: CommandSpec[] = [
     description: "включить/выключить ответы бота в чате при канале",
   },
   {
+    command: "avatar",
+    buttonTitle: undefined,
+    description: "аватар в группах: статус; /avatar on|off; /avatar leave id",
+  },
+  {
+    command: "profile",
+    buttonTitle: undefined,
+    description: "профиль для аватара: /profile текст о себе; без текста — показать",
+  },
+  {
+    command: "reindex",
+    buttonTitle: undefined,
+    description: "заново прочитать посты блога в память аватара",
+  },
+  {
     command: "health",
     buttonTitle: "🩺 Проверка",
     action: MenuAction.Health,

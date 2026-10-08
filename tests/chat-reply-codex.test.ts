@@ -1,6 +1,6 @@
 import { it, expect, describe } from "vitest";
 
-import { codexEnv, codexArgs, DISABLED_CODEX_FEATURES } from "../src/chatReply/runCodex.js";
+import { codexEnv, codexArgs, DISABLED_CODEX_FEATURES } from "../src/llm/runCodex.js";
 
 describe("codex run for the public group is tool-less and secret-free", () => {
   it("switches off every tool that could touch the host", () => {
@@ -32,5 +32,20 @@ describe("codex run for the public group is tool-less and secret-free", () => {
       BOT_API_TOKEN: "secret",
     });
     expect(env).toEqual({ PATH: "/usr/bin", HOME: "/home/bot" });
+  });
+});
+
+describe("codex run options", () => {
+  it("adds --output-schema only when a schema file is given, and passes the model", () => {
+    const free = codexArgs("/tmp/w", null, "/tmp/w/out.txt", "gpt-x");
+    expect(free).not.toContain("--output-schema");
+    expect(free[free.indexOf("--model") + 1]).toBe("gpt-x");
+    const strict = codexArgs("/tmp/w", "/tmp/w/schema.json", "/tmp/w/out.txt");
+    expect(strict[strict.indexOf("--output-schema") + 1]).toBe("/tmp/w/schema.json");
+  });
+
+  it("keeps Codex's own memory off, so group text never lands in CODEX_HOME", () => {
+    const args = codexArgs("/tmp/w", null, "/tmp/w/out.txt");
+    expect(args[args.indexOf("memories") - 1]).toBe("--disable");
   });
 });

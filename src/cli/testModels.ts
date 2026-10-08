@@ -66,6 +66,10 @@ async function probeAnthropic(spec: ProviderSpec): Promise<string> {
 async function probeProvider(name: ProviderName): Promise<string> {
   const spec = PROVIDERS[name];
   if (spec.kind === ProviderKind.Mock) return "➖ mock (без сети)";
+  if (spec.kind === ProviderKind.CodexCli) {
+    const ping = await pingModel(name, spec.defaultModel);
+    return ping.ok ? `✅ подписка, ping ${spec.defaultModel}: ok` : `❌ ${ping.error}`;
+  }
 
   const key = spec.apiKey();
   if (!key) return `⚠ SKIP — нет ${KEY_ENV[name] ?? "ключа"}`;

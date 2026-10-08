@@ -18,7 +18,7 @@ chmodSync(bin, 0o755);
 process.env.CHAT_REPLY_CODEX_BIN = bin;
 process.env.CHAT_REPLY_TIMEOUT_MS = "300";
 
-const { runCodex } = await import("../src/chatReply/runCodex.js");
+const { runCodex } = await import("../src/llm/runCodex.js");
 
 describe("runCodex process handling", () => {
   it("gives up at the timeout even when a grandchild keeps the pipes open", async () => {

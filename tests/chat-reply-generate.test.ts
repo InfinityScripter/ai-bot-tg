@@ -1,7 +1,7 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
 const runCodex = vi.fn();
-vi.mock("../src/chatReply/runCodex.js", () => ({
+vi.mock("../src/llm/runCodex.js", () => ({
   runCodex: (...a: unknown[]) => runCodex(...a),
 }));
 const completeChatJson = vi.fn();

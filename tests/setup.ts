@@ -6,6 +6,7 @@ process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
 process.env.BLOG_API_URL = "http://localhost:7272";
 process.env.BOT_API_TOKEN = "test-bot-api-token-value";
 process.env.SQLITE_PATH = ":memory:";
+process.env.AVATAR_SQLITE_PATH = ":memory:";
 process.env.CRON_SCHEDULE = "0 9 * * *";
 process.env.CRON_TZ = "Europe/Moscow";
 // Force the real Claude path in tests regardless of a local .env (which may set

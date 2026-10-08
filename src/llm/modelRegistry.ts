@@ -1,3 +1,4 @@
+import { runCodex } from "./runCodex.js";
 import { PROVIDERS } from "./providers.js";
 import { ProviderKind } from "../enums.js";
 
@@ -100,6 +101,14 @@ export async function pingModel(provider: ProviderName, model: string): Promise<
     return spec.apiKey()
       ? { ok: true }
       : { ok: false, error: `Для ${spec.label} не задан API-ключ.` };
+  }
+  if (spec.kind === ProviderKind.CodexCli) {
+    try {
+      await runCodex("Ответь одним словом: ok", { model });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   const key = spec.apiKey();

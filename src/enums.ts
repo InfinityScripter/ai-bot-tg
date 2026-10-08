@@ -50,6 +50,8 @@ export enum ProviderName {
   DeepSeek = "deepseek",
   /** OpenRouter — one key/endpoint that proxies many models (z-ai/*, deepseek/*, …). */
   OpenRouter = "openrouter",
+  /** Codex CLI on the owner's ChatGPT subscription: no API key, `codex exec`. */
+  Codex = "codex",
   Mock = "mock",
 }
 
@@ -57,6 +59,8 @@ export enum ProviderName {
 export enum ProviderKind {
   Anthropic = "anthropic",
   OpenAICompat = "openai-compat",
+  /** A local CLI process (`codex exec`) instead of an HTTP endpoint. */
+  CodexCli = "codex-cli",
   Mock = "mock",
 }
 
