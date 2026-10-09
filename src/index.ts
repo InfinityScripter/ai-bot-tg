@@ -2,6 +2,7 @@ import { CONFIG } from "./config.js";
 import { createBot } from "./bot/index.js";
 import { CandidateStore } from "./store/index.js";
 import { importCatalog } from "./catalog/index.js";
+import { startAvatarSide } from "./avatar/index.js";
 import { NOTIFY_LABELS, COLLECTION_LABELS } from "./labels.js";
 import {
   runCollection,
@@ -61,6 +62,8 @@ async function main() {
   let job: ReturnType<typeof scheduleDaily> | null = null;
   const {
     bot,
+    hope,
+    notifyOwner,
     sendRawCard,
     runDigestPost,
     runChannelIssue,
@@ -69,16 +72,8 @@ async function main() {
     notifyNeedsVerification,
     drain,
   } = createBot(store, run, { nextRun: () => job?.nextRun() ?? null });
-
-  // Best-effort DM to the owner (used to alert on a failed scheduled run).
-  const notifyOwner = async (text: string): Promise<void> => {
-    try {
-      await bot.api.sendMessage(CONFIG.OWNER_TELEGRAM_ID, text);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn(`[index] failed to notify owner: ${String(err)}`);
-    }
-  };
+  // The owner's avatar bot and its debates with Hope; null without AVATAR_BOT_TOKEN.
+  const avatarSide = startAvatarSide(store, hope, notifyOwner);
 
   // The scheduled run alerts the owner on failure — a broken daily run is
   // otherwise invisible. (The scheduler's `catch` is a second backstop.)
@@ -217,11 +212,13 @@ async function main() {
       watchJob?.stop();
       channelJobs.stop();
       if (controlServer) await controlServer.close();
-      await bot.stop(); // grammy: stops polling; does not drain handlers
+      // grammy stops polling but does not drain handlers; the avatar side never throws.
+      await Promise.all([bot.stop(), avatarSide?.stop()]);
       if (activeCollection) await activeCollection;
       if (activeWatch) await activeWatch;
       await channelJobs.idle();
-      await drain(); // wait for any in-flight publish to finish its DB writes
+      // In-flight publishes, avatar turns and debates finish their DB writes (each capped).
+      await Promise.all([drain(), avatarSide?.drain()]);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(`[index] error during shutdown: ${String(err)}`);

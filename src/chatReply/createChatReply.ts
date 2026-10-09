@@ -4,10 +4,12 @@ import { CONFIG } from "../config.js";
 import { createRateLimit } from "./rateLimit.js";
 import { generateReply } from "./generateReply.js";
 import { loadTurns, appendTurn } from "./memory.js";
+import { createHopeSpeaker } from "./debateSpeaker.js";
 import { chatReplyUser, chatReplySystem, chatReplyPostUser } from "./prompt.js";
 
 import type { CandidateStore } from "../store/index.js";
 import type { ChatTurn, IncomingMessage } from "./types.js";
+import type { DebateLine, DebateOpener } from "../debate/index.js";
 
 const ENABLED_KEY = "chat_reply_enabled";
 /** Mentions waiting behind the one being answered; more are dropped, not queued. */
@@ -33,6 +35,8 @@ interface ReplyJob {
   messageId: number;
   prompt: () => string;
   turn: Pick<ChatTurn, "name" | "text" | "userId">;
+  /** Set for a comment on a new channel post. */
+  post?: string;
 }
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -74,6 +78,7 @@ export function createChatReply(bot: Bot, store: CandidateStore) {
   let pending = 0;
   /** Chats whose id was already logged for setup — one line per chat, not per mention. */
   const loggedStray = new Set<number>();
+  let postListener: DebateOpener | null = null;
 
   const isEnabled = (): boolean => store.getRawSetting(ENABLED_KEY) !== "0";
 
@@ -93,6 +98,7 @@ export function createChatReply(bot: Bot, store: CandidateStore) {
         messageId: msg.message_id,
         prompt: () => chatReplyPostUser(post),
         turn: { userId: 0, name: "пост канала", text: post },
+        post,
       };
     }
     const incoming = toIncoming(ctx);
@@ -117,9 +123,13 @@ export function createChatReply(bot: Bot, store: CandidateStore) {
       if (!reply) return;
       const text = reply.action === "reply" ? reply.text : "";
       if (text) {
-        await bot.api.sendMessage(job.chatId, text, {
+        const sent = await bot.api.sendMessage(job.chatId, text, {
           reply_parameters: { message_id: job.messageId, allow_sending_without_reply: true },
         });
+        if (job.post !== undefined) {
+          const line: DebateLine = { side: "hope", text, messageId: sent.message_id };
+          postListener?.(job.chatId, line, job.post);
+        }
       }
       appendTurn(store, job.chatId, {
         at: Date.now(),
@@ -189,5 +199,14 @@ export function createChatReply(bot: Bot, store: CandidateStore) {
     return Promise.race([chain, cap]);
   }
 
-  return { middleware, onToggle, drain };
+  /** Hope's side for debates with the avatar. */
+  const hope = {
+    speaker: createHopeSpeaker(bot, isEnabled),
+    /** Hope's comment on a new channel post may open a debate. */
+    onPostComment: (listener: DebateOpener): void => {
+      postListener = listener;
+    },
+  };
+
+  return { middleware, onToggle, drain, hope };
 }

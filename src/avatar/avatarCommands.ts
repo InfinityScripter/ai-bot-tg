@@ -24,7 +24,7 @@ function statusText(avatar: Avatar): string {
   return [
     `Аватар ${store.isEnabled() ? "включён" : "выключен"}.`,
     `Память: ${store.chunkCount()} кусков из блога (${indexLine}); профиль ${store.getProfile().length} символов.`,
-    `Лимит: ${CONFIG.AVATAR_DAILY_CALLS} ответов в день на группу, без приглашения — до половины.`,
+    `Лимит: ${CONFIG.AVATAR_DAILY_CALLS} ответов в день на группу, без приглашения и в спорах с Hope — до половины.`,
     `Последняя ошибка: ${error ? `${time(error.at)} ${error.text}` : "нет"}.`,
     chats.length ? "Группы:" : "Групп нет. Добавь меня в группу сам: из чужих групп я выхожу.",
     ...chats.map(
@@ -49,7 +49,11 @@ export function registerAvatarCommands(bot: Bot, avatar: Avatar): void {
       await ctx.reply(
         current
           ? current.slice(0, SHOW_CHARS)
-          : "Профиль пуст. Пришли /profile и текст о себе: кто ты, о чём пишешь, как говоришь.",
+          : [
+              "Профиль пуст. Пришли /profile и текст о себе одним сообщением:",
+              "Кто я. Чем занимаюсь. Во что верю. Как говорю (длина фраз, любимые и запретные слова).",
+              "Образцы моих реплик: 5–10 фраз так, как ты их сказал бы сам.",
+            ].join("\n"),
       );
       return;
     }

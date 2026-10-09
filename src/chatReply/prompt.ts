@@ -14,7 +14,7 @@ const POST_CHARS = 3000;
  * a post) typing ">>>" must not be able to close the fence and add fake lines.
  * Tools are off, so this shapes replies, not security.
  */
-const fenced = (text: string, max: number): string[] => [
+export const fenced = (text: string, max: number): string[] => [
   "<<<",
   text.slice(0, max).replace(/<<<|>>>/g, "»"),
   ">>>",

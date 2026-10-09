@@ -96,12 +96,21 @@ group reply ─► CHAT_REPLY_CHAT_ID only: @mention / reply to the bot (+ the c
   ─► fallback: active rewrite provider, ≤ CHAT_REPLY_FALLBACK_PER_HOUR ─► both fail = silence (src/chatReply/;
   its middleware runs BEFORE the owner lock and swallows every group update)
 
-avatar ─► every OTHER group the owner added the bot to (a stranger's invite = leave;
-  a promotion is never an invite): RAM history; @mention / reply = answer now, else one
-  unasked turn after AVATAR_QUIET_MS silence ─► gate (daily cap, unasked ≤ half, cooldown,
-  owner present) ─► the responder's Codex-first generateReply, voice from /profile + blog
-  FTS5 index (src/avatar/; its middleware runs right after chatReply's and stops EVERY
-  group update — owner text in a group must never reach manual ingest)
+avatar ─► a SECOND bot (AVATAR_BOT_TOKEN; empty = off) in this same process, started by
+  src/avatar/startAvatarSide.ts: every group the owner added it to (a stranger's invite =
+  leave; a promotion is never an invite): RAM history; @mention / reply = answer now, else
+  one unasked turn after AVATAR_QUIET_MS silence ─► gate (daily cap, unasked ≤ half,
+  cooldown, owner present) ─► the responder's Codex-first generateReply, voice from
+  /profile + blog FTS5 index. /profile, /reindex, /avatar live in ITS DM (owner lock there).
+  Both bots share one owner lock, src/bot/isOwnerDm.ts: the owner AND the private chat —
+  owner text in a group must never reach the news bot's manual ingest
+
+debate ─► Hope (skeptic) vs avatar (practitioner), in-process: Telegram hides other bots'
+  messages unless BotFather's "Bot to Bot Communication Mode" is on (keep it OFF on both
+  bots: the engine is the only loop guard). Opened by Hope's new-post comment or any ordinary avatar reply
+  ─► src/debate/createDebates.ts alternates the two Speakers, AVATAR_DEBATE_TURNS per side,
+  one per chat, AVATAR_COOLDOWN_MS between debates ─► codexReply only (no paid fallback);
+  avatar turns count against AVATAR_DAILY_CALLS
 
 every channel post (retell, news/release/digest announcement) ─► branded PNG cover
   (src/blog/renderCover.ts) + dress (rubric, "why" line, cover text; fail-soft:
@@ -138,8 +147,8 @@ Double button presses are cut off by **atomic UPDATE claims**
 - `chatCompletion.ts` — the ONE provider-agnostic call core: an Anthropic SDK path,
   an OpenAI-compatible `fetch` path (Gemini/GLM/DeepSeek/OpenRouter, no SDKs) and the
   Codex CLI path (`ProviderName.Codex`, the owner's ChatGPT subscription).
-- `runCodex.ts` — the ONE `codex exec` runner (group responder, avatar, Codex
-  provider): read-only, every tool and Codex's own memory off, token-free env, one
+- `runCodex.ts` — the ONE `codex exec` runner (group responder, avatar,
+  debates, Codex provider): read-only, every tool and Codex's own memory off, token-free env, one
   run per process at a time (one login per serialized stream).
   Every call carries a hard timeout + retry cap (`LLM_TIMEOUT_MS`,
   `LLM_MAX_RETRIES`) — without them one stalled call freezes `/fetch`, since

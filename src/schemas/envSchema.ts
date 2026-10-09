@@ -193,10 +193,12 @@ export const EnvSchema = z
      * empty content; qwen :free is 429-prone — both avoided as the default.) */
     OPENROUTER_MODEL: z.string().default("deepseek/deepseek-chat"),
     /**
-     * The owner's avatar (src/avatar/): the bot's mode in every group the OWNER
-     * added it to, other than CHAT_REPLY_CHAT_ID. Its own SQLite file (groups,
-     * profile, blog index), apart from the news ledger.
+     * The owner's avatar (src/avatar/): a second Telegram bot in this same
+     * process. It speaks in every group the OWNER added it to. Empty = the
+     * avatar is off. Its own SQLite file (groups, profile, blog index), apart
+     * from the news ledger.
      */
+    AVATAR_BOT_TOKEN: z.string().default(""),
     AVATAR_SQLITE_PATH: z.string().min(1).default("./data/avatar.db"),
     /** Silence in a group before the avatar considers chiming in unasked. */
     AVATAR_QUIET_MS: z.coerce.number().int().positive().default(90_000),
@@ -207,6 +209,10 @@ export const EnvSchema = z
      * so a chatty group cannot use up the answers to direct mentions.
      */
     AVATAR_DAILY_CALLS: z.coerce.number().int().positive().default(60),
+    /** Replies per side in one Hope-vs-avatar debate (src/debate/). */
+    AVATAR_DEBATE_TURNS: z.coerce.number().int().positive().max(10).default(3),
+    /** Pause between two debate replies, so six messages do not land in one burst. */
+    AVATAR_DEBATE_PAUSE_MS: z.coerce.number().int().nonnegative().default(20_000),
     /**
      * hemmingway-27b key for the final humanizer pass over published text (post
      * body, digest intro and notes). OPTIONAL: unset or empty = the pass is

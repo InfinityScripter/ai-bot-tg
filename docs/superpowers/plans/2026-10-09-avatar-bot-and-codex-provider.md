@@ -8,6 +8,13 @@
 
 **Tech Stack:** TypeScript (ESM, run by tsx), grammY 1.44, better-sqlite3 (bundled SQLite 3.49 with FTS5), zod, vitest, Codex CLI 0.155.0 (pinned), systemd.
 
+## Revision 2 (2026-10-09, later the same day)
+
+The owner then chose two bots after all, plus debates between them. The avatar
+now runs as a second grammY bot in the same process; see
+`2026-10-09-avatar-own-bot-and-debates.md`. Revision 1 below explains why it
+was first folded into the news bot.
+
 ## Revision 2026-10-09 (during execution) — read this first
 
 The plan below was written against a local checkout 3 commits behind

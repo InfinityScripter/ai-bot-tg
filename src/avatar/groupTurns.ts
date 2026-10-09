@@ -2,12 +2,13 @@ import type { Bot } from "grammy";
 
 import { CONFIG } from "../config.js";
 import { replyGate } from "./replyGate.js";
-import { ChatHistory } from "./chatHistory.js";
 import { QuietTimers } from "./quietTimers.js";
 import { buildSearchQuery } from "./searchQuery.js";
+import { ChatHistory, HOPE_AUTHOR_ID } from "./chatHistory.js";
 import { avatarTranscript, avatarSystemPrompt } from "./avatarPrompt.js";
 
 import type { AvatarStore } from "./avatarStore.js";
+import type { DebateOpener } from "../debate/index.js";
 import type { ChatReply } from "../schemas/chatReplySchema.js";
 
 /** One model turn: (system, user) → a reply, or null when every model failed. */
@@ -34,23 +35,30 @@ const SEARCH_LINES = 5;
 /** Shutdown waits this long for a turn in flight (systemd allows 20 s). */
 const DRAIN_MAX_MS = 10_000;
 
-const dayKey = (now: number): string => new Date(now).toISOString().slice(0, 10);
+/** The UTC day the call counters use. */
+export const dayKey = (now: number): string => new Date(now).toISOString().slice(0, 10);
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /**
  * The avatar's turns in its groups: remember every text message (RAM), answer
  * a mention now, consider an unasked reply after a pause. A turn runs detached
  * from grammY's update loop (a Codex turn takes 5–15 s), one per chat; a
- * mention that arrives meanwhile runs right after. A turn never throws: this
- * process is the news bot, and an unhandled rejection restarts it.
+ * mention that arrives meanwhile runs right after. A turn never throws: the
+ * news bot runs in the same process, and an unhandled rejection restarts it.
  */
-export function createGroupTurns(bot: Bot, store: AvatarStore, generate: GenerateFn) {
-  const history = new ChatHistory();
+export function createGroupTurns(
+  bot: Bot,
+  store: AvatarStore,
+  generate: GenerateFn,
+  /** Shared with the avatar's debate side, so both see the same lines. */
+  history: ChatHistory = new ChatHistory(),
+) {
   const timers = new QuietTimers(CONFIG.AVATAR_QUIET_MS);
   const inFlight = new Set<number>();
   const pendingDirect = new Map<number, number>();
   const running = new Set<Promise<void>>();
   let lastError: { at: number; text: string } | null = null;
+  let replyListener: DebateOpener | null = null;
 
   async function answer(chatId: number, direct: boolean, replyTo?: number): Promise<void> {
     const now = Date.now();
@@ -107,6 +115,16 @@ export function createGroupTurns(bot: Bot, store: AvatarStore, generate: Generat
     history.stamp(chatId, "avatar", Date.now());
     console.log(
       `[avatar] ${chatId}: ${mode} reply, ${reply.text.length} chars (memory ${memory.length})`,
+    );
+    // The person's message it answered; Hope's lines are never the topic.
+    const topic =
+      lines.find((l) => l.messageId === replyTo)?.text ??
+      lines.filter((l) => !l.fromAvatar && l.authorId !== HOPE_AUTHOR_ID).at(-1)?.text ??
+      "";
+    replyListener?.(
+      chatId,
+      { side: "avatar", text: reply.text, messageId: sent.message_id },
+      topic,
     );
   }
 
@@ -172,5 +190,15 @@ export function createGroupTurns(bot: Bot, store: AvatarStore, generate: Generat
     return Promise.race([Promise.allSettled([...running]).then(() => undefined), cap]);
   }
 
-  return { onText, forget, drain, lastError: () => lastError };
+  /** Records a failure from outside the turns (a debate reply), for /avatar. */
+  function noteError(text: string): void {
+    lastError = { at: Date.now(), text };
+  }
+
+  /** Every ordinary reply may open a debate with Hope. */
+  function onReply(listener: DebateOpener): void {
+    replyListener = listener;
+  }
+
+  return { onText, forget, drain, noteError, onReply, lastError: () => lastError };
 }

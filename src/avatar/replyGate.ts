@@ -22,11 +22,14 @@ export type GateVerdict =
  * unasked turn also waits out a cooldown after the last unasked turn or reply,
  * and stays silent while the owner is talking himself.
  */
+/** What unasked turns and debates may use of the daily cap: half, the rest stays for mentions. */
+export const unaskedCap = (dailyCalls: number): number => Math.floor(dailyCalls / 2);
+
 export function replyGate(input: GateInput): GateVerdict {
   const { direct, now, callsToday, lastAvatarAt, lastUnaskedAt, lastOwnerAt, limits } = input;
   if (callsToday >= limits.dailyCalls) return { call: false, reason: "daily_cap" };
   if (direct) return { call: true };
-  if (callsToday >= Math.floor(limits.dailyCalls / 2)) {
+  if (callsToday >= unaskedCap(limits.dailyCalls)) {
     return { call: false, reason: "unasked_cap" };
   }
   if (lastOwnerAt !== null && now - lastOwnerAt < limits.cooldownMs) {

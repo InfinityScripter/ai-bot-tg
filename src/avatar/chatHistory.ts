@@ -1,5 +1,8 @@
 import type { ChatLine } from "./types.js";
 
+/** Hope's lines in the history: Telegram never gives this bot her user id. */
+export const HOPE_AUTHOR_ID = 0;
+
 /** Lines kept per chat: enough context for a reply, small enough for one prompt. */
 const MAX_LINES = 40;
 

@@ -20,9 +20,26 @@ function parseReply(text: string | null): ChatReply | null {
 }
 
 /**
- * Codex first (the owner's subscription), then the bot's active rewrite
- * provider (API credits) when Codex fails — quota spent, logged out, timeout,
- * or an unusable reply — as long as `takePaidSlot` grants one. Null when both
+ * One Codex turn on the owner's subscription. Null when Codex fails (quota
+ * spent, logged out, timeout) or its reply breaks the contract. Debates use
+ * only this: they never spend API credits.
+ */
+export async function codexReply(system: string, user: string): Promise<ChatReply | null> {
+  try {
+    const reply = parseReply(
+      await runCodex(`${system}\n\n${user}`, { schema: CHAT_REPLY_JSON_SCHEMA }),
+    );
+    if (!reply) console.warn("[chatReply] codex returned no valid reply");
+    return reply;
+  } catch (err) {
+    console.warn(`[chatReply] codex failed: ${String(err)}`);
+    return null;
+  }
+}
+
+/**
+ * Codex first, then the bot's active rewrite provider (API credits) when
+ * Codex gives nothing, as long as `takePaidSlot` grants one. Null when both
  * fail: the caller stays silent rather than posting an error into a public chat.
  */
 export async function generateReply(
@@ -31,15 +48,8 @@ export async function generateReply(
   user: string,
   takePaidSlot: () => boolean,
 ): Promise<ChatReply | null> {
-  try {
-    const reply = parseReply(
-      await runCodex(`${system}\n\n${user}`, { schema: CHAT_REPLY_JSON_SCHEMA }),
-    );
-    if (reply) return reply;
-    console.warn("[chatReply] codex returned no valid reply, using the fallback provider");
-  } catch (err) {
-    console.warn(`[chatReply] codex failed, using the fallback provider: ${String(err)}`);
-  }
+  const reply = await codexReply(system, user);
+  if (reply) return reply;
 
   const { provider, model } = resolveActiveProvider(store);
   if (provider === ProviderName.Mock) return null;

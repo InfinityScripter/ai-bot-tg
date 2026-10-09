@@ -1,10 +1,12 @@
 import type { Context } from "grammy";
 
-import { Bot, HttpError, GrammyError } from "grammy";
+import { Bot } from "grammy";
 
 import { CONFIG } from "../config.js";
 import { modelMenu } from "./modelMenu.js";
 import { autoRetry } from "./autoRetry.js";
+import { isOwnerDm } from "./isOwnerDm.js";
+import { logBotError } from "./logBotError.js";
 import { createIngest } from "./createIngest.js";
 import { createDigestFlow } from "./digestFlow.js";
 import { createHandlers } from "./createHandlers.js";
@@ -13,7 +15,6 @@ import { createDigestPostFlow } from "./digestPostFlow.js";
 import { createAutoPublish } from "./createAutoPublish.js";
 import { createChannelDigestFlow } from "./channelDigestFlow.js";
 import { renderHealth, collectHealth } from "../health/index.js";
-import { createAvatar, registerAvatarCommands } from "../avatar/index.js";
 import { helpText, menuIntro, menuKeyboard, nativeCommands, parseMenuCallback } from "./menu.js";
 
 import type { BotOptions } from "./types.js";
@@ -55,46 +56,16 @@ export function createBot(
   const { runChannelIssue, onChannelDigestCallback, isChannelDigestCallback } =
     createChannelDigestFlow(bot, store);
   const chatReply = createChatReply(bot, store);
-  const avatar = createAvatar(bot, store);
 
-  // Global error boundary: grammy rethrows an uncaught handler error out of the
-  // polling loop, which exits the process (systemd then restart-loops). This
-  // keeps the bot alive through any handler failure. Benign Telegram 400s
-  // ("message is not modified", "query is too old") log at debug; real Bot API
-  // errors and network errors are distinguished for clearer logs.
-  bot.catch((err) => {
-    const e = err.error;
-    const updateId = err.ctx.update.update_id;
-    if (e instanceof GrammyError) {
-      const benign = /message is not modified|query is too old|message to edit not found/i.test(
-        e.description,
-      );
-      // eslint-disable-next-line no-console
-      console[benign ? "warn" : "error"](
-        `[bot] Telegram error on update ${updateId}: ${e.description}`,
-      );
-    } else if (e instanceof HttpError) {
-      // eslint-disable-next-line no-console
-      console.warn(`[bot] network error on update ${updateId}: ${String(e)}`);
-    } else {
-      // eslint-disable-next-line no-console
-      console.error(`[bot] unhandled error on update ${updateId}: ${String(e)}`);
-    }
-  });
+  bot.catch(logBotError("bot"));
 
   // The group responder sees its group's updates first and never passes them
   // on, so nothing from the group reaches the owner-only handlers below.
   bot.use(chatReply.middleware);
-  // Then the owner's avatar takes every other group update, so none reaches
-  // the owner lock and manual ingest below.
-  bot.use(avatar.middleware);
-
-  // Owner-lock: silently ignore every update from anyone but the owner —
-  // commands and callbacks alike. ctx.from is set for messages, callbacks,
-  // edited messages, channel posts, and inline queries, so this gate covers
-  // every update type that carries a sender.
+  // Owner-lock: silently ignore every update but the owner's own in the DM —
+  // commands and callbacks alike, and every other group's updates too.
   bot.use(async (ctx, next) => {
-    if (ctx.from?.id !== CONFIG.OWNER_TELEGRAM_ID) {
+    if (!isOwnerDm(ctx)) {
       if (ctx.callbackQuery)
         await ctx.answerCallbackQuery({ text: "Не авторизовано." }).catch(() => {});
       return; // drop the update
@@ -137,7 +108,6 @@ export function createBot(
   bot.command("fetch", runFetch);
   bot.command("model", runModel);
   bot.command("chat", chatReply.onToggle);
-  registerAvatarCommands(bot, avatar);
   bot.command("digest", runDigest);
   bot.command("digestpost", async (ctx) => {
     await ctx.reply("Собираю дневной дайджест…");
@@ -208,17 +178,24 @@ export function createBot(
     // eslint-disable-next-line no-console
     .catch((err) => console.warn(`[bot] setMyCommands failed: ${String(err)}`));
 
+  // Best-effort DM to the owner (used to alert on a failed scheduled run).
+  const notifyOwner = async (text: string): Promise<void> => {
+    try {
+      await bot.api.sendMessage(CONFIG.OWNER_TELEGRAM_ID, text);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[bot] failed to notify owner: ${String(err)}`);
+    }
+  };
+
   const drain = async (): Promise<void> => {
-    await Promise.all([
-      drainHandlers(),
-      drainAutoPublish(),
-      chatReply.drain(),
-      avatar.drainAndClose(),
-    ]);
+    await Promise.all([drainHandlers(), drainAutoPublish(), chatReply.drain()]);
   };
 
   return {
     bot,
+    hope: chatReply.hope,
+    notifyOwner,
     sendRawCard,
     runDigestPost,
     runChannelIssue,

@@ -4,10 +4,12 @@ import { CONFIG } from "../config.js";
 import { isDirect } from "./isDirect.js";
 import { indexBlog } from "./indexBlog.js";
 import { AvatarStore } from "./avatarStore.js";
+import { ChatHistory } from "./chatHistory.js";
 import { createGroupTurns } from "./groupTurns.js";
+import { createAvatarSpeaker } from "./debateSpeaker.js";
 import { createRateLimit } from "../chatReply/rateLimit.js";
 import { onMigrated, onMemberUpdate } from "./memberGuard.js";
-import { generateReply } from "../chatReply/generateReply.js";
+import { codexReply, generateReply } from "../chatReply/generateReply.js";
 
 import type { GuardDeps } from "./memberGuard.js";
 import type { GenerateFn } from "./groupTurns.js";
@@ -17,8 +19,14 @@ import type { CandidateStore } from "../store/index.js";
 export interface AvatarOptions {
   /** Defaults to a store on AVATAR_SQLITE_PATH. */
   avatarStore?: AvatarStore;
-  /** Test seam; defaults to the responder's Codex-first turn with the capped paid fallback. */
+  /**
+   * Test seam for every model turn. By default an ordinary turn is the
+   * responder's Codex-first turn with the capped paid fallback, and a debate
+   * turn is Codex only.
+   */
   generate?: GenerateFn;
+  /** Where owner notices go; defaults to this bot's DM with the owner. */
+  notifyOwner?: (text: string) => Promise<unknown>;
   /** Test seam for the blog crawl. */
   index?: (store: AvatarStore) => Promise<IndexSummary>;
 }
@@ -27,11 +35,9 @@ export interface AvatarOptions {
 export type IndexStatus = { at: number; summary: IndexSummary } | { at: number; error: string };
 
 /**
- * The owner's avatar: the bot's mode in every group the owner added it to
- * (the channel's discussion group stays with the group responder, whose
- * middleware runs first). Its middleware must run BEFORE the owner lock and
- * stop every group update: the owner's own group text would otherwise reach
- * manual ingest and become a post card.
+ * The owner's avatar on its own bot: it speaks in every group the owner added
+ * that bot to, and argues with Hope as the practitioner. Its middleware stops
+ * every group update, so only private updates reach the bot's owner lock.
  */
 export function createAvatar(bot: Bot, store: CandidateStore, options: AvatarOptions = {}) {
   const avatarStore = options.avatarStore ?? new AvatarStore();
@@ -40,16 +46,26 @@ export function createAvatar(bot: Bot, store: CandidateStore, options: AvatarOpt
     options.generate ??
     ((system, user) => generateReply(store, system, user, () => paidLimit.tryTake()));
   const crawl = options.index ?? indexBlog;
-  const turns = createGroupTurns(bot, avatarStore, generate);
+  const history = new ChatHistory();
+  const turns = createGroupTurns(bot, avatarStore, generate, history);
+  const speaker = createAvatarSpeaker(
+    bot,
+    avatarStore,
+    history,
+    options.generate ?? codexReply,
+    turns.noteError,
+  );
   const strayLogged = new Set<number>();
   let indexing: Promise<IndexSummary> | null = null;
   let lastIndex: IndexStatus | null = null;
   let firstIndexTried = false;
 
-  const notifyOwner = (text: string): Promise<unknown> =>
-    bot.api
-      .sendMessage(CONFIG.OWNER_TELEGRAM_ID, text)
-      .catch((err) => console.warn(`[avatar] owner DM failed: ${String(err)}`));
+  const notifyOwner =
+    options.notifyOwner ??
+    ((text: string): Promise<unknown> =>
+      bot.api
+        .sendMessage(CONFIG.OWNER_TELEGRAM_ID, text)
+        .catch((err) => console.warn(`[avatar] owner DM failed: ${String(err)}`)));
 
   /** One crawl at a time: the blog allows 60 requests a minute per IP. */
   function reindex(): Promise<IndexSummary> {
@@ -134,14 +150,19 @@ export function createAvatar(bot: Bot, store: CandidateStore, options: AvatarOpt
     return null;
   }
 
-  /** Waits for a turn in flight (capped), then closes the avatar's SQLite file. */
-  async function drainAndClose(): Promise<void> {
-    await turns.drain();
+  /**
+   * Waits for a turn in flight (capped) and for `alsoWait` (the debates, which
+   * also write here), then closes the avatar's SQLite file.
+   */
+  async function drainAndClose(alsoWait: Promise<unknown> = Promise.resolve()): Promise<void> {
+    await Promise.all([turns.drain(), alsoWait]);
     avatarStore.close();
   }
 
   return {
     middleware,
+    speaker,
+    onReply: turns.onReply,
     store: avatarStore,
     reindex,
     isIndexing: () => indexing !== null,
