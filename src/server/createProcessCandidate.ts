@@ -63,7 +63,11 @@ export async function createProcessCandidate(
     // The autoPublishNews flag is NOT consulted here: it decides at digest
     // time (auto-publish vs owner preview), not per item. Releases keep the
     // per-item flag-gated path unchanged.
-    if (digestNews && candidate.kind === CandidateKind.News) {
+    if (
+      digestNews &&
+      candidate.kind === CandidateKind.News &&
+      !candidate.dedupKey.startsWith("whenreset:")
+    ) {
       store.queueForDigest(candidate.id);
       return;
     }

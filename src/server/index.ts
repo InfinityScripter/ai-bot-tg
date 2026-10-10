@@ -4,6 +4,8 @@ export { runReleaseWatch } from "./runReleaseWatch.js";
 export { startControlServer } from "./controlServer.js";
 export { scheduleChannelWatch } from "./scheduleChannelWatch.js";
 export { createProcessCandidate } from "./createProcessCandidate.js";
+export { scheduleWhenResetWatch } from "./scheduleWhenResetWatch.js";
+
 export { runChannelWatch, lastChannelWatch } from "./runChannelWatch.js";
 
 export type {

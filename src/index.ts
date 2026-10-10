@@ -10,6 +10,7 @@ import {
   runReleaseWatch,
   startControlServer,
   scheduleChannelWatch,
+  scheduleWhenResetWatch,
   createProcessCandidate,
 } from "./server/index.js";
 
@@ -31,10 +32,7 @@ async function main() {
   let activeCollection: Promise<string> | null = null;
   let activeWatch: Promise<void> | null = null;
   const runOnce = async (): Promise<string> => {
-    const processCandidate = await createProcessCandidate(store, {
-      autoPublish: autoPublishCandidate,
-      sendRawCard,
-    });
+    const processCandidate = await createProcessCandidate(store, publishing);
     const s = await runCollection(store, processCandidate);
     if (s.filterActive && s.fetched > 0 && s.afterFilter === 0) {
       return COLLECTION_LABELS.filterBlocked(s.fetched);
@@ -67,11 +65,12 @@ async function main() {
     sendRawCard,
     runDigestPost,
     runChannelIssue,
-    autoPublishCandidate,
+    autoPublishCandidate: autoPublish,
     notifyAutomaticFailures,
     notifyNeedsVerification,
     drain,
   } = createBot(store, run, { nextRun: () => job?.nextRun() ?? null });
+  const publishing = { autoPublish, sendRawCard };
   // The owner's avatar bot and its debates with Hope; null without AVATAR_BOT_TOKEN.
   const avatarSide = startAvatarSide(store, hope, notifyOwner);
 
@@ -131,9 +130,11 @@ async function main() {
   // never overlap, and a busy slot just skips this tick.
   const inWatchSlot = async (task: () => Promise<void>): Promise<void> => {
     if (!acceptingCollections || activeCollection || activeWatch) return;
-    activeWatch = task().finally(() => {
-      activeWatch = null;
-    });
+    activeWatch = Promise.resolve()
+      .then(task)
+      .finally(() => {
+        activeWatch = null;
+      });
     await activeWatch;
   };
   // Release watch: extra feed sweeps (RELEASE_WATCH_CRON) so a new-model release
@@ -146,10 +147,7 @@ async function main() {
   let watchFailing = false;
   const sweep = async (): Promise<void> => {
     try {
-      const processCandidate = await createProcessCandidate(store, {
-        autoPublish: autoPublishCandidate,
-        sendRawCard,
-      });
+      const processCandidate = await createProcessCandidate(store, publishing);
       await runReleaseWatch(
         store,
         processCandidate,
@@ -174,6 +172,7 @@ async function main() {
   );
 
   const channelJobs = scheduleChannelWatch({ store, inWatchSlot, notifyOwner, runChannelIssue });
+  const resetJobs = scheduleWhenResetWatch({ store, inWatchSlot, notifyOwner, ...publishing });
 
   // The admin control server is started only when a token is configured. Unset
   // = no control server, bot still runs/publishes — so deploying this code
@@ -211,12 +210,13 @@ async function main() {
       catalogJob?.stop();
       watchJob?.stop();
       channelJobs.stop();
+      resetJobs.stop();
       if (controlServer) await controlServer.close();
       // grammy stops polling but does not drain handlers; the avatar side never throws.
       await Promise.all([bot.stop(), avatarSide?.stop()]);
       if (activeCollection) await activeCollection;
       if (activeWatch) await activeWatch;
-      await channelJobs.idle();
+      await Promise.all([channelJobs.idle(), resetJobs.idle()]);
       // In-flight publishes, avatar turns and debates finish their DB writes (each capped).
       await Promise.all([drain(), avatarSide?.drain()]);
     } catch (err) {

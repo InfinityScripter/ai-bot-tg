@@ -206,4 +206,25 @@ describe("createProcessCandidate — flag-gated auto-vs-divert", () => {
     expect(store.get(release.id)!.autoPublish).toBe(false);
     expect(store.get(news.id)!.autoPublish).toBe(false);
   });
+  it("keeps WhenReset urgent in common recovery even in digest mode", async () => {
+    fetchAutoPublishFlags.mockResolvedValue({ releases: false, news: true, channels: false });
+    const id = store.insertCollected(feedItem({ dedupKey: "whenreset:codex:event" }), true)!;
+    const autoPublish = vi.fn(async () => {});
+    const sendRawCard = vi.fn(async () => {});
+    const process = await createProcessCandidate(store, { autoPublish, sendRawCard }, true);
+    await process(store.listRecoveredAutomatic()[0]!);
+    expect(autoPublish).toHaveBeenCalledWith(store.get(id));
+    expect(store.listDigestQueue()).toHaveLength(0);
+  });
+  it("keeps the News switch authoritative for urgent WhenReset events", async () => {
+    fetchAutoPublishFlags.mockResolvedValue({ releases: true, news: false, channels: false });
+    const id = store.insertCollected(feedItem({ dedupKey: "whenreset:claude:event" }), true)!;
+    const autoPublish = vi.fn(async () => {});
+    const sendRawCard = vi.fn(async () => {});
+    const process = await createProcessCandidate(store, { autoPublish, sendRawCard }, true);
+    await process(store.get(id)!);
+    expect(sendRawCard).toHaveBeenCalledTimes(1);
+    expect(autoPublish).not.toHaveBeenCalled();
+    expect(store.get(id)?.autoPublish).toBe(false);
+  });
 });

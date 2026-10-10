@@ -144,7 +144,11 @@ export async function runClaimedExtraction(
 ): Promise<string> {
   try {
     const stored = store.getFeedItem(candidate);
-    const item = candidate.kind === CandidateKind.Channel ? stored : await enrichItemBody(stored);
+    // Structured API content must not be replaced by an unrelated scraped page.
+    const item =
+      candidate.kind === CandidateKind.Channel || candidate.dedupKey.startsWith("whenreset:")
+        ? stored
+        : await enrichItemBody(stored);
     return await runExtraction(store, id, item, candidate, modelLabel);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -85,6 +85,9 @@ export const EnvSchema = z
      * does not multiply LLM spend.
      */
     RELEASE_WATCH_CRON: z.string().min(1).optional(),
+    /** Public reset history: default every five minutes; empty string disables. */
+    WHENRESET_WATCH_CRON: z.string().default("*/5 * * * *"),
+    WHENRESET_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
     /**
      * Cron expression (in CRON_TZ) for the channel sweep: read the source
      * Telegram channels and queue fresh posts for the digest (the sweep
