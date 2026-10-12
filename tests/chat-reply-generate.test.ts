@@ -22,19 +22,71 @@ afterEach(() => {
 });
 
 describe("generateReply", () => {
-  it("uses the Codex reply and never touches the paid provider when Codex answers", async () => {
-    runCodex.mockResolvedValue('{"action":"reply","text":"привет"}');
+  it("edits a Codex draft once without touching the paid provider", async () => {
+    runCodex
+      .mockResolvedValueOnce('{"action":"reply","text":"Стоит отметить: проверила 3 теста."}')
+      .mockResolvedValueOnce('{"action":"reply","text":"Проверила 3 теста."}');
     const reply = await generateReply(new CandidateStore(":memory:"), "sys", "user", allow);
-    expect(reply).toEqual({ action: "reply", text: "привет" });
+    expect(reply).toEqual({ action: "reply", text: "Проверила 3 теста." });
+    expect(runCodex).toHaveBeenCalledTimes(2);
     expect(completeChatJson).not.toHaveBeenCalled();
   });
 
   it("falls back to the active provider when Codex fails (quota, logout, timeout)", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    runCodex.mockRejectedValue(new Error("codex exited 1: usage limit reached"));
-    completeChatJson.mockResolvedValue('{"action":"reply","text":"запасной ответ"}');
-    const reply = await generateReply(new CandidateStore(":memory:"), "sys", "user", allow);
-    expect(reply).toEqual({ action: "reply", text: "запасной ответ" });
+    runCodex
+      .mockRejectedValueOnce(new Error("codex exited 1: usage limit reached"))
+      .mockResolvedValueOnce('{"action":"reply","text":"Проверила 3 теста."}');
+    completeChatJson.mockResolvedValue(
+      '{"action":"reply","text":"Стоит отметить: проверила 3 теста."}',
+    );
+    const take = vi.fn(() => true);
+    const reply = await generateReply(new CandidateStore(":memory:"), "sys", "user", take);
+    expect(reply).toEqual({ action: "reply", text: "Проверила 3 теста." });
+    expect(runCodex).toHaveBeenCalledTimes(2);
+    expect(completeChatJson).toHaveBeenCalledOnce();
+    expect(take).toHaveBeenCalledOnce();
+    const prompt = runCodex.mock.calls[1]?.[0] as string;
+    expect(JSON.parse(prompt.slice(prompt.lastIndexOf("\n") + 1))).toEqual({
+      text: "Стоит отметить: проверила 3 теста.",
+    });
+  });
+
+  it("stays silent without spending a paid slot when the editor fails after a valid draft", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    runCodex
+      .mockResolvedValueOnce('{"action":"reply","text":"Проверила 3 теста."}')
+      .mockRejectedValueOnce(new Error("editor unavailable"));
+    const take = vi.fn(() => true);
+    const reply = await generateReply(new CandidateStore(":memory:"), "sys", "user", take);
+    expect(reply).toBeNull();
+    expect(runCodex).toHaveBeenCalledTimes(2);
+    expect(take).not.toHaveBeenCalled();
+    expect(completeChatJson).not.toHaveBeenCalled();
+  });
+
+  it("does not use the paid fallback when an editor result breaks the contract", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    runCodex
+      .mockResolvedValueOnce('{"action":"reply","text":"Проверила 3 теста."}')
+      .mockResolvedValueOnce('{"action":"silent","text":""}');
+    const take = vi.fn(() => true);
+    expect(await generateReply(new CandidateStore(":memory:"), "sys", "user", take)).toBeNull();
+    expect(runCodex).toHaveBeenCalledTimes(2);
+    expect(take).not.toHaveBeenCalled();
+    expect(completeChatJson).not.toHaveBeenCalled();
+  });
+
+  it("does not retry the paid provider after its valid draft fails editing", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    runCodex
+      .mockRejectedValueOnce(new Error("generation unavailable"))
+      .mockRejectedValueOnce(new Error("editor unavailable"));
+    completeChatJson.mockResolvedValue('{"action":"reply","text":"Проверила 3 теста."}');
+    const take = vi.fn(() => true);
+    expect(await generateReply(new CandidateStore(":memory:"), "sys", "user", take)).toBeNull();
+    expect(runCodex).toHaveBeenCalledTimes(2);
+    expect(take).toHaveBeenCalledOnce();
     expect(completeChatJson).toHaveBeenCalledOnce();
   });
 
@@ -44,7 +96,27 @@ describe("generateReply", () => {
     completeChatJson.mockResolvedValue('{"action":"silent","text":""}');
     const reply = await generateReply(new CandidateStore(":memory:"), "sys", "user", allow);
     expect(reply).toEqual({ action: "silent", text: "" });
+    expect(runCodex).toHaveBeenCalledOnce();
+    expect(completeChatJson).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    ["null", null, null],
+    ["empty text", '{"action":"reply","text":""}', { action: "reply", text: "" }],
+    ["invalid JSON", "not JSON", null],
+  ])(
+    "does not edit a paid draft that has no valid nonempty reply: %s",
+    async (_label, output, expected) => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      runCodex.mockRejectedValueOnce(new Error("generation unavailable"));
+      completeChatJson.mockResolvedValueOnce(output);
+      expect(await generateReply(new CandidateStore(":memory:"), "sys", "user", allow)).toEqual(
+        expected,
+      );
+      expect(runCodex).toHaveBeenCalledOnce();
+      expect(completeChatJson).toHaveBeenCalledOnce();
+    },
+  );
 
   it("returns null when both fail, so nothing is posted into the chat", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});

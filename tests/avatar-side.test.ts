@@ -143,7 +143,7 @@ describe("starting the avatar side", () => {
             ? ["hope", "avatar", "hope", "avatar", "hope", "avatar"]
             : ["avatar", "hope", "avatar", "hope", "avatar", "hope"],
         );
-        expect(runCodex).toHaveBeenCalledTimes(6);
+        expect(runCodex).toHaveBeenCalledTimes(12);
         for (let turn = 1; turn < sent.length; turn += 1) {
           expect(sent[turn]?.replyTo).toBe(sent[turn - 1]?.messageId);
         }
