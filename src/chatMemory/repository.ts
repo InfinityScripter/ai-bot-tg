@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { MEMORY_SCHEMA } from "./schema.js";
 import { recordMessage } from "./observe.js";
 
+import type { Side } from "../debate/types.js";
 import type { MemoryStatus, MemoryMessage } from "./types.js";
 
 export interface StoredMessage {
@@ -61,6 +62,15 @@ export class MemoryRepository {
       )
       .get(this.chatId, messageId) as { sequence: number; data: string } | undefined;
     return row ? { sequence: row.sequence, message: JSON.parse(row.data) as MemoryMessage } : null;
+  }
+
+  hasReply(side: Side, rootMessageId: number): boolean {
+    return !!this.db
+      .prepare(
+        `SELECT 1 FROM chat_memory_messages WHERE chat_id = ?
+         AND json_extract(data, '$.side') = ? AND json_extract(data, '$.rootMessageId') = ? LIMIT 1`,
+      )
+      .get(this.chatId, side, rootMessageId);
   }
 
   batch(limit: number): StoredMessage[] {

@@ -1,4 +1,4 @@
-import type { Update } from "grammy/types";
+import type { Update, RichMessage } from "grammy/types";
 
 import { it, vi, expect, describe, afterEach, beforeEach } from "vitest";
 
@@ -116,6 +116,68 @@ afterEach(() => {
 });
 
 describe("group responder routing", () => {
+  it("requires a visible rich mention or a bot reply while keeping hidden URL targets in prompts", async () => {
+    const { bot, drain, sent } = await makeBot();
+    const url = `https://example.com/@${BOT_USERNAME}/material`;
+    const rich: RichMessage = {
+      blocks: [{ type: "paragraph", text: { type: "url", text: "Материал", url } }],
+    };
+    const hidden = {
+      update_id: ++nextId,
+      message: {
+        message_id: nextId,
+        date: 0,
+        chat: { id: GROUP_ID, type: "supergroup", title: "Чат" },
+        from: { id: 42, is_bot: false, first_name: "Аня" },
+        rich_message: rich,
+      },
+    } satisfies Update;
+    await bot.handleUpdate(hidden);
+    const plain = groupMessage("Материал");
+    if (!plain.message) throw new Error("Missing synthetic message");
+    plain.message.entities = [{ type: "text_link", offset: 0, length: 8, url }];
+    await bot.handleUpdate(plain);
+    await drain();
+    expect(generateReply).not.toHaveBeenCalled();
+    expect(sent()).toHaveLength(0);
+    await bot.handleUpdate({
+      update_id: ++nextId,
+      message: {
+        ...hidden.message,
+        message_id: nextId,
+        rich_message: {
+          blocks: [
+            {
+              type: "paragraph",
+              text: [`@${BOT_USERNAME} что думаешь? `, { type: "url", text: "Материал", url }],
+            },
+          ],
+        },
+      },
+    });
+    await drain();
+    expect(generateReply).toHaveBeenCalledOnce();
+    expect(generateReply.mock.calls[0]?.[2]).toContain(url);
+    await bot.handleUpdate({
+      update_id: ++nextId,
+      message: {
+        ...hidden.message,
+        message_id: nextId,
+        reply_to_message: {
+          message_id: 5,
+          date: 0,
+          chat: hidden.message.chat,
+          from: { id: BOT_ID, is_bot: true, first_name: "Bot" },
+          text: "Предыдущая реплика",
+          reply_to_message: undefined,
+        },
+      },
+    });
+    await drain();
+    expect(generateReply).toHaveBeenCalledTimes(2);
+    expect(generateReply.mock.calls[1]?.[2]).toContain(url);
+  });
+
   it("answers a mention in its group, as a reply to that message", async () => {
     const { bot, drain, sent } = await makeBot();
     await bot.handleUpdate(groupMessage(`@${BOT_USERNAME} что думаешь про луну?`));

@@ -6,6 +6,7 @@ import { indexBlog } from "./indexBlog.js";
 import { AvatarStore } from "./avatarStore.js";
 import { ChatHistory } from "./chatHistory.js";
 import { createGroupTurns } from "./groupTurns.js";
+import { messageText } from "../telegram/messageText.js";
 import { createAvatarSpeaker } from "./debateSpeaker.js";
 import { codexReply } from "../chatReply/generateReply.js";
 import { onMigrated, onMemberUpdate } from "./memberGuard.js";
@@ -135,9 +136,25 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
       }
       return;
     }
-    if (!msg?.text || !msg.from || msg.from.is_bot || msg.text.startsWith("/")) return;
+    const text = messageText(msg);
+    if (!msg || !text || !msg.from || msg.from.is_bot || text.startsWith("/")) return;
     if (!avatarStore.isEnabled()) return;
     ensureIndexed();
+    const quoted = msg.reply_to_message;
+    const quotedText = quoted?.rich_message ? messageText(quoted) : undefined;
+    const quotedAuthor = quoted?.sender_chat ?? quoted?.from;
+    if (quoted && quotedText && quotedAuthor) {
+      history.push(chat.id, {
+        ...conversationRoot(quoted, options.memory),
+        messageId: quoted.message_id,
+        authorId: quotedAuthor.id,
+        author:
+          "type" in quotedAuthor ? (quotedAuthor.title ?? "сообщество") : quotedAuthor.first_name,
+        text: quotedText.slice(0, 1000),
+        at: quoted.date * 1000,
+        fromAvatar: quoted.from?.id === ctx.me.id,
+      });
+    }
     turns.onText(chat.id, {
       ...conversationRoot(
         msg,
@@ -148,7 +165,7 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
       authorId: msg.from.id,
       author: msg.from.first_name,
       chatUsername: chat.type === "supergroup" ? chat.username : undefined,
-      text: msg.text,
+      text,
       date: msg.date,
       direct: isDirect(msg, ctx.me),
     });

@@ -38,6 +38,7 @@ async function writeItems(store: CandidateStore, picked: QueuedPost[]): Promise<
         candidateId: candidate.id,
         channel: post.feedTitle,
         ...card,
+        sourceUrl: post.url,
         sourceLinks: sourceLinksFromHtml(post.html ?? ""),
         photos: await photosOf(post.imageUrls),
         linkKeys: linkKeysOfCandidate(candidate),

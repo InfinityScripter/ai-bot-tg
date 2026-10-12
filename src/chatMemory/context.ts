@@ -28,6 +28,36 @@ export function contextMessages(repo: MemoryRepository, query: string): StoredMe
   return [...messages.values()].slice(0, 22);
 }
 
+/** Keep the introduction and the densest query window; later ties skip contents-only hits. */
+function recalledText(text: string, query: string): string {
+  const budget = 900;
+  if (text.length <= budget || !query) return text.slice(0, budget);
+  const terms = [...query.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
+  const matches = [...text.matchAll(/[\p{L}\p{N}]+/gu)]
+    .filter((word) => terms.some((term) => word[0].toLowerCase().startsWith(term)))
+    .map((word) => word.index);
+  if (!matches.length) return text.slice(0, budget);
+  const introduction = text.slice(0, 160);
+  const gap = "\n…\n";
+  const size = budget - introduction.length - gap.length;
+  let start = 0;
+  let best = 0;
+  let left = 0;
+  let right = 0;
+  for (const index of matches) {
+    const candidate = Math.min(Math.max(0, index - 100), text.length - size);
+    while ((matches[left] ?? Infinity) < candidate) left++;
+    while (right < matches.length && matches[right]! < candidate + size) right++;
+    if (right - left >= best) {
+      best = right - left;
+      start = candidate;
+    }
+  }
+  return start <= introduction.length
+    ? text.slice(0, budget)
+    : `${introduction}${gap}${text.slice(start, start + size)}`;
+}
+
 export function conversationContext(
   repo: MemoryRepository,
   side: Side,
@@ -38,12 +68,12 @@ export function conversationContext(
   const messages = contextMessages(repo, search).map(({ message }) => ({
     ...message,
     authorName: message.authorName.slice(0, 120),
-    text: message.text.slice(0, 900),
+    text: recalledText(message.text, search),
   }));
   const materials = (deps.materials?.(search, 4) ?? []).slice(0, 4).map((m) => ({
     title: m.title.slice(0, 160),
     url: m.url.slice(0, 500),
-    body: m.body.slice(0, 900),
+    body: recalledText(m.body, search),
   }));
   const attribution = (sources: SourceRef[]) =>
     sources.flatMap((ref) => {

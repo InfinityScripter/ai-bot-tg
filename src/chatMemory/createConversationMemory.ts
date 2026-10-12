@@ -67,6 +67,8 @@ export function createConversationMemory(deps: MemoryDeps): ConversationMemory {
     },
     message: (chatId, messageId) =>
       allowed(chatId) ? (repo.message(messageId)?.message ?? null) : null,
+    hasReply: (chatId, side, rootMessageId) =>
+      allowed(chatId) && repo.hasReply(side, rootMessageId),
     context: (chatId, side, query) =>
       allowed(chatId) ? conversationContext(repo, side, query, deps) : "",
     reflect,

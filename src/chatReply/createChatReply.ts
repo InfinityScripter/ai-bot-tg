@@ -46,6 +46,7 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
   let pending = 0;
   /** Chats whose id was already logged for setup — one line per chat, not per mention. */
   const loggedStray = new Set<number>();
+  const repliedPosts = new Map<number, number>();
   let postListener: DebateOpener | null = null;
 
   const isEnabled = (): boolean => store.getRawSetting(ENABLED_KEY) !== "0";
@@ -59,6 +60,12 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
     typing();
     const timer = setInterval(typing, TYPING_EVERY_MS);
     try {
+      if (
+        job.post !== undefined &&
+        (repliedPosts.get(job.rootMessageId ?? job.messageId) === job.epoch ||
+          wiring.memory?.hasReply(job.chatId, "hope", job.rootMessageId ?? job.messageId))
+      )
+        return;
       const system = chatReplySystem(bot.botInfo.username);
       const reply = await generateReply(store, system, job.prompt(), () => paidLimit.tryTake());
       if (!current()) return;
@@ -70,6 +77,7 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
       if (text) {
         const sent = await sendConversationReply(bot, job.chatId, text, job);
         if (!current()) return;
+        if (job.post !== undefined) repliedPosts.set(job.rootMessageId ?? job.messageId, job.epoch);
         recordReply(wiring.memory, bot, job.chatId, sent, text, "hope", job, job.epoch);
         if (job.post !== undefined) {
           const line: DebateLine = {

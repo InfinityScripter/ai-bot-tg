@@ -1,4 +1,5 @@
 import { renderMaterials } from "./renderMaterials.js";
+import { renderSourcePost } from "./renderSourcePost.js";
 import { escapeHtml, visibleText } from "../feeds/index.js";
 
 import type { IssueItem } from "./types.js";
@@ -18,10 +19,11 @@ export function buildFallbackText(
 ): { text: string; items: IssueItem[] } | null {
   const head = `<b>${escapeHtml(title)}</b>`;
   const cards = items.map((item) => {
+    const source = renderSourcePost(item.sourceUrl);
     const materials = renderMaterials(item);
     return `<b>${escapeHtml(item.emoji)} ${escapeHtml(item.title)}</b>\n${item.html}\n${
-      materials ? `${materials}\n` : ""
-    }#${escapeHtml(item.rubric)}`;
+      source ? `${source}\n` : ""
+    }${materials ? `${materials}\n` : ""}#${escapeHtml(item.rubric)}`;
   });
   for (let n = cards.length; n > 0; n -= 1) {
     const text = [head, ...cards.slice(0, n)].join("\n\n");

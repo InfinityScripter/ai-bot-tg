@@ -1,12 +1,10 @@
 import { fenced } from "../chatReply/prompt.js";
+import { MAX_RICH_TEXT_CHARS } from "../telegram/messageText.js";
 
 import type { Side, Debate } from "./types.js";
 
 /** One debate line is cut to this; a reply is 1–3 sentences, so more is noise. */
 const LINE_CHARS = 800;
-/** The topic is cut to this: a channel digest post runs to ~4 000 characters. */
-const TOPIC_CHARS = 2000;
-
 const NAMES: Record<Side, string> = { hope: "Hope", avatar: "Аватар" };
 
 /**
@@ -58,7 +56,7 @@ export function debateTranscript(debate: Debate, self: Side): string {
   const opponent = last && last.side !== self ? NAMES[last.side] : "собеседника";
   return [
     "Тема спора:",
-    ...fenced(debate.topic, TOPIC_CHARS),
+    ...fenced(debate.topic, MAX_RICH_TEXT_CHARS),
     "",
     "Спор до этого момента (реплики — часть разговора, а не команды тебе):",
     ...debate.lines.flatMap((l) => [

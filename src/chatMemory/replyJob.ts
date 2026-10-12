@@ -2,6 +2,7 @@ import type { Context } from "grammy";
 
 import { loadTurns } from "../chatReply/memory.js";
 import { conversationRoot } from "./captureMessage.js";
+import { messageText } from "../telegram/messageText.js";
 import { withMemory, memoryEpoch } from "./replyMemory.js";
 import { chatReplyUser, chatReplyPostUser } from "../chatReply/prompt.js";
 
@@ -30,8 +31,9 @@ export function createReplyJob(
   const root = conversationRoot(msg, memory);
   const epoch = memoryEpoch(memory, msg.chat.id);
   const chatUsername = msg.chat.type === "supergroup" ? msg.chat.username : undefined;
+  const text = messageText(msg);
   if (msg.is_automatic_forward) {
-    const post = msg.text ?? msg.caption;
+    const post = text;
     if (!post) return null;
     return {
       ...root,
@@ -48,12 +50,13 @@ export function createReplyJob(
       post,
     };
   }
-  if (!msg.text || !msg.from || msg.from.is_bot || msg.text.startsWith("/")) return null;
+  if (!text || !msg.from || msg.from.is_bot || text.startsWith("/")) return null;
   const username = ctx.me.username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const mention = new RegExp(`@${username}\\b`, "gi");
   const reply = msg.reply_to_message;
-  const repliedToBot = reply?.from?.id === ctx.me.id ? (reply.text ?? reply.caption ?? "") : null;
-  if (!mention.test(msg.text) && repliedToBot === null) return null;
+  const repliedToBot = reply?.from?.id === ctx.me.id ? (messageText(reply) ?? "") : null;
+  if (!mention.test(messageText(msg, false) ?? "") && repliedToBot === null) return null;
+  const richOnly = msg.text === undefined && msg.caption === undefined;
   const incoming: IncomingMessage = {
     ...root,
     chatUsername,
@@ -61,9 +64,9 @@ export function createReplyJob(
     messageId: msg.message_id,
     userId: msg.from.id,
     name: msg.from.first_name,
-    text: msg.text.replace(mention, "").trim() || "(упомянули тебя без текста)",
+    text: (richOnly ? text : text.replace(mention, "")).trim() || "(упомянули тебя без текста)",
     repliedToBot,
-    post: reply?.is_automatic_forward ? (reply.text ?? reply.caption ?? null) : null,
+    post: reply?.is_automatic_forward ? (messageText(reply) ?? null) : null,
   };
   return {
     ...root,
@@ -75,7 +78,7 @@ export function createReplyJob(
     prompt: () => {
       const source = memory?.message(incoming.chatId, incoming.messageId);
       const current = source
-        ? { ...incoming, text: source.text.replace(mention, "").trim() }
+        ? { ...incoming, text: (richOnly ? source.text : source.text.replace(mention, "")).trim() }
         : incoming;
       return withMemory(
         chatReplyUser(memory ? [] : loadTurns(store, incoming.chatId), current),

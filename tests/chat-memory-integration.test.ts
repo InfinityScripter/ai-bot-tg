@@ -5,6 +5,34 @@ import { join } from "node:path";
 import { rmSync, mkdtempSync } from "node:fs";
 import { it, vi, expect, describe, afterEach } from "vitest";
 
+vi.mock("dotenv/config", () => ({}));
+vi.mock("grammy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("grammy")>();
+  const { default: fetch } = await import("node-fetch");
+  return {
+    ...actual,
+    Bot: class extends actual.Bot {
+      constructor(...args: ConstructorParameters<typeof actual.Bot>) {
+        const [token, options] = args;
+        super(token, {
+          ...options,
+          client: {
+            ...options?.client,
+            fetch: Object.assign(async () => {
+              throw new Error("Real Telegram network disabled in memory tests");
+            }, fetch),
+          },
+        });
+        this.api.config.use((_previous, method) => {
+          if (method === "setMyCommands")
+            return Promise.resolve({ ok: true, result: true } as never);
+          throw new Error(`Telegram transport blocked before fixture setup: ${method}`);
+        });
+      }
+    },
+  };
+});
+
 const GROUP = -1001234567890;
 const OWNER = 123456789;
 process.env.CHAT_REPLY_CHAT_ID = String(GROUP);
@@ -113,6 +141,226 @@ afterEach(async () => {
 });
 
 describe("connected group memory through both Telegram middlewares", () => {
+  it("deduplicates a confirmed rich opener when persistent memory is unavailable", async () => {
+    const store = new CandidateStore(":memory:");
+    const hope = createBot(store, async () => {});
+    const sent = api(hope.bot, 777, "hope_bot");
+    disposers.push(async () => {
+      await hope.drain();
+      store.close();
+    });
+    ordinary.mockResolvedValue({ action: "reply", text: "Подтверждённый ответ Hope" });
+    const post = message("", {
+      text: undefined,
+      rich_message: { blocks: [{ type: "paragraph", text: "Выпуск про кварцевые агенты" }] },
+      sender_chat: { id: -100555, type: "channel", title: "Synthetic channel" },
+      is_automatic_forward: true,
+    });
+    await hope.bot.handleUpdate(post);
+    await hope.drain();
+    expect(sent).toHaveLength(1);
+    await hope.bot.handleUpdate({ ...post, update_id: ++nextId });
+    await hope.drain();
+    expect(sent).toHaveLength(1);
+    expect(ordinary).toHaveBeenCalledOnce();
+  });
+
+  it("deduplicates an actually sent opener when saving its acknowledgement fails", async () => {
+    const { shared, hope, hopeSent, store } = setup();
+    store.setRawSetting("chat_reply_enabled", "1");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { observe } = shared;
+    vi.spyOn(shared, "observe").mockImplementation((incoming) => {
+      if (incoming.side === "hope") throw new Error("Synthetic acknowledgement write failure");
+      observe(incoming);
+    });
+    ordinary.mockResolvedValue({ action: "reply", text: "Подтверждённый ответ Hope" });
+    const post = message("", {
+      text: undefined,
+      rich_message: { blocks: [{ type: "paragraph", text: "Выпуск про кварцевые агенты" }] },
+      sender_chat: { id: -100555, type: "channel", title: "Synthetic channel" },
+      is_automatic_forward: true,
+    });
+    await hope.bot.handleUpdate(post);
+    await hope.drain();
+    expect(hopeSent).toHaveLength(1);
+    expect(shared.status(GROUP).messages).toBe(1);
+    await hope.bot.handleUpdate({ ...post, update_id: ++nextId });
+    await hope.drain();
+    expect(hopeSent).toHaveLength(1);
+    expect(ordinary).toHaveBeenCalledOnce();
+  });
+
+  it("deduplicates queued rich posts without suppressing an avatar-first source", async () => {
+    vi.useFakeTimers();
+    const { shared, hope, avatar, hopeSent, store } = setup();
+    store.setRawSetting("chat_reply_enabled", "1");
+    let release: (reply: { action: "reply"; text: string }) => void = () => {};
+    ordinary.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    ordinary.mockResolvedValue({ action: "reply", text: "Ответ Hope" });
+    const post = message("", {
+      text: undefined,
+      rich_message: { blocks: [{ type: "paragraph", text: "Выпуск про кварцевые агенты" }] },
+      sender_chat: { id: -100555, type: "channel", title: "Synthetic channel" },
+      is_automatic_forward: true,
+    });
+    await avatar.bot.handleUpdate(post);
+    await hope.bot.handleUpdate(post);
+    await vi.advanceTimersByTimeAsync(0);
+    await hope.bot.handleUpdate({ ...post, update_id: ++nextId });
+    release({ action: "reply", text: "Ответ Hope" });
+    await vi.advanceTimersByTimeAsync(0);
+    await hope.drain();
+    expect(hopeSent).toHaveLength(1);
+    expect(ordinary).toHaveBeenCalledOnce();
+    expect(shared.message(GROUP, post.message!.message_id)?.isPost).toBe(true);
+    expect(shared.status(GROUP).messages).toBe(2);
+  });
+
+  it("does not generate another opener for a confirmed rich post after memory reopen", async () => {
+    vi.useFakeTimers();
+    const dir = mkdtempSync(join(tmpdir(), "confirmed-digest-memory-"));
+    const deps = { path: join(dir, "memory.sqlite"), chatId: GROUP, debounceMs: 60_000 };
+    const first = createConversationMemory(deps);
+    const initial = setup(first);
+    initial.store.setRawSetting("chat_reply_enabled", "1");
+    ordinary.mockResolvedValue({ action: "reply", text: "Подтверждённый ответ Hope" });
+    const post = message("", {
+      text: undefined,
+      rich_message: { blocks: [{ type: "paragraph", text: "Выпуск про кварцевые агенты" }] },
+      sender_chat: { id: -100555, type: "channel", title: "Synthetic channel" },
+      is_automatic_forward: true,
+    });
+    await initial.hope.bot.handleUpdate(post);
+    await initial.hope.drain();
+    expect(initial.hopeSent).toHaveLength(1);
+    first.close();
+    const reopened = createConversationMemory(deps);
+    const current = setup(reopened);
+    disposers.push(() => rmSync(dir, { recursive: true, force: true }));
+    current.store.setRawSetting("chat_reply_enabled", "1");
+    await current.hope.bot.handleUpdate({ ...post, update_id: ++nextId });
+    await current.hope.drain();
+    expect(current.hopeSent).toHaveLength(0);
+    expect(ordinary).toHaveBeenCalledOnce();
+    expect(reopened.status(GROUP).messages).toBe(2);
+  });
+
+  it.each(["model", "send"])(
+    "retries a rich post after an unconfirmed %s failure",
+    async (stage) => {
+      const { shared, hope, hopeSent, store } = setup();
+      store.setRawSetting("chat_reply_enabled", "1");
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      ordinary.mockResolvedValue({ action: "reply", text: "Подтверждённый ответ Hope" });
+      if (stage === "model") ordinary.mockResolvedValueOnce(null);
+      if (stage === "send") {
+        let failed = false;
+        hope.bot.api.config.use((previous, method, payload, signal) => {
+          if (method === "sendMessage" && !failed) {
+            failed = true;
+            return Promise.reject(new Error("Synthetic send failure"));
+          }
+          return previous(method, payload, signal);
+        });
+      }
+      const post = message("", {
+        text: undefined,
+        rich_message: { blocks: [{ type: "paragraph", text: "Выпуск про кварцевые агенты" }] },
+        sender_chat: { id: -100555, type: "channel", title: "Synthetic channel" },
+        is_automatic_forward: true,
+      });
+      await hope.bot.handleUpdate(post);
+      await hope.drain();
+      expect(hopeSent).toHaveLength(0);
+      expect(shared.status(GROUP).messages).toBe(1);
+      await hope.bot.handleUpdate({ ...post, update_id: ++nextId });
+      await hope.drain();
+      expect(hopeSent).toHaveLength(1);
+      expect(ordinary).toHaveBeenCalledTimes(2);
+      expect(shared.status(GROUP).messages).toBe(2);
+    },
+  );
+
+  it.each(["hope", "avatar"] as const)(
+    "recalls the late rich digest material through a new %s mention after reopen",
+    async (side) => {
+      vi.useFakeTimers();
+      const dir = mkdtempSync(join(tmpdir(), "late-digest-memory-"));
+      const deps = { path: join(dir, "memory.sqlite"), chatId: GROUP, debounceMs: 60_000 };
+      const first = createConversationMemory(deps);
+      const initial = setup(first);
+      const post: Update = {
+        update_id: ++nextId,
+        message: {
+          message_id: 10,
+          date: 10,
+          chat: { id: GROUP, type: "supergroup", title: "Synthetic group" },
+          from: { id: 777000, is_bot: false, first_name: "Telegram" },
+          sender_chat: { id: -100555, type: "channel", title: "Synthetic channel" },
+          is_automatic_forward: true,
+          rich_message: {
+            blocks: [
+              { type: "heading", size: 1, text: "Выпуск: кварцевые агенты и другие темы" },
+              ...[1, 2, 3, 4, 5].map((item) => ({
+                type: "paragraph" as const,
+                text: `Материал ${item}: ${"Сведения о маршрутизаторе. ".repeat(25)}`,
+              })),
+              { type: "heading", size: 2, text: "Кварцевые агенты" },
+              {
+                type: "paragraph",
+                text: "Кварцевые агенты откатывают действия: ключ проверки ZETA_FINISH_481.",
+              },
+              {
+                type: "paragraph",
+                text: {
+                  type: "url",
+                  text: "Исходный пост",
+                  url: "https://t.me/devfm/678",
+                },
+              },
+            ],
+          },
+        },
+      };
+      await initial.avatar.bot.handleUpdate(post);
+      await initial.hope.bot.handleUpdate(post);
+      const source = first.message(GROUP, 10);
+      expect(source?.text.length).toBeGreaterThan(3000);
+      expect(source?.text).toContain("ZETA_FINISH_481");
+      first.close();
+      const reopened = createConversationMemory(deps);
+      const current = setup(reopened);
+      disposers.push(() => rmSync(dir, { recursive: true, force: true }));
+      current.store.setRawSetting("chat_reply_enabled", "1");
+      current.avatarStore.setEnabled(true);
+      ordinary.mockResolvedValue({ action: "reply", text: "Новый ответ Hope" });
+      codex.mockResolvedValue({ action: "reply", text: "Новый ответ аватара" });
+      const bot = side === "hope" ? current.hope.bot : current.avatar.bot;
+      await bot.handleUpdate(
+        message(`@${side}_bot Что было про кварцевые агенты в выпуске?`, {
+          entities: [{ type: "mention", offset: 0, length: side === "hope" ? 9 : 11 }],
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      const prompt = side === "hope" ? ordinary.mock.calls[0]?.[2] : codex.mock.calls[0]?.[1];
+      expect(prompt).toContain("ZETA_FINISH_481");
+      expect(prompt).toContain("https://t.me/devfm/678");
+      expect(reopened.message(GROUP, 10)).toEqual(source);
+      const context = reopened.context(GROUP, side, "Кварцевые агенты");
+      const data = JSON.parse(context.split("```json\n")[1]!.split("\n```")[0]!) as {
+        messages: { text: string }[];
+      };
+      expect(data.messages.every((item) => item.text.length <= 900)).toBe(true);
+      expect(context.length).toBeLessThanOrEqual(18_000);
+    },
+  );
+
   it("captures ordinary text, captions and edits once before reply gates, with sender-chat identity", async () => {
     const { shared, hope, avatar } = setup();
     const original = message("сарказм про бумажных агентов");

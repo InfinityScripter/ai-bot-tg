@@ -6,7 +6,7 @@ const { CandidateStore } = await import("../src/store/index.js");
 const { AvatarStore } = await import("../src/avatar/avatarStore.js");
 const { createAvatar, registerAvatarCommands } = await import("../src/avatar/index.js");
 
-import type { Update } from "grammy/types";
+import type { Update, RichMessage } from "grammy/types";
 
 import type { ChatReply } from "../src/schemas/chatReplySchema.js";
 
@@ -53,7 +53,7 @@ function setup(reply: ChatReply | null = REPLY, readsAll = true) {
   const passed = vi.fn();
   bot.on(["message", "my_chat_member"], passed);
   const sent = () => calls.filter((c) => c.method === "sendMessage");
-  return { bot, avatarStore, generate, index, calls, passed, sent };
+  return { bot, avatar, avatarStore, generate, index, calls, passed, sent };
 }
 
 let nextId = 1;
@@ -182,6 +182,140 @@ describe("group updates never reach the owner lock", () => {
 });
 
 describe("turns in an avatar group", () => {
+  it("does not open a direct reply or debate from a hidden rich URL handle", async () => {
+    vi.useFakeTimers();
+    const { bot, avatar, avatarStore, generate, sent } = setup();
+    avatarStore.allowChat(GROUP, "AI-чат");
+    const open = vi.fn();
+    avatar.onReply(open);
+    const url = "https://example.com/@blog_bot/material";
+    const rich: RichMessage = {
+      blocks: [{ type: "paragraph", text: { type: "url", text: "Материал", url } }],
+    };
+    try {
+      await bot.handleUpdate(groupText(STRANGER, "", { text: undefined, rich_message: rich }));
+      await bot.handleUpdate(
+        groupText(STRANGER, "Материал", {
+          entities: [{ type: "text_link", offset: 0, length: 8, url }],
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(generate).not.toHaveBeenCalled();
+      expect(sent()).toHaveLength(0);
+      expect(open).not.toHaveBeenCalled();
+      await bot.handleUpdate(
+        groupText(STRANGER, "", {
+          text: undefined,
+          rich_message: {
+            blocks: [
+              {
+                type: "paragraph",
+                text: ["@blog_bot что думаешь? ", { type: "url", text: "Материал", url }],
+              },
+            ],
+          } satisfies RichMessage,
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(generate).toHaveBeenCalledOnce();
+      expect(generate.mock.calls[0]?.[1]).toContain(url);
+      expect(sent()).toHaveLength(1);
+      expect(open).toHaveBeenCalledOnce();
+      await bot.handleUpdate(
+        groupText(STRANGER, "", {
+          text: undefined,
+          rich_message: rich,
+          reply_to_message: {
+            message_id: 4242,
+            date: 0,
+            chat: { id: GROUP, type: "supergroup", title: "AI-чат" },
+            from: ME,
+            text: "Предыдущая реплика",
+          },
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(generate).toHaveBeenCalledTimes(2);
+      expect(generate.mock.calls[1]?.[1]).toContain(url);
+      expect(sent()).toHaveLength(2);
+      expect(open).toHaveBeenCalledTimes(2);
+    } finally {
+      await avatar.drainAndClose();
+    }
+  });
+
+  it("keeps rich-only chat history and a quoted rich post in an ordinary direct question", async () => {
+    vi.useFakeTimers();
+    const { bot, avatar, avatarStore, generate } = setup();
+    avatarStore.allowChat(GROUP, "AI-чат");
+    await bot.handleUpdate(
+      groupText(STRANGER, "", {
+        text: undefined,
+        rich_message: {
+          blocks: [{ type: "paragraph", text: "Ранее обсудили стоимость агента" }],
+        } satisfies RichMessage,
+      }),
+    );
+    await bot.handleUpdate(
+      groupText(STRANGER, "@blog_bot что думаешь про затраты?", {
+        entities: [{ type: "mention", offset: 0, length: 9 }],
+        reply_to_message: {
+          message_id: 10,
+          date: 0,
+          chat: { id: GROUP, type: "supergroup", title: "AI-чат" },
+          sender_chat: { id: -100555, type: "channel", title: "Synthetic channel" },
+          is_automatic_forward: true,
+          rich_message: {
+            blocks: [
+              { type: "heading", size: 2, text: "Цена одного результата" },
+              {
+                type: "paragraph",
+                text: { type: "url", text: "Расчёт", url: "https://example.com/agent-cost" },
+              },
+            ],
+          } satisfies RichMessage,
+        },
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(generate).toHaveBeenCalledOnce();
+    expect.soft(generate.mock.calls[0]?.[1]).toContain("Ранее обсудили стоимость агента");
+    expect.soft(generate.mock.calls[0]?.[1]).toContain("Цена одного результата");
+    expect.soft(generate.mock.calls[0]?.[1]).toContain("https://example.com/agent-cost");
+    await avatar.drainAndClose();
+  });
+
+  it.each(["rich", "caption"])(
+    "answers a direct %s mention without applying text offsets to rich content",
+    async (kind) => {
+      vi.useFakeTimers();
+      const { bot, avatar, avatarStore, generate, sent } = setup();
+      avatarStore.allowChat(GROUP, "AI-чат");
+      const rich: RichMessage = {
+        blocks: [
+          { type: "heading", size: 2, text: "Контекст" },
+          { type: "paragraph", text: [{ type: "bold", text: "@blog_bot" }, " что скажешь?"] },
+        ],
+      };
+      await bot.handleUpdate(
+        groupText(STRANGER, "", {
+          text: undefined,
+          ...(kind === "rich"
+            ? { rich_message: rich }
+            : {
+                caption: "@blog_bot что скажешь?",
+                caption_entities: [{ type: "mention", offset: 0, length: 9 }],
+              }),
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(generate).toHaveBeenCalledOnce();
+      expect(sent()).toHaveLength(1);
+      expect(generate.mock.calls[0]?.[1]).toContain("@blog_bot что скажешь?");
+      await avatar.drainAndClose();
+    },
+  );
+
   it("answers a mention right away, as a reply, and counts the turn", async () => {
     const { bot, avatarStore, sent } = setup();
     avatarStore.allowChat(GROUP, "AI-чат");

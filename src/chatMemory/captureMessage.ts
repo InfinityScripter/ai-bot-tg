@@ -3,6 +3,7 @@ import type { Message } from "grammy/types";
 
 import { CONFIG } from "../config.js";
 import { messageReplyContext } from "../debate/index.js";
+import { messageText } from "../telegram/messageText.js";
 
 import type { MemoryWiring } from "./wiring.js";
 import type { ConversationMemory } from "./types.js";
@@ -30,7 +31,7 @@ export function captureMessage(ctx: Context, wiring: MemoryWiring): boolean | un
     !["group", "supergroup"].includes(message.chat.type)
   )
     return undefined;
-  const text = message.text ?? message.caption;
+  const text = messageText(message);
   const author = message.sender_chat ?? message.from;
   if (!text || !author || (!message.sender_chat && message.from?.is_bot)) return undefined;
   try {

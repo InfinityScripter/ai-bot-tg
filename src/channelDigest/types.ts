@@ -22,6 +22,8 @@ export interface IssueItem {
   title: string;
   /** Telegram inline HTML (b i u s a code), links only from the source post. */
   html: string;
+  /** Exact saved post URL, independent of the model's card and external materials. */
+  sourceUrl?: string;
   /** External materials from the saved source HTML, independent of the model's text. */
   sourceLinks?: SourceLink[];
   /** The post's downloaded photos, at most 4. */

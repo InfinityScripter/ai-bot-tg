@@ -43,12 +43,12 @@ afterEach(() => {
 
 function queue(
   channel: string,
-  over: { publishedAt?: number; imageUrls?: string[]; html?: string } = {},
+  over: { publishedAt?: number; imageUrls?: string[]; html?: string; url?: string } = {},
 ): number {
   return store.channelQueue.add(
     {
       dedupKey: `tg:${channel}/1`,
-      url: `https://t.me/${channel}/1`,
+      url: over.url ?? `https://t.me/${channel}/1`,
       title: `Пост ${channel}`,
       snippet: `Текст поста ${channel}.`,
       html: over.html ?? `Текст поста ${channel}. <a href="https://ex.com/${channel}">статья</a>`,
@@ -70,6 +70,47 @@ const card = (title: string) => ({
 });
 
 describe("assembleIssue", () => {
+  it("keeps exact saved post URLs even when there are no external materials and the writer chooses another URL", async () => {
+    const urls = [
+      "https://t.me/aimastersme/707",
+      "https://t.me/devfm/678",
+      "https://t.me/example_channel/9",
+    ];
+    queue("aimastersme", {
+      url: urls[0],
+      html: '<a href="https://t.me/aimastersme/706">Предыдущий пост</a>',
+    });
+    queue("devfm", { url: urls[1], html: "Пост без ссылок." });
+    queue("example_channel", {
+      url: urls[2],
+      html: '<a href="https://lab.example/paper">Исследование</a>',
+    });
+    writeDigestItem.mockResolvedValue({
+      ...card("Карточка"),
+      html: "x".repeat(1320),
+      sourceUrl: "https://t.me/model_choice/1",
+    });
+
+    const { assembled } = await assembleIssue(store, SLOT, NOW);
+
+    expect(assembled!.article.items.map((item) => item.sourceUrl)).toEqual(urls);
+    expect(assembled!.article.items.slice(0, 2).map((item) => item.sourceLinks)).toEqual([[], []]);
+    expect(assembled!.article.items[2]!.sourceLinks).toEqual([
+      { url: "https://lab.example/paper", label: "Исследование" },
+    ]);
+    expect(assembled!.article.items.map((item) => item.html)).toEqual(
+      urls.map(() => "x".repeat(1320)),
+    );
+    expect(assembled!.fallbackItems.map((item) => item.sourceUrl)).toEqual(urls.slice(0, 2));
+    for (const url of urls.slice(0, 2)) {
+      expect(assembled!.article.html).toContain(`<a href="${url}">Исходный пост</a>`);
+      expect(assembled!.fallbackText).toContain(`<a href="${url}">Исходный пост</a>`);
+    }
+    expect(assembled!.fallbackText).not.toContain(urls[2]);
+    expect(assembled!.article.html).not.toContain("https://t.me/model_choice/1");
+    expect(assembled!.fallbackText).not.toContain("https://t.me/model_choice/1");
+  });
+
   it("assembles a fitting rich article when no complete fallback card fits", async () => {
     const sourceHtml = Array.from(
       { length: 50 },
@@ -111,7 +152,7 @@ describe("assembleIssue", () => {
       );
       expect(html.match(/href="https:\/\/lab\.example\/"/g)).toHaveLength(1);
       expect(html.match(/Материалы:/g)).toHaveLength(1);
-      expect(html).not.toContain('href="https://t.me/');
+      expect(html).not.toContain('href="https://t.me/lab/1"');
       expect(html).not.toContain('href="https://telegram.me/');
     }
     expect(store.get(a)!.state).toBe(CandidateState.DigestQueued);

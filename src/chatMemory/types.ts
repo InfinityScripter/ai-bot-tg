@@ -28,6 +28,7 @@ export interface MemoryStatus {
 export interface ConversationMemory {
   observe(message: MemoryMessage): void;
   message(chatId: number, messageId: number): MemoryMessage | null;
+  hasReply(chatId: number, side: Side, rootMessageId: number): boolean;
   context(chatId: number, side: Side, query: string): string;
   reflect(chatId: number): Promise<void>;
   clear(chatId: number): void;
