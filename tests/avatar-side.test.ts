@@ -11,7 +11,7 @@ vi.mock("../src/avatar/indexBlog.js", () => ({
 
 import type { Side, DebateOpener } from "../src/debate/index.js";
 
-const GROUP = -100777;
+const GROUP = -1000000000777;
 const OWNER = 123456789;
 const AVATAR = { id: 999, is_bot: true, first_name: "Аватар", username: "misha_avatar_bot" };
 const HOPE = { id: 777, is_bot: true, first_name: "Hope", username: "hope_bot" };
@@ -51,8 +51,37 @@ describe("starting the avatar side", () => {
       const { CandidateStore } = await import("../src/store/index.js");
       const { startAvatarSide } = await import("../src/avatar/index.js");
       const { createChatReply } = await import("../src/chatReply/index.js");
+      const { createConversationMemory } = await import("../src/chatMemory/index.js");
+      const reflect = vi.fn(async (prompt: string) =>
+        JSON.stringify({
+          side: prompt.includes("для стороны hope") ? "hope" : "avatar",
+          notes: [],
+          opinions: [],
+        }),
+      );
+      const memory = createConversationMemory({
+        path: ":memory:",
+        chatId: GROUP,
+        debounceMs: 60_000,
+        generate: reflect,
+      });
+      memory.observe({
+        chatId: GROUP,
+        messageId: 500,
+        authorId: 55,
+        authorName: "Борис",
+        text: "Агенты: старая шутка про кофейник",
+        at: 1,
+      });
       const store = new CandidateStore(":memory:");
-      const sent: { side: Side; messageId: number; replyTo: unknown }[] = [];
+      const sent: {
+        side: Side;
+        messageId: number;
+        replyTo: unknown;
+        text: unknown;
+        entities: unknown;
+        allowWithout: unknown;
+      }[] = [];
       let messageId = 100;
       let endPolling: () => void = () => {};
       const polling = vi.spyOn(Bot.prototype, "start").mockImplementation(function startPolling(
@@ -65,13 +94,21 @@ describe("starting the avatar side", () => {
           supports_inline_queries: false,
         } as typeof this.botInfo;
         this.api.config.use((_prev, method, payload) => {
-          const p = payload as { chat_id?: number; reply_parameters?: { message_id: number } };
+          const p = payload as {
+            chat_id?: number;
+            text?: string;
+            entities?: unknown;
+            reply_parameters?: { message_id: number; allow_sending_without_reply?: boolean };
+          };
           messageId += 1;
           if (method === "sendMessage" && p.chat_id === GROUP) {
             sent.push({
               side: "avatar",
               messageId,
               replyTo: p.reply_parameters?.message_id,
+              text: p.text,
+              entities: p.entities,
+              allowWithout: p.reply_parameters?.allow_sending_without_reply,
             });
           }
           return Promise.resolve({
@@ -86,22 +123,34 @@ describe("starting the avatar side", () => {
       const newsBot = new Bot("test:telegram-token");
       newsBot.botInfo = { ...HOPE } as typeof newsBot.botInfo;
       newsBot.api.config.use((_prev, method, payload) => {
-        const p = payload as { reply_parameters?: { message_id: number } };
+        const p = payload as {
+          text?: string;
+          entities?: unknown;
+          reply_parameters?: { message_id: number; allow_sending_without_reply?: boolean };
+        };
         messageId += 1;
         if (method === "sendMessage") {
-          sent.push({ side: "hope", messageId, replyTo: p.reply_parameters?.message_id });
+          sent.push({
+            side: "hope",
+            messageId,
+            replyTo: p.reply_parameters?.message_id,
+            text: p.text,
+            entities: p.entities,
+            allowWithout: p.reply_parameters?.allow_sending_without_reply,
+          });
         }
         return Promise.resolve({
           ok: true,
           result: { message_id: messageId, date: 0, chat: { id: GROUP, type: "supergroup" } },
         } as never);
       });
-      const responder = createChatReply(newsBot, store);
+      const responder = createChatReply(newsBot, store, { memory });
       newsBot.use(responder.middleware);
       const side = startAvatarSide(
         store,
         responder.hope,
         vi.fn(async () => undefined),
+        { memory },
       );
       const avatarBot = polling.mock.contexts[0] as Bot | undefined;
       if (!side || !avatarBot) throw new Error("Avatar side did not start");
@@ -144,10 +193,24 @@ describe("starting the avatar side", () => {
             : ["avatar", "hope", "avatar", "hope", "avatar", "hope"],
         );
         expect(runCodex).toHaveBeenCalledTimes(12);
-        for (let turn = 1; turn < sent.length; turn += 1) {
-          expect(sent[turn]?.replyTo).toBe(sent[turn - 1]?.messageId);
+        for (let turn = 0; turn < sent.length; turn += 1) {
+          expect(sent[turn]?.replyTo).toBe(10);
+          expect(sent[turn]?.allowWithout).toBe(false);
+          expect(sent[turn]?.entities).toEqual([
+            {
+              type: "text_link",
+              offset: 0,
+              length: expect.any(Number),
+              url: `https://t.me/c/777/${turn === 0 ? 10 : sent[turn - 1]!.messageId}`,
+            },
+          ]);
+          expect(runCodex.mock.calls[turn * 2]?.[0]).toContain("старая шутка про кофейник");
+          expect(runCodex.mock.calls[turn * 2 + 1]?.[0]).not.toContain("старая шутка про кофейник");
         }
+        expect(memory.status(GROUP).messages).toBe(8);
+        expect(reflect).toHaveBeenCalledTimes(2);
       } finally {
+        memory.close();
         endPolling();
         await vi.advanceTimersByTimeAsync(0);
         await side.stop();

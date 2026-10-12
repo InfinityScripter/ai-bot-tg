@@ -18,9 +18,14 @@ export class AvatarStore {
   constructor(path: string = CONFIG.AVATAR_SQLITE_PATH) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("busy_timeout = 5000");
-    this.db.exec(AVATAR_SCHEMA);
+    try {
+      this.db.pragma("journal_mode = WAL");
+      this.db.pragma("busy_timeout = 5000");
+      this.db.exec(AVATAR_SCHEMA);
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
   }
 
   allowChat(chatId: number, title: string): void {
@@ -90,6 +95,24 @@ export class AvatarStore {
       this.db.exec("DELETE FROM avatar_chunks");
       for (const c of chunks) insert.run(c.title, c.url, c.body);
     })();
+  }
+
+  /** Append complete missing posts atomically; repeated refreshes never duplicate a URL. */
+  addChunks(chunks: MemoryChunk[]): void {
+    const insert = this.db.prepare("INSERT INTO avatar_chunks (title, url, body) VALUES (?, ?, ?)");
+    this.db.transaction(() => {
+      const indexed = this.indexedUrls();
+      for (const chunk of chunks) {
+        if (!indexed.has(chunk.url)) insert.run(chunk.title, chunk.url, chunk.body);
+      }
+    })();
+  }
+
+  indexedUrls(): Set<string> {
+    const rows = this.db.prepare("SELECT DISTINCT url FROM avatar_chunks").all() as {
+      url: string;
+    }[];
+    return new Set(rows.map((row) => row.url));
   }
 
   chunkCount(): number {

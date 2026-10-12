@@ -59,4 +59,18 @@ describe("AvatarStore", () => {
     s.replaceChunks([chunk("a", "текст")]);
     expect(s.search("", 5)).toEqual([]);
   });
+
+  it("adds all chunks of missing posts once and preserves existing profile and content", () => {
+    const s = new AvatarStore(":memory:");
+    s.setProfile("Synthetic voice only");
+    s.replaceChunks([chunk("old", "Old evidence")]);
+    s.addChunks([chunk("new", "First new paragraph"), chunk("new", "Second new paragraph")]);
+    s.addChunks([chunk("old", "Unwanted replacement"), chunk("new", "Unwanted duplicate")]);
+    expect(s.chunkCount()).toBe(3);
+    expect([...s.indexedUrls()].sort()).toEqual(["https://b/post/new", "https://b/post/old"]);
+    expect(s.search('"old"*', 5)[0]?.body).toBe("Old evidence");
+    expect(s.search('"paragraph"*', 5)).toHaveLength(2);
+    expect(s.getProfile()).toBe("Synthetic voice only");
+    s.close();
+  });
 });

@@ -67,9 +67,18 @@ describe("the final conversational humanizer", () => {
       expect(line).toBeNull();
       expect(sent).not.toHaveBeenCalled();
     } else {
-      expect(line).toEqual({ side: "hope", text, messageId: 4242 });
+      expect(line).toEqual({
+        side: "hope",
+        text,
+        messageId: 4242,
+        authorName: "Hope",
+        authorId: 777,
+      });
       expect(sent).toHaveBeenCalledOnce();
-      expect(sent.mock.calls[0]?.[0]).toMatchObject({ text });
+      expect(sent.mock.calls[0]?.[0]).toMatchObject({
+        text: `↪ Ответ собеседнику\n\n${text}`,
+        reply_parameters: { message_id: 77, allow_sending_without_reply: false },
+      });
     }
     expect(runCodex).toHaveBeenCalledTimes(2);
   });

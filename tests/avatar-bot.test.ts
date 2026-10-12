@@ -15,7 +15,7 @@ const OWNER = 123456789; // tests/setup.ts OWNER_TELEGRAM_ID
 const STRANGER = 555;
 const GROUP = -100777;
 const SENT_ID = 4242;
-const ME = { id: 999, is_bot: true, first_name: "Аватар", username: "misha_avatar_bot" };
+const ME = { id: 999, is_bot: true, first_name: "neuro_misha", username: "misha_avatar_bot" };
 
 interface Call {
   method: string;
@@ -201,7 +201,13 @@ describe("the avatar's side of a debate", () => {
       chat_id: GROUP,
       reply_parameters: { message_id: 77 },
     });
-    expect(line).toEqual({ side: "avatar", text: REPLY.text, messageId: SENT_ID });
+    expect(line).toEqual({
+      side: "avatar",
+      text: REPLY.text,
+      messageId: SENT_ID,
+      authorName: ME.first_name,
+      authorId: ME.id,
+    });
     expect(avatarStore.callsOn(GROUP, new Date().toISOString().slice(0, 10))).toBe(1);
   });
 
@@ -300,12 +306,20 @@ describe("an ordinary avatar reply", () => {
   it("is offered to the debates with the person's message as the topic", async () => {
     const { bot, avatar, avatarStore, onReply } = setup();
     avatarStore.allowChat(GROUP, "AI-чат");
-    await bot.handleUpdate(mention("агенты уже пишут тесты?"));
+    const update = mention("агенты уже пишут тесты?");
+    await bot.handleUpdate(update);
     await avatar.drainAndClose();
     expect(onReply).toHaveBeenCalledWith(
       GROUP,
-      { side: "avatar", text: REPLY.text, messageId: SENT_ID },
+      {
+        side: "avatar",
+        text: REPLY.text,
+        messageId: SENT_ID,
+        authorName: ME.first_name,
+        authorId: ME.id,
+      },
       `@${ME.username} агенты уже пишут тесты?`,
+      { rootMessageId: update.message!.message_id },
     );
   });
 
@@ -333,8 +347,15 @@ describe("an ordinary avatar reply", () => {
     await avatar.drainAndClose();
     expect(onReply).toHaveBeenCalledWith(
       GROUP,
-      { side: "avatar", text: REPLY.text, messageId: SENT_ID },
+      {
+        side: "avatar",
+        text: REPLY.text,
+        messageId: SENT_ID,
+        authorName: ME.first_name,
+        authorId: ME.id,
+      },
       "А кто проверил результат?",
+      { rootMessageId: SENT_ID },
     );
   });
 });

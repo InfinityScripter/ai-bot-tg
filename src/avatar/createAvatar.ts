@@ -9,13 +9,15 @@ import { createGroupTurns } from "./groupTurns.js";
 import { createAvatarSpeaker } from "./debateSpeaker.js";
 import { codexReply } from "../chatReply/generateReply.js";
 import { onMigrated, onMemberUpdate } from "./memberGuard.js";
+import { captureMessage, conversationRoot } from "../chatMemory/captureMessage.js";
 
 import type { GuardDeps } from "./memberGuard.js";
 import type { GenerateFn } from "./groupTurns.js";
 import type { IndexSummary } from "./indexBlog.js";
 import type { CandidateStore } from "../store/index.js";
+import type { MemoryWiring } from "../chatMemory/wiring.js";
 
-export interface AvatarOptions {
+export interface AvatarOptions extends MemoryWiring {
   /** Defaults to a store on AVATAR_SQLITE_PATH. */
   avatarStore?: AvatarStore;
   /** Test seam for every model turn. All avatar turns default to Codex only. */
@@ -39,8 +41,27 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
   const generate = options.generate ?? codexReply;
   const crawl = options.index ?? indexBlog;
   const history = new ChatHistory();
-  const turns = createGroupTurns(bot, avatarStore, generate, history);
-  const speaker = createAvatarSpeaker(bot, avatarStore, history, generate, turns.noteError);
+  let stopping = false;
+  const turns = createGroupTurns(
+    bot,
+    avatarStore,
+    generate,
+    history,
+    options.memory,
+    options.reportReplyError,
+  );
+  const speaker = createAvatarSpeaker(
+    bot,
+    avatarStore,
+    history,
+    generate,
+    (text) => {
+      turns.noteError(text);
+      options.reportReplyError?.();
+    },
+    options.memory,
+    () => !stopping,
+  );
   const strayLogged = new Set<number>();
   let indexing: Promise<IndexSummary> | null = null;
   let lastIndex: IndexStatus | null = null;
@@ -74,6 +95,7 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
 
   /** The first group message with no blog memory starts a crawl, once per process. */
   function ensureIndexed(): void {
+    if (options.refreshMaterials) return;
     if (firstIndexTried || avatarStore.chunkCount() > 0) return;
     firstIndexTried = true;
     void reindex().catch((err) =>
@@ -90,11 +112,13 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
   });
 
   async function middleware(ctx: Context, next: NextFunction): Promise<void> {
+    if (stopping) return;
     const { chat } = ctx;
     if (chat?.type !== "group" && chat?.type !== "supergroup") {
       await next();
       return;
     }
+    if (captureMessage(ctx, options) === false) return;
     if (ctx.myChatMember) {
       await onMemberUpdate(ctx.myChatMember, chat.title, guardDeps(ctx));
       return;
@@ -115,9 +139,15 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
     if (!avatarStore.isEnabled()) return;
     ensureIndexed();
     turns.onText(chat.id, {
+      ...conversationRoot(
+        msg,
+        options.memory,
+        (id) => history.recent(chat.id).find((line) => line.messageId === id)?.rootMessageId,
+      ),
       messageId: msg.message_id,
       authorId: msg.from.id,
       author: msg.from.first_name,
+      chatUsername: chat.type === "supergroup" ? chat.username : undefined,
       text: msg.text,
       date: msg.date,
       direct: isDirect(msg, ctx.me),
@@ -141,8 +171,26 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
    * also write here), then closes the avatar's SQLite file.
    */
   async function drainAndClose(alsoWait: Promise<unknown> = Promise.resolve()): Promise<void> {
+    stopping = true;
     await Promise.all([turns.drain(), alsoWait]);
-    avatarStore.close();
+    if (indexing) void indexing.catch(() => undefined).finally(() => avatarStore.close());
+    else avatarStore.close();
+  }
+
+  function clearMemory(): boolean {
+    const chatId = CONFIG.CHAT_REPLY_CHAT_ID;
+    if (!options.memory || chatId === undefined) return false;
+    options.memory.clear(chatId);
+    turns.forget(chatId);
+    _store.setRawSetting(`chat_reply_memory:${chatId}`, "[]");
+    return true;
+  }
+
+  function memoryStatus() {
+    const chatId = CONFIG.CHAT_REPLY_CHAT_ID;
+    if (!options.memory || chatId === undefined) return null;
+    const status = options.memory.status(chatId);
+    return { ...status, lastError: status.lastError ?? options.memoryError?.() ?? null };
   }
 
   return {
@@ -156,6 +204,8 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
     lastError: turns.lastError,
     leave,
     drainAndClose,
+    clearMemory,
+    memoryStatus,
   };
 }
 

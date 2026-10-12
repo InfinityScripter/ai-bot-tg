@@ -36,7 +36,7 @@ async function makeBot(memberStatus: string | Error = "member", isMember = true)
       } as never);
     }
     const results: Record<string, unknown> = {
-      getMe: { id: 777, is_bot: true, first_name: "Bot", username: "hope_bot" },
+      getMe: { id: 777, is_bot: true, first_name: "Neiro Misha", username: "hope_bot" },
       sendMessage: { message_id: SENT_ID, date: 0, chat: { id: GROUP_ID, type: "supergroup" } },
       getChatMember: {
         status: memberStatus,
@@ -78,7 +78,15 @@ const channelPost = (text: string): Update =>
 const debate = (chatId = GROUP_ID): Debate => ({
   chatId,
   topic: "Агенты пишут тесты сами",
-  lines: [{ side: "avatar", text: "Я так уже месяц живу, полёт нормальный", messageId: 77 }],
+  lines: [
+    {
+      side: "avatar",
+      text: "Я так уже месяц живу, полёт нормальный",
+      messageId: 77,
+      authorName: "neuro_misha",
+      authorId: 999,
+    },
+  ],
 });
 
 beforeEach(() => {
@@ -109,12 +117,20 @@ describe("Hope opens a debate under a channel post", () => {
     const { bot, drain, hope } = await makeBot();
     const listener = vi.fn();
     hope.onPostComment(listener);
-    await bot.handleUpdate(channelPost("Codex собрал песочницу для агентов"));
+    const update = channelPost("Codex собрал песочницу для агентов");
+    await bot.handleUpdate(update);
     await drain();
     expect(listener).toHaveBeenCalledWith(
       GROUP_ID,
-      { side: "hope", text: "А кто проверил тесты?", messageId: SENT_ID },
+      {
+        side: "hope",
+        text: "А кто проверил тесты?",
+        messageId: SENT_ID,
+        authorName: "Neiro Misha",
+        authorId: 777,
+      },
       "Codex собрал песочницу для агентов",
+      { rootMessageId: update.message!.message_id },
     );
   });
 
@@ -137,10 +153,16 @@ describe("Hope's side of a debate", () => {
     expect(prompt).toContain("Я так уже месяц живу, полёт нормальный");
     expect(sent()[0]?.payload).toMatchObject({
       chat_id: GROUP_ID,
-      text: "А кто проверил тесты?",
-      reply_parameters: { message_id: 77 },
+      text: "↪ Ответ neuro_misha\n\nА кто проверил тесты?",
+      reply_parameters: { message_id: 77, allow_sending_without_reply: false },
     });
-    expect(line).toEqual({ side: "hope", text: "А кто проверил тесты?", messageId: SENT_ID });
+    expect(line).toEqual({
+      side: "hope",
+      text: "А кто проверил тесты?",
+      messageId: SENT_ID,
+      authorName: "Neiro Misha",
+      authorId: 777,
+    });
   });
 
   it("ends the debate when Codex fails: no paid fallback, nothing sent", async () => {

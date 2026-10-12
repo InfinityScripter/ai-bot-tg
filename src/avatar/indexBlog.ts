@@ -80,3 +80,42 @@ export async function indexBlog(
   store.replaceChunks(chunks);
   return { posts: posts.length, chunks: chunks.length, failed };
 }
+
+/** Missing published bodies are appended; a partial outage never shrinks the shared index. */
+export async function refreshBlogIndex(
+  store: AvatarStore,
+  deps: IndexDeps = DEFAULT_DEPS,
+): Promise<IndexSummary> {
+  const posts = (await deps.listPosts()).filter(
+    (post) => !post.publish || post.publish === "published",
+  );
+  const indexed = store.indexedUrls();
+  const base = CONFIG.BLOG_PUBLIC_URL.replace(/\/$/, "");
+  let requests = 0;
+  let chunks = 0;
+  let failed = 0;
+  for (const post of posts) {
+    const id = post.id ?? post._id;
+    const url = `${base}/post/${id}`;
+    if (id && indexed.has(url)) continue;
+    try {
+      if (!id) throw new Error("missing post id");
+      indexed.add(url);
+      if (requests > 0) await deps.pause(PAUSE_MS);
+      requests++;
+      const content = await deps.fetchBody(id);
+      const pieces = chunkPost({
+        title: post.title,
+        url,
+        content: `${post.description ?? ""}\n\n${content}`,
+      });
+      if (!content.trim() || !pieces.length) throw new Error("empty post body");
+      store.addChunks(pieces);
+      chunks += pieces.length;
+    } catch {
+      failed++;
+      console.warn("[avatar] refresh: skipped published body; existing index retained");
+    }
+  }
+  return { posts: posts.length, chunks, failed };
+}

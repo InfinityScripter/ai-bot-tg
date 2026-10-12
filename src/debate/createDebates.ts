@@ -1,4 +1,4 @@
-import type { Side, Debate, Speaker, DebateLine } from "./types.js";
+import type { Side, Debate, Speaker, DebateLine, DebateContext } from "./types.js";
 
 export interface DebateDeps {
   hope: Speaker;
@@ -9,6 +9,8 @@ export interface DebateDeps {
   pauseMs: number;
   /** A new debate in a chat waits this long after the last one with replies. */
   cooldownMs: number;
+  /** Detached follow-up; failures never delay or restart a debate. */
+  onEnded?: (debate: Debate, reason: string) => void | Promise<void>;
 }
 
 /** Shutdown waits this long for a reply in flight (systemd allows 20 s). */
@@ -67,7 +69,12 @@ export function createDebates(deps: DebateDeps) {
     return "done";
   }
 
-  function start(chatId: number, opener: DebateLine, topic: string): void {
+  function start(
+    chatId: number,
+    opener: DebateLine,
+    topic: string,
+    context: DebateContext = {},
+  ): void {
     if (stopped) return;
     if (running.has(chatId)) {
       console.log(`[debate] ${chatId}: not started, one is already running`);
@@ -78,7 +85,7 @@ export function createDebates(deps: DebateDeps) {
       console.log(`[debate] ${chatId}: not started, the last one ended less than a cooldown ago`);
       return;
     }
-    const debate: Debate = { chatId, topic, lines: [opener] };
+    const debate: Debate = { chatId, topic, lines: [opener], ...context };
     console.log(`[debate] ${chatId}: started by ${opener.side}`);
     // Every attempt holds the cooldown, even a failed one: with Codex down or
     // the news bot missing from the group, every reply would start a doomed debate.
@@ -87,6 +94,13 @@ export function createDebates(deps: DebateDeps) {
       .then((reason) => {
         console.log(`[debate] ${chatId}: ended (${reason}), ${debate.lines.length} lines`);
         endedAt.set(chatId, Date.now());
+        if (deps.onEnded) {
+          void Promise.resolve()
+            .then(() => deps.onEnded?.(debate, reason))
+            .catch((err: unknown) =>
+              console.warn(`[debate] ${chatId}: completion callback failed: ${String(err)}`),
+            );
+        }
       })
       .finally(() => running.delete(chatId));
     running.set(chatId, loop);

@@ -3,7 +3,7 @@ import { it, vi, expect, describe, afterEach } from "vitest";
 const { CONFIG } = await import("../src/config.js");
 const { AvatarStore } = await import("../src/avatar/avatarStore.js");
 const { chunkPost, plainText } = await import("../src/avatar/chunkPost.js");
-const { indexBlog, fetchPostBody } = await import("../src/avatar/indexBlog.js");
+const { indexBlog, fetchPostBody, refreshBlogIndex } = await import("../src/avatar/indexBlog.js");
 
 import type { IndexDeps } from "../src/avatar/indexBlog.js";
 
@@ -14,6 +14,74 @@ describe("plainText", () => {
     expect(
       plainText("<p>Первый <b>абзац</b></p><p>![кот](x.png) [ссылка](https://a) &amp; всё</p>"),
     ).toBe("Первый абзац\n\nссылка & всё");
+  });
+});
+
+describe("refreshBlogIndex", () => {
+  it("fetches only missing published bodies and retains existing chunks", async () => {
+    const store = new AvatarStore(":memory:");
+    const base = CONFIG.BLOG_PUBLIC_URL.replace(/\/$/, "");
+    store.replaceChunks([
+      { title: "Old robot post", url: `${base}/post/old`, body: "Existing robot evidence" },
+    ]);
+    const fetchBody = vi.fn(async () => "<p>New robot experiment</p>");
+    const deps: IndexDeps = {
+      listPosts: async () => [
+        { id: "old", title: "Old robot post", createdAt: "2026-10-01", publish: "published" },
+        { id: "new", title: "New robot post", createdAt: "2026-10-12", publish: "published" },
+        { id: "draft", title: "Draft", createdAt: "2026-10-12", publish: "draft" },
+      ],
+      fetchBody,
+      pause: vi.fn(async () => undefined),
+    };
+    await expect(refreshBlogIndex(store, deps)).resolves.toEqual({
+      posts: 2,
+      chunks: 1,
+      failed: 0,
+    });
+    expect(fetchBody.mock.calls).toEqual([["new"]]);
+    expect(store.search('"existing"*', 5)).toHaveLength(1);
+    expect(store.search('"experiment"*', 5)).toHaveLength(1);
+    await refreshBlogIndex(store, deps);
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    store.close();
+  });
+
+  it("retains the index on an empty list, failed bodies or a list outage and retries missing bodies later", async () => {
+    const store = new AvatarStore(":memory:");
+    store.replaceChunks([
+      { title: "Existing", url: "https://example.test/post/old", body: "Existing evidence" },
+    ]);
+    const fetchBody = vi.fn(async () => {
+      throw new Error("synthetic outage");
+    });
+    const deps: IndexDeps = { listPosts: async () => [], fetchBody, pause: async () => undefined };
+    await expect(refreshBlogIndex(store, deps)).resolves.toEqual({
+      posts: 0,
+      chunks: 0,
+      failed: 0,
+    });
+    deps.listPosts = async () => [{ id: "missing", title: "New", createdAt: "2026-10-12" }];
+    await expect(refreshBlogIndex(store, deps)).resolves.toEqual({
+      posts: 1,
+      chunks: 0,
+      failed: 1,
+    });
+    expect(store.search('"evidence"*', 5)).toHaveLength(1);
+    deps.listPosts = async () => {
+      throw new Error("list outage");
+    };
+    await expect(refreshBlogIndex(store, deps)).rejects.toThrow("list outage");
+    expect(store.chunkCount()).toBe(1);
+    deps.listPosts = async () => [{ _id: "missing", title: "New", createdAt: "2026-10-12" }];
+    deps.fetchBody = async () => "<p>Recovered experiment</p>";
+    await expect(refreshBlogIndex(store, deps)).resolves.toEqual({
+      posts: 1,
+      chunks: 1,
+      failed: 0,
+    });
+    expect(store.chunkCount()).toBe(2);
+    store.close();
   });
 });
 

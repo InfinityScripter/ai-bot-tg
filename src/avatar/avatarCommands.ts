@@ -1,6 +1,7 @@
 import type { Bot, Context } from "grammy";
 
 import { CONFIG } from "../config.js";
+import { isOwnerDm } from "../bot/isOwnerDm.js";
 
 import type { Avatar } from "./createAvatar.js";
 
@@ -42,6 +43,32 @@ const replySafely = (ctx: Context, text: string): Promise<unknown> =>
  * owner's private chat with the bot.
  */
 export function registerAvatarCommands(bot: Bot, avatar: Avatar): void {
+  bot.command("memory", async (ctx) => {
+    if (!isOwnerDm(ctx)) return;
+    try {
+      if (ctx.match.trim() === "clear") {
+        await ctx.reply(
+          avatar.clearMemory()
+            ? "Память подключённой группы очищена. Блог и профиль сохранены."
+            : "Память группы не настроена.",
+        );
+        return;
+      }
+      const status = avatar.memoryStatus();
+      await ctx.reply(
+        status
+          ? [
+              `Сообщений: ${status.messages}. Заметок: ${status.notes}. Позиций: ${status.opinions}.`,
+              `Ожидают разбора: ${status.pending}. Последняя ошибка: ${status.lastError ?? "нет"}.`,
+              "Очистить переписку и выводы подключённой группы: /memory clear. Блог и профиль сохранятся.",
+            ].join("\n")
+          : "Память группы не настроена.",
+      );
+    } catch {
+      console.warn("[chatMemory] owner command failed");
+      await ctx.reply("Не удалось обработать команду памяти. Повтори /memory.");
+    }
+  });
   bot.command("profile", async (ctx) => {
     const text = ctx.match.trim();
     if (!text) {

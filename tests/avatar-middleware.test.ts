@@ -187,10 +187,10 @@ describe("turns in an avatar group", () => {
     avatarStore.allowChat(GROUP, "AI-чат");
     await bot.handleUpdate(mention(STRANGER));
     await vi.waitFor(() => expect(sent()).toHaveLength(1));
-    expect(sent()[0]?.payload.text).toBe("Ответ аватара");
+    expect(sent()[0]?.payload.text).toBe("↪ Ответ Оля\n\nОтвет аватара");
     expect(sent()[0]?.payload.reply_parameters).toEqual({
       message_id: expect.any(Number),
-      allow_sending_without_reply: true,
+      allow_sending_without_reply: false,
     });
     expect(avatarStore.callsOn(GROUP, new Date().toISOString().slice(0, 10))).toBe(1);
   });

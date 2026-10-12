@@ -127,8 +127,8 @@ describe("group responder routing", () => {
     expect(sent()).toHaveLength(1);
     expect(sent()[0]?.payload).toMatchObject({
       chat_id: GROUP_ID,
-      text: "Привет, я тут.",
-      reply_parameters: { message_id: nextId },
+      text: "↪ Ответ Аня\n\nПривет, я тут.",
+      reply_parameters: { message_id: nextId, allow_sending_without_reply: false },
     });
   });
 

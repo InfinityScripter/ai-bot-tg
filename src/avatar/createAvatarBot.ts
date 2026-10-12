@@ -20,6 +20,7 @@ const COMMANDS = [
   { command: "avatar", description: "статус; /avatar on|off; /avatar leave id" },
   { command: "profile", description: "профиль: /profile текст о себе; без текста — показать" },
   { command: "reindex", description: "перечитать посты блога" },
+  { command: "memory", description: "память группы; /memory clear — очистить" },
 ];
 
 /** grammY's stop() sends one more getUpdates, which autoRetry may retry for long. */
@@ -29,7 +30,7 @@ const START_TEXT = [
   "Я твой аватар.",
   "Добавь меня в группу сам: там я говорю твоим голосом и спорю с Hope, если новостной бот тоже в группе.",
   "Из групп, куда меня добавил кто-то другой, я выхожу.",
-  "Команды: /profile, /reindex, /avatar.",
+  "Команды: /profile, /reindex, /avatar, /memory.",
 ].join("\n");
 
 /**

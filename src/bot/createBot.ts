@@ -20,6 +20,7 @@ import { helpText, menuIntro, menuKeyboard, nativeCommands, parseMenuCallback } 
 import type { BotOptions } from "./types.js";
 import type { MenuAction } from "../enums.js";
 import type { CandidateStore } from "../store/index.js";
+import type { MemoryWiring } from "../chatMemory/wiring.js";
 
 /**
  * Creates the bot, locked to the owner, with the command menu (/start, /menu,
@@ -30,7 +31,7 @@ import type { CandidateStore } from "../store/index.js";
 export function createBot(
   store: CandidateStore,
   onFetch: () => Promise<string | void> | string | void,
-  options: BotOptions = {},
+  options: BotOptions & MemoryWiring = {},
 ) {
   const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
   const nextRun = options.nextRun ?? (() => null);
@@ -55,7 +56,7 @@ export function createBot(
   );
   const { runChannelIssue, onChannelDigestCallback, isChannelDigestCallback } =
     createChannelDigestFlow(bot, store);
-  const chatReply = createChatReply(bot, store);
+  const chatReply = createChatReply(bot, store, options);
 
   bot.catch(logBotError("bot"));
 

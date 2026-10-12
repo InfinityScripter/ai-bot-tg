@@ -4,6 +4,7 @@ import { CandidateStore } from "./store/index.js";
 import { importCatalog } from "./catalog/index.js";
 import { startAvatarSide } from "./avatar/index.js";
 import { NOTIFY_LABELS, COLLECTION_LABELS } from "./labels.js";
+import { startConversationMemory } from "./chatMemory/startConversationMemory.js";
 import {
   runCollection,
   scheduleDaily,
@@ -21,6 +22,8 @@ import {
  */
 async function main() {
   const store = new CandidateStore();
+  const conversation = startConversationMemory();
+  const memoryUnavailable = CONFIG.CHAT_REPLY_CHAT_ID !== undefined && !conversation;
 
   // The bot owns autoPublishCandidate + sendRawCard; the collector run builds a
   // deciding processCandidate over both, gated on the blog's auto-publish flags
@@ -34,12 +37,10 @@ async function main() {
   const runOnce = async (): Promise<string> => {
     const processCandidate = await createProcessCandidate(store, publishing);
     const s = await runCollection(store, processCandidate);
-    if (s.filterActive && s.fetched > 0 && s.afterFilter === 0) {
+    if (s.filterActive && s.fetched > 0 && s.afterFilter === 0)
       return COLLECTION_LABELS.filterBlocked(s.fetched);
-    }
-    if (s.fresh === 0 && s.published === 0 && s.failed === 0) {
+    if (s.fresh === 0 && s.published === 0 && s.failed === 0)
       return COLLECTION_LABELS.noNews(s.fetched);
-    }
     return COLLECTION_LABELS.done(s.fresh, s.published, s.failed);
   };
   const run = (): Promise<string> => {
@@ -69,20 +70,21 @@ async function main() {
     notifyAutomaticFailures,
     notifyNeedsVerification,
     drain,
-  } = createBot(store, run, { nextRun: () => job?.nextRun() ?? null });
+  } = createBot(store, run, { ...conversation, nextRun: () => job?.nextRun() ?? null });
   const publishing = { autoPublish, sendRawCard };
   // The owner's avatar bot and its debates with Hope; null without AVATAR_BOT_TOKEN.
-  const avatarSide = startAvatarSide(store, hope, notifyOwner);
+  const avatarSide = memoryUnavailable
+    ? null
+    : startAvatarSide(store, hope, notifyOwner, conversation ?? {});
 
   // The scheduled run alerts the owner on failure — a broken daily run is
   // otherwise invisible. (The scheduler's `catch` is a second backstop.)
   const scheduledRun = async (): Promise<void> => {
     try {
       const pruned = store.pruneOld(90);
-      if (pruned > 0) {
+      if (pruned > 0)
         // eslint-disable-next-line no-console
         console.log(`[index] pruned ${pruned} old candidates (dedup keys preserved)`);
-      }
       const note = await run();
       // Only ping the owner on the cron when something needs attention (a filter
       // hid everything) — a normal run stays quiet to avoid daily noise.
@@ -107,9 +109,8 @@ async function main() {
   // fails closed, so a live schedule still publishes nothing while it's off.
   const catalogRun = async (): Promise<void> => {
     try {
-      const summary = await importCatalog();
       // eslint-disable-next-line no-console
-      console.log("[index] catalog import:", summary);
+      console.log("[index] catalog import:", await importCatalog());
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(`[index] catalog import failed: ${String(err)}`);
@@ -202,6 +203,7 @@ async function main() {
     if (shuttingDown) return;
     shuttingDown = true;
     acceptingCollections = false;
+    conversation?.stop();
     // eslint-disable-next-line no-console
     console.log(`[index] ${signal} received, shutting down…`);
     let code = 0;
@@ -218,7 +220,7 @@ async function main() {
       if (activeWatch) await activeWatch;
       await Promise.all([channelJobs.idle(), resetJobs.idle()]);
       // In-flight publishes, avatar turns and debates finish their DB writes (each capped).
-      await Promise.all([drain(), avatarSide?.drain()]);
+      await Promise.all([drain(), avatarSide?.drain(), conversation?.drain()]);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(`[index] error during shutdown: ${String(err)}`);
@@ -243,6 +245,7 @@ async function main() {
     if (!shuttingDown) {
       shuttingDown = true;
       try {
+        conversation?.stop();
         store.close();
       } catch (err) {
         console.error(`[index] store close after ${label} failed: ${String(err)}`);
@@ -258,6 +261,7 @@ async function main() {
     onStart: (info) => {
       // eslint-disable-next-line no-console
       console.log(`[index] bot @${info.username} polling.`);
+      if (memoryUnavailable) void notifyOwner("Память и аватар недоступны. Основной бот работает.");
       // Warn the owner about any post-crash rows whose publish status is unknown.
       void notifyNeedsVerification();
       void notifyAutomaticFailures();

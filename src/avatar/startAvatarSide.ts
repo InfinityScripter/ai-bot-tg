@@ -3,6 +3,7 @@ import { createDebates } from "../debate/index.js";
 import { createAvatarBot } from "./createAvatarBot.js";
 
 import type { CandidateStore } from "../store/index.js";
+import type { MemoryWiring } from "../chatMemory/wiring.js";
 import type { Speaker, DebateOpener } from "../debate/index.js";
 
 /** Hope's side, as the news bot exposes it. */
@@ -21,6 +22,7 @@ export function startAvatarSide(
   store: CandidateStore,
   hope: HopeSide,
   notifyOwner: (text: string) => Promise<unknown>,
+  wiring: MemoryWiring = {},
 ) {
   const token = CONFIG.AVATAR_BOT_TOKEN;
   if (!token) {
@@ -35,7 +37,10 @@ export function startAvatarSide(
     return null;
   }
   try {
-    const avatarBot = createAvatarBot(token, store, { fallbackNotify: notifyOwner });
+    const avatarBot = createAvatarBot(token, store, {
+      fallbackNotify: notifyOwner,
+      avatar: wiring,
+    });
     const { avatar } = avatarBot;
     const debates = createDebates({
       hope: hope.speaker,
@@ -43,6 +48,7 @@ export function startAvatarSide(
       turns: CONFIG.AVATAR_DEBATE_TURNS,
       pauseMs: CONFIG.AVATAR_DEBATE_PAUSE_MS,
       cooldownMs: CONFIG.AVATAR_COOLDOWN_MS,
+      onEnded: (debate) => wiring.memory?.reflect(debate.chatId),
     });
     hope.onPostComment(debates.start);
     avatar.onReply(debates.start);

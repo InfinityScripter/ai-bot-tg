@@ -1,6 +1,7 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
 const { createDebates } = await import("../src/debate/index.js");
+const { SKEPTIC_ROLE, PRACTITIONER_ROLE } = await import("../src/debate/debatePrompt.js");
 
 import type { Side, Debate, Speaker, DebateLine } from "../src/debate/index.js";
 
@@ -44,6 +45,18 @@ const finalLines = (speaker: Speaker): string[] => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("debate characters", () => {
+  it.each([SKEPTIC_ROLE, PRACTITIONER_ROLE])(
+    "allows a convincing argument to change a position",
+    (role) => {
+      expect(role).toContain("Если довод убедил, можно согласиться или пересмотреть свою позицию.");
+      expect(role).not.toContain("не сдавай позицию");
+      expect(role).not.toContain("не начинай реплику с согласия");
+    },
+  );
 });
 
 describe("a debate", () => {
@@ -71,6 +84,53 @@ describe("a debate", () => {
     expect(debate?.chatId).toBe(CHAT);
     expect(debate?.topic).toBe("пост про агентов");
   });
+
+  it("reports completion and its root without waiting for the completion callback", async () => {
+    const hope = fakeSpeaker("hope");
+    const avatar = fakeSpeaker("avatar");
+    const onEnded = vi.fn((_debate: Debate, _reason: string) => new Promise<void>(() => {}));
+    const deps = { hope, avatar, turns: 3, pauseMs: 0, cooldownMs: 1, onEnded };
+    const debates = createDebates(deps);
+    debates.start(CHAT, opener("hope"), "пост", { rootMessageId: 55 });
+    await debates.idle();
+    expect(onEnded).toHaveBeenCalledOnce();
+    expect(onEnded.mock.calls[0]?.[0]).toMatchObject({ chatId: CHAT, rootMessageId: 55 });
+    expect(onEnded.mock.calls[0]?.[0].lines).toHaveLength(6);
+    expect(onEnded.mock.calls[0]?.[1]).toBe("done");
+    debates.start(CHAT - 1, opener("avatar"), "следующий");
+    await debates.idle();
+    expect(onEnded).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["sync", "async"])(
+    "isolates a %s completion callback failure and preserves cooldown",
+    async (mode) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const hope = fakeSpeaker("hope");
+      const avatar = fakeSpeaker("avatar");
+      const onEnded = vi.fn((_debate: Debate, _reason: string) => {
+        if (mode === "async") return Promise.reject(new Error("synthetic failure"));
+        throw new Error("synthetic failure");
+      });
+      const debates = createDebates({
+        hope,
+        avatar,
+        turns: 3,
+        pauseMs: 0,
+        cooldownMs: 600_000,
+        onEnded,
+      });
+      debates.start(CHAT, opener("hope"), "пост");
+      await debates.idle();
+      await vi.waitFor(() =>
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining("completion callback failed")),
+      );
+      debates.start(CHAT, opener("hope"), "слишком рано");
+      await debates.idle();
+      expect(onEnded).toHaveBeenCalledOnce();
+      expect(avatar.speak).toHaveBeenCalledTimes(3);
+    },
+  );
 
   it("ends when a side has no reply", async () => {
     const hope = fakeSpeaker("hope", () => null);
