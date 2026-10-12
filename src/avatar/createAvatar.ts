@@ -7,9 +7,8 @@ import { AvatarStore } from "./avatarStore.js";
 import { ChatHistory } from "./chatHistory.js";
 import { createGroupTurns } from "./groupTurns.js";
 import { createAvatarSpeaker } from "./debateSpeaker.js";
-import { createRateLimit } from "../chatReply/rateLimit.js";
+import { codexReply } from "../chatReply/generateReply.js";
 import { onMigrated, onMemberUpdate } from "./memberGuard.js";
-import { codexReply, generateReply } from "../chatReply/generateReply.js";
 
 import type { GuardDeps } from "./memberGuard.js";
 import type { GenerateFn } from "./groupTurns.js";
@@ -19,11 +18,7 @@ import type { CandidateStore } from "../store/index.js";
 export interface AvatarOptions {
   /** Defaults to a store on AVATAR_SQLITE_PATH. */
   avatarStore?: AvatarStore;
-  /**
-   * Test seam for every model turn. By default an ordinary turn is the
-   * responder's Codex-first turn with the capped paid fallback, and a debate
-   * turn is Codex only.
-   */
+  /** Test seam for every model turn. All avatar turns default to Codex only. */
   generate?: GenerateFn;
   /** Where owner notices go; defaults to this bot's DM with the owner. */
   notifyOwner?: (text: string) => Promise<unknown>;
@@ -39,22 +34,13 @@ export type IndexStatus = { at: number; summary: IndexSummary } | { at: number; 
  * that bot to, and argues with Hope as the practitioner. Its middleware stops
  * every group update, so only private updates reach the bot's owner lock.
  */
-export function createAvatar(bot: Bot, store: CandidateStore, options: AvatarOptions = {}) {
+export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOptions = {}) {
   const avatarStore = options.avatarStore ?? new AvatarStore();
-  const paidLimit = createRateLimit(CONFIG.CHAT_REPLY_FALLBACK_PER_HOUR);
-  const generate: GenerateFn =
-    options.generate ??
-    ((system, user) => generateReply(store, system, user, () => paidLimit.tryTake()));
+  const generate = options.generate ?? codexReply;
   const crawl = options.index ?? indexBlog;
   const history = new ChatHistory();
   const turns = createGroupTurns(bot, avatarStore, generate, history);
-  const speaker = createAvatarSpeaker(
-    bot,
-    avatarStore,
-    history,
-    options.generate ?? codexReply,
-    turns.noteError,
-  );
+  const speaker = createAvatarSpeaker(bot, avatarStore, history, generate, turns.noteError);
   const strayLogged = new Set<number>();
   let indexing: Promise<IndexSummary> | null = null;
   let lastIndex: IndexStatus | null = null;

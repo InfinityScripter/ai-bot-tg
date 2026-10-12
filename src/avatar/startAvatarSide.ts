@@ -13,7 +13,7 @@ export interface HopeSide {
 
 /**
  * Starts the owner's avatar bot next to the news bot and lets the two argue:
- * Hope's comment on a new channel post and every ordinary avatar reply may
+ * Hope's comment on a new channel post and the avatar's answers to direct requests may
  * open a debate. Null when the avatar is off or could not start: the news bot
  * must keep running either way.
  */

@@ -11,7 +11,7 @@ import type { AvatarStore } from "./avatarStore.js";
 import type { DebateOpener } from "../debate/index.js";
 import type { ChatReply } from "../schemas/chatReplySchema.js";
 
-/** One model turn: (system, user) → a reply, or null when every model failed. */
+/** One model turn: (system, user) → a reply, or null when the model failed. */
 export type GenerateFn = (system: string, user: string) => Promise<ChatReply | null>;
 
 /** A group text message, as the avatar takes it in. */
@@ -88,8 +88,8 @@ export function createGroupTurns(
       avatarTranscript(lines),
     );
     if (!reply) {
-      lastError = { at: Date.now(), text: "Codex и запасная модель не ответили" };
-      console.warn(`[avatar] ${chatId}: no ${mode} answer, every model failed`);
+      lastError = { at: Date.now(), text: "Codex не ответил" };
+      console.warn(`[avatar] ${chatId}: no ${mode} answer, Codex failed`);
       return;
     }
     store.countCall(chatId, day);
@@ -116,6 +116,7 @@ export function createGroupTurns(
     console.log(
       `[avatar] ${chatId}: ${mode} reply, ${reply.text.length} chars (memory ${memory.length})`,
     );
+    if (!direct) return;
     // The person's message it answered; Hope's lines are never the topic.
     const topic =
       lines.find((l) => l.messageId === replyTo)?.text ??
@@ -195,7 +196,7 @@ export function createGroupTurns(
     lastError = { at: Date.now(), text };
   }
 
-  /** Every ordinary reply may open a debate with Hope. */
+  /** Only answers to a person's mention or reply may open a debate with Hope. */
   function onReply(listener: DebateOpener): void {
     replyListener = listener;
   }

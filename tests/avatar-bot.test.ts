@@ -114,6 +114,7 @@ const hopeSaid = (text: string): Debate => ({
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("the avatar bot's DM", () => {
@@ -241,6 +242,32 @@ describe("the avatar's side of a debate", () => {
 });
 
 describe("an ordinary avatar reply", () => {
+  it("sends an unasked reply and counts it without opening a debate", async () => {
+    vi.useFakeTimers();
+    const { bot, avatar, avatarStore, generate, onReply, sent } = setup();
+    avatarStore.allowChat(GROUP, "AI-чат");
+    await bot.handleUpdate({
+      update_id: nextId++,
+      message: {
+        message_id: nextId,
+        date: Math.floor(Date.now() / 1000),
+        text: "Агенты экономят время",
+        from: { id: STRANGER, is_bot: false, first_name: "Аня" },
+        chat: { id: GROUP, type: "supergroup", title: "AI-чат" },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(CONFIG.AVATAR_QUIET_MS);
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0]?.payload.text).toBe(REPLY.text);
+    expect(avatarStore.callsOn(GROUP, new Date().toISOString().slice(0, 10))).toBe(1);
+    expect(onReply).not.toHaveBeenCalled();
+    await bot.handleUpdate(mention("а что с проверками?"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(generate.mock.calls[1]?.[1]).toContain(`Ты (аватар): ${REPLY.text}`);
+    expect(onReply).toHaveBeenCalledOnce();
+    await avatar.drainAndClose();
+  });
+
   it("takes the topic from the message it answers, not from a later one", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const { bot, avatar, avatarStore, generate, onReply } = setup();
@@ -279,6 +306,35 @@ describe("an ordinary avatar reply", () => {
       GROUP,
       { side: "avatar", text: REPLY.text, messageId: SENT_ID },
       `@${ME.username} агенты уже пишут тесты?`,
+    );
+  });
+
+  it("opens a debate after a person replies to the avatar's message", async () => {
+    const { bot, avatar, avatarStore, onReply } = setup();
+    avatarStore.allowChat(GROUP, "AI-чат");
+    await bot.handleUpdate({
+      update_id: nextId++,
+      message: {
+        message_id: nextId,
+        date: Math.floor(Date.now() / 1000),
+        text: "А кто проверил результат?",
+        from: { id: STRANGER, is_bot: false, first_name: "Аня" },
+        chat: { id: GROUP, type: "supergroup", title: "AI-чат" },
+        reply_to_message: {
+          reply_to_message: undefined,
+          message_id: SENT_ID,
+          date: 0,
+          text: REPLY.text,
+          from: ME,
+          chat: { id: GROUP, type: "supergroup", title: "AI-чат" },
+        },
+      },
+    });
+    await avatar.drainAndClose();
+    expect(onReply).toHaveBeenCalledWith(
+      GROUP,
+      { side: "avatar", text: REPLY.text, messageId: SENT_ID },
+      "А кто проверил результат?",
     );
   });
 });

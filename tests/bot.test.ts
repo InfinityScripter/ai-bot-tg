@@ -6,12 +6,19 @@ vi.mock("../src/llm/rewriteToPost.js", () => ({
   rewriteToPost: (...a: unknown[]) => rewriteToPost(...a),
 }));
 
-// Mock only fetchArticle (the URL scraper) so the manual-ingest URL path is
-// driven without a network call. classifyInput/feedItemFromText stay real.
+// Mock the scrapers so no test hits the network. fetchArticle drives the
+// manual-ingest URL path; enrichItemBody is a pass-through because 🔄 on
+// rawItem() (http URL, short snippet) would otherwise GET ex.com for real — a
+// cold DNS+TLS round trip took ~4.8s and timed the rewrite tests out under
+// load. classifyInput/feedItemFromText stay real.
 const fetchArticle = vi.fn();
 vi.mock("../src/feeds/index.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/feeds/index.js")>();
-  return { ...actual, fetchArticle: (...a: unknown[]) => fetchArticle(...a) };
+  return {
+    ...actual,
+    fetchArticle: (...a: unknown[]) => fetchArticle(...a),
+    enrichItemBody: async (item: FeedItem) => item,
+  };
 });
 
 const { createBot } = await import("../src/bot/index.js");

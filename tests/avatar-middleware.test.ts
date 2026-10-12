@@ -256,7 +256,7 @@ describe("turns in an avatar group", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(avatarStore.callsOn(GROUP, new Date().toISOString().slice(0, 10))).toBe(0);
     await bot.handleUpdate(dm("/avatar"));
-    expect(String(calls.at(-1)?.payload.text)).toContain("не ответили");
+    expect(String(calls.at(-1)?.payload.text)).toContain("Codex не ответил");
   });
 
   it("does nothing while switched off", async () => {
