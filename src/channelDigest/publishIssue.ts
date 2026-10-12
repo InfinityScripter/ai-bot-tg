@@ -62,21 +62,31 @@ export async function publishIssue(
     return { ok: false, outcome: `не отправлен: ${message}` };
   }
   store.channelQueue.setLastSlot(slot.key);
+  const delivered = sent.rejected !== null ? issue.fallbackItems : article.items;
+  const deliveredIds = new Set(delivered.map((item) => item.candidateId));
   try {
-    for (const id of ids) store.setPublished(id, `tg:${sent.messageId}`);
+    store.channelQueue.requeue(ids.filter((id) => !deliveredIds.has(id)));
+  } catch (err) {
+    console.error(
+      `[digest-issue] ${slot.key} is in the channel, returning the undelivered posts to the queue failed: ${String(err)}`,
+    );
+  }
+  try {
+    for (const item of delivered) store.setPublished(item.candidateId, `tg:${sent.messageId}`);
   } catch (err) {
     console.error(
       `[digest-issue] ${slot.key} is in the channel, marking the posts published failed: ${String(err)}`,
     );
   }
   try {
-    store.markSeenKeys(article.items.flatMap((item) => item.linkKeys));
+    store.markSeenKeys(delivered.flatMap((item) => item.linkKeys));
   } catch (err) {
     console.error(
       `[digest-issue] ${slot.key} is in the channel, marking the link keys seen failed: ${String(err)}`,
     );
   }
-  if (!sent.rejected) return { ok: true, outcome: `опубликован (${newsCount(ids.length)})` };
+  if (sent.rejected === null)
+    return { ok: true, outcome: `опубликован (${newsCount(delivered.length)})` };
   await tell(
     `⚠️ Telegram отклонил статью «${slot.title}» (${sent.rejected}). Выпуск ушёл текстом без фото.`,
   );

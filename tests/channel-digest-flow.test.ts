@@ -126,6 +126,7 @@ function issueFor(ids: number[], slot = SLOT): AssembledIssue {
     slot,
     article: { html: "<h3>AI за утро · 1 октября</h3>", photos: [], items },
     fallbackText: "<b>AI за утро · 1 октября</b>",
+    fallbackItems: items,
   };
 }
 

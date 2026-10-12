@@ -1,5 +1,5 @@
-import type { ChannelDress } from "../types.js";
 import type { PublishOutcome } from "../blog/types.js";
+import type { SourceLink, ChannelDress } from "../types.js";
 import type { MenuAction, ProviderName, CallbackKind } from "../enums.js";
 
 /**
@@ -75,6 +75,7 @@ export interface CrossPostContent {
   title: string;
   description?: string | null;
   coverUrl?: string | null;
+  sourceLinks?: SourceLink[];
   linkFor: (publishedId: string) => string;
   /** Rubric, why line and cover text, fetched only when the post is announced; absent = a plain cover. */
   dress?: () => Promise<ChannelDress | null>;

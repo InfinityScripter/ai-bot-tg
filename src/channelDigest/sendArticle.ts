@@ -49,17 +49,17 @@ function isRejection(err: unknown): err is TelegramApiError {
 /**
  * The article, or its text fallback when Telegram rejects the rich message
  * itself (`rejected` then carries Telegram's description). Everything else
- * (network, 5xx, 429, 403, a failed fallback) is thrown to the caller.
+ * (network, 5xx, 429, 403, a failed or absent fallback) is thrown to the caller.
  */
 export async function deliverArticle(
   chatId: string | number,
   article: Article,
-  fallbackText: string,
+  fallbackText: string | null,
 ): Promise<{ messageId: number; rejected: string | null }> {
   try {
     return { messageId: await sendRichMessage(chatId, article), rejected: null };
   } catch (err) {
-    if (!isRejection(err)) throw err;
+    if (!isRejection(err) || fallbackText === null) throw err;
     console.warn(`[digest-issue] rich message rejected, sending text: ${err.message}`);
     return { messageId: await sendFallbackText(chatId, fallbackText), rejected: err.description };
   }

@@ -10,6 +10,12 @@ export type { DigestItem } from "./schemas/digestItemSchema.js";
 export type { ChannelDress } from "./schemas/channelDressSchema.js";
 export type { ChannelRetell } from "./schemas/channelRetellSchema.js";
 
+/** One external material, with its original URL and plain-text link label. */
+export interface SourceLink {
+  url: string;
+  label: string;
+}
+
 /**
  * What a release candidate stores: the full blog post about the new model and,
  * when extraction worked, its changelog card. The card is null when extraction

@@ -1,4 +1,5 @@
 import { escapeHtml } from "../feeds/index.js";
+import { renderMaterials } from "./renderMaterials.js";
 
 import type { Article, IssueItem, ArticlePhoto } from "./types.js";
 
@@ -39,11 +40,12 @@ function render(title: string, withCover: boolean, items: IssueItem[]) {
     `<h3>${escapeHtml(title)}</h3>`,
     "<h5>В выпуске</h5>",
     `<ol>${toc.join("")}</ol>`,
-    ...items.map(
-      (item, i) =>
-        `<a name="n${i + 1}"></a><blockquote><h5>${heading(item)}</h5><p>${item.html}</p>` +
-        `<cite>#${escapeHtml(item.rubric)}</cite></blockquote>${gallery(item.photos)}`,
-    ),
+    ...items.map((item, i) => {
+      const materials = renderMaterials(item);
+      return `<a name="n${i + 1}"></a><blockquote><h5>${heading(item)}</h5><p>${item.html}</p>${
+        materials ? `<p>${materials}</p>` : ""
+      }<cite>#${escapeHtml(item.rubric)}</cite></blockquote>${gallery(item.photos)}`;
+    }),
   ].join("\n");
   return { html, photos };
 }

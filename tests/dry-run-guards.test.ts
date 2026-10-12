@@ -27,12 +27,22 @@ describe("markAsTrial", () => {
     slot: { key: "2026-10-01/evening", title: "AI за вечер · 1 октября" },
     article: { html: "<h3>AI за вечер · 1 октября</h3>\n<ol></ol>", photos: [], items: [] },
     fallbackText: "<b>AI за вечер · 1 октября</b>\n\ncards",
+    fallbackItems: [],
   };
 
   it("prefixes the title of the article and of the text fallback, not the slot", () => {
     const marked = markAsTrial(assembled);
     expect(marked.article.html).toContain("<h3>[проба] AI за вечер · 1 октября</h3>");
     expect(marked.fallbackText).toContain("<b>[проба] AI за вечер · 1 октября</b>");
+    expect(marked.slot).toEqual(assembled.slot);
+  });
+
+  it("keeps a missing fallback while marking the rich article as a trial", () => {
+    const marked = markAsTrial({ ...assembled, fallbackText: null, fallbackItems: [] });
+
+    expect(marked.article.html).toContain("<h3>[проба] AI за вечер · 1 октября</h3>");
+    expect(marked.fallbackText).toBeNull();
+    expect(marked.fallbackItems).toEqual([]);
     expect(marked.slot).toEqual(assembled.slot);
   });
 

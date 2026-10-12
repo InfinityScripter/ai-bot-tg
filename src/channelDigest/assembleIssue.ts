@@ -4,6 +4,7 @@ import { buildArticle } from "./buildArticle.js";
 import { writeDigestItem } from "../llm/index.js";
 import { resolveChannels } from "../feeds/index.js";
 import { buildFallbackText } from "./fallbackText.js";
+import { sourceLinksFromHtml } from "../sourceLinks.js";
 import { downloadImage } from "../blog/downloadImage.js";
 import { coverSpecFor, tryRenderCover } from "../blog/index.js";
 import { LINK_MEMORY_DAYS } from "../server/selectChannelPost.js";
@@ -37,6 +38,7 @@ async function writeItems(store: CandidateStore, picked: QueuedPost[]): Promise<
         candidateId: candidate.id,
         channel: post.feedTitle,
         ...card,
+        sourceLinks: sourceLinksFromHtml(post.html ?? ""),
         photos: await photosOf(post.imageUrls),
         linkKeys: linkKeysOfCandidate(candidate),
       });
@@ -95,6 +97,14 @@ export async function assembleIssue(
     console.warn(`[digest-issue] ${slot.key}: ${ready} of ${counts.picked} cards, not enough`);
     return { assembled: null, picked: counts.picked, written: ready };
   }
-  const fallbackText = buildFallbackText(slot.title, article.items);
-  return { assembled: { slot, article, fallbackText }, ...counts };
+  const fallback = buildFallbackText(slot.title, article.items);
+  return {
+    assembled: {
+      slot,
+      article,
+      fallbackText: fallback?.text ?? null,
+      fallbackItems: fallback?.items ?? [],
+    },
+    ...counts,
+  };
 }

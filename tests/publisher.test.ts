@@ -17,6 +17,85 @@ const REWRITE: RewriteResult = {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+
+describe("published candidate announcements", () => {
+  it.each(["news", "release"])(
+    "carries checked article materials through the %s publisher to Telegram",
+    async (kind) => {
+      vi.resetModules();
+      vi.stubEnv("TELEGRAM_CHANNEL_ID", "@materials");
+      const { CandidateKind, CandidateState } = await import("../src/enums.js");
+      const { CandidateStore } = await import("../src/store/index.js");
+      const { publishClaimedCandidate } = await import("../src/bot/candidateActions.js");
+      const { crossPostToChannel } = await import("../src/blog/crossPost.js");
+      const store = new CandidateStore(":memory:");
+      store.setMockOverride(true);
+      try {
+        const id = store.insertCollected({
+          dedupKey: `materials-${kind}`,
+          url: "https://t.me/reader/7",
+          title: "Исходная новость",
+          snippet: "Исходный текст",
+          feedTitle: "Канал",
+          imageUrl: null,
+          imageUrls: [],
+          publishedAt: null,
+          kind: kind === "release" ? CandidateKind.Release : CandidateKind.News,
+        })!;
+        const rewrite = {
+          ...REWRITE,
+          content:
+            "[API & SDK](https://docs.example.com/guide?lang=ru&mode=full)\n\n" +
+            "[Исследование](https://research.example.com/paper)\n\n" +
+            "[Повтор](https://docs.example.com/guide?lang=ru&mode=full)\n\n" +
+            "[Канал](https://t.me/reader/7)\n\n![Обложка](https://cdn.example.com/image.jpg)",
+        };
+        if (kind === "release") store.attachRelease(id, { post: rewrite, release: null });
+        else store.attachRewrite(id, rewrite);
+        expect(store.claimForPublishing(id)).toBe(true);
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(
+            async () =>
+              new Response(
+                JSON.stringify({ post: { id: "post-materials", coverUrl: "/cover.jpg" } }),
+                {
+                  status: 201,
+                },
+              ),
+          ),
+        );
+        const published = await publishClaimedCandidate(store, store.get(id)!);
+        expect(store.get(id)?.state).toBe(CandidateState.Published);
+        expect(published.extracted.crossPost).toMatchObject({
+          sourceLinks: [
+            { url: "https://docs.example.com/guide?lang=ru&mode=full", label: "API & SDK" },
+            { url: "https://research.example.com/paper", label: "Исследование" },
+          ],
+          coverUrl: "http://localhost:7272/cover.jpg",
+        });
+        const sendPhoto = vi.fn(async () => ({ message_id: 1 }));
+        const sendMessage = vi.fn(async () => ({ message_id: 2 }));
+        const api = { sendPhoto, sendMessage } as unknown as import("grammy").Api;
+        await crossPostToChannel(api, published.extracted.crossPost!, published.postId);
+        expect(sendPhoto).toHaveBeenCalledWith(
+          "@materials",
+          expect.anything(),
+          expect.objectContaining({
+            parse_mode: "HTML",
+            caption: expect.stringContaining(
+              '<a href="https://docs.example.com/guide?lang=ru&amp;mode=full">API &amp; SDK</a>',
+            ),
+          }),
+        );
+      } finally {
+        store.close();
+      }
+    },
+  );
 });
 
 describe("toBlogPostBody", () => {

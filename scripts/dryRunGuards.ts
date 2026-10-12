@@ -39,17 +39,23 @@ export function copyRuntimeOverrides(store: CandidateStore, ledgerPath: string):
  * fallback, so the owner can tell the trial from a real issue. The cover and
  * the slot keep the real title. Throws when the title is not found.
  */
-export function markAsTrial({ slot, article, fallbackText }: AssembledIssue): AssembledIssue {
+export function markAsTrial({
+  slot,
+  article,
+  fallbackText,
+  fallbackItems,
+}: AssembledIssue): AssembledIssue {
   const title = escapeHtml(slot.title);
   const marked = `${TRIAL_PREFIX}${title}`;
   const head = `<h3>${title}</h3>`;
   const textHead = `<b>${title}</b>`;
-  if (!article.html.includes(head) || !fallbackText.includes(textHead)) {
+  if (!article.html.includes(head) || (fallbackText !== null && !fallbackText.includes(textHead))) {
     throw new Error("в выпуске не нашёлся заголовок, пометить пробу нечем");
   }
   return {
     slot,
     article: { ...article, html: article.html.replace(head, `<h3>${marked}</h3>`) },
-    fallbackText: fallbackText.replace(textHead, `<b>${marked}</b>`),
+    fallbackText: fallbackText === null ? null : fallbackText.replace(textHead, `<b>${marked}</b>`),
+    fallbackItems,
   };
 }

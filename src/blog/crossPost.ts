@@ -4,8 +4,9 @@ import { InputFile } from "grammy";
 
 import { CONFIG } from "../config.js";
 import { logEditError } from "../bot/edit.js";
-import { truncate, escapeMarkdown } from "../utils.js";
+import { sourceLinksFromHtml } from "../sourceLinks.js";
 import { coverSpecFor, tryRenderCover } from "./renderCover.js";
+import { escapeHtml, visibleText } from "../feeds/telegramHtml.js";
 
 import type { ChannelDress } from "../types.js";
 import type { LoadedExtraction, CrossPostContent } from "../bot/types.js";
@@ -26,14 +27,27 @@ type TelegramAbortSignal = Parameters<Api["sendMessage"]>[3];
  *  - The caption is capped at Telegram's 1024-char photo-caption limit.
  */
 
-/** Telegram photo captions are limited to 1024 chars; leave room for entities. */
+/** Telegram photo captions allow 1024 visible chars after parsing HTML; keep headroom. */
 const CAPTION_MAX = 1000;
 /** Description is the least important line — trim it hardest. */
 const DESCRIPTION_MAX = 320;
 
+/** Trim original text before escaping; never split an entity or a surrogate pair. */
+function captionText(text: string, max: number): string {
+  if (max <= 0) return "";
+  if (text.length <= max) return escapeHtml(text);
+  let prefix = "";
+  for (const char of text) {
+    if (prefix.length + char.length + 1 > max) break;
+    prefix += char;
+  }
+  const lastSpace = prefix.lastIndexOf(" ");
+  return `${escapeHtml((lastSpace > 0 ? prefix.slice(0, lastSpace) : prefix).trimEnd())}…`;
+}
+
 /**
- * Builds the channel announcement caption from a published item. Markdown
- * (legacy) with the title bold, an optional description, and a "Читать" link.
+ * Builds the channel announcement caption from a published item in Telegram
+ * HTML with signed source materials and a separate link to the full article.
  * Feed/LLM-derived text is escaped so it can't break or hijack the formatting.
  * Exported for unit testing without a live bot.
  */
@@ -42,15 +56,43 @@ export function buildCrossPostCaption(
   url: string,
   dress: ChannelDress | null = null,
 ): string {
-  const title = `*${escapeMarkdown(truncate(content.title, 200))}*`;
-  const link = `[Читать на сайте →](${url})`;
-  const description = content.description?.trim()
-    ? escapeMarkdown(truncate(content.description.trim(), DESCRIPTION_MAX))
-    : "";
-  const why = dress?.why ? `💡 *Зачем тебе это:* ${escapeMarkdown(dress.why)}` : "";
-  const rubric = dress ? `#${dress.rubric}` : "";
-  const caption = [title, description, why, rubric, link].filter(Boolean).join("\n\n");
-  return truncate(caption, CAPTION_MAX);
+  const link = `<a href="${escapeHtml(url)}">Читать на сайте →</a>`;
+  const rubric = dress ? escapeHtml(`#${dress.rubric}`) : "";
+  const sources = sourceLinksFromHtml(
+    (content.sourceLinks ?? [])
+      .map(
+        ({ url: sourceUrl, label }) =>
+          `<a href="${escapeHtml(sourceUrl)}">${escapeHtml(label)}</a>`,
+      )
+      .join("\n"),
+  ).slice(0, 3);
+  const sourceAnchors = sources.map(
+    ({ url: sourceUrl, label }) => `<a href="${escapeHtml(sourceUrl)}">${escapeHtml(label)}</a>`,
+  );
+  // Reserve links first. Only an entire trailing material may be dropped when
+  // the visible labels cannot fit with even a minimal title and the website link.
+  let materials = sourceAnchors.length ? `Материалы:\n${sourceAnchors.join("\n")}` : "";
+  while (
+    sourceAnchors.length &&
+    visibleText(["<b>…</b>", rubric, materials, link].filter(Boolean).join("\n\n")).length >
+      CAPTION_MAX
+  ) {
+    sourceAnchors.pop();
+    materials = sourceAnchors.length ? `Материалы:\n${sourceAnchors.join("\n")}` : "";
+  }
+  const tail = [rubric, materials, link].filter(Boolean).join("\n\n");
+  const title = `<b>${captionText(content.title, Math.min(200, CAPTION_MAX - visibleText(tail).length - 2))}</b>`;
+  const base = [title, rubric, materials, link].filter(Boolean).join("\n\n");
+  const whyPrefix = "💡 <b>Зачем тебе это:</b> ";
+  const whyBudget = CAPTION_MAX - visibleText(base).length - visibleText(whyPrefix).length - 2;
+  const why = dress?.why && whyBudget > 0 ? `${whyPrefix}${captionText(dress.why, whyBudget)}` : "";
+  const fixed = [title, why, rubric, materials, link].filter(Boolean).join("\n\n");
+  const descriptionBudget = Math.max(0, CAPTION_MAX - visibleText(fixed).length - 2);
+  const description =
+    content.description?.trim() && descriptionBudget > 0
+      ? captionText(content.description.trim(), Math.min(DESCRIPTION_MAX, descriptionBudget))
+      : "";
+  return [title, description, why, rubric, materials, link].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -98,7 +140,7 @@ export async function crossPostToChannel(
   const cover = tryRenderCover(coverSpecFor(dress, content.title));
   const blogCover = isUsableImageUrl(content.coverUrl) ? content.coverUrl : null;
   const photo = cover ? new InputFile(cover, "cover.png") : blogCover;
-  const options = { parse_mode: "Markdown" as const };
+  const options = { parse_mode: "HTML" as const };
 
   if (photo) {
     try {

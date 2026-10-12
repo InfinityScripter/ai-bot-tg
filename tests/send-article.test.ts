@@ -1,8 +1,12 @@
 import { it, vi, expect, describe, afterEach } from "vitest";
 
+import { ChannelRubric } from "../src/enums.js";
+import { buildArticle } from "../src/channelDigest/buildArticle.js";
+import { buildFallbackText } from "../src/channelDigest/fallbackText.js";
+
 const { sendRichMessage, deliverArticle } = await import("../src/channelDigest/sendArticle.js");
 
-import type { Article } from "../src/channelDigest/types.js";
+import type { Article, IssueItem } from "../src/channelDigest/types.js";
 
 const ARTICLE: Article = {
   html: '<img src="tg://photo?id=cover"/>\n<h3>AI за утро · 1 октября</h3>',
@@ -55,13 +59,39 @@ describe("sendRichMessage", () => {
 });
 
 describe("deliverArticle", () => {
+  it("throws the rich rejection when no fallback exists without another send", async () => {
+    const fetchMock = stub(tg(400, { ok: false, description: "RICH_MESSAGE_INVALID" }), ok(80));
+
+    await expect(deliverArticle("@ch", ARTICLE, null)).rejects.toMatchObject({
+      status: 400,
+      description: "RICH_MESSAGE_INVALID",
+      maybePosted: false,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("sends the text fallback when Telegram rejects the rich message", async () => {
     const fetchMock = stub(
       tg(400, { ok: false, description: "Bad Request: RICH_MESSAGE_INVALID" }),
       ok(78),
     );
+    const items: IssueItem[] = [
+      {
+        candidateId: 1,
+        channel: "@lab",
+        emoji: "🔥",
+        rubric: ChannelRubric.Model,
+        title: "Новая модель",
+        html: "<b>текст</b>",
+        sourceLinks: [{ url: "https://lab.example/paper?a=1&b=2", label: "A & B" }],
+        photos: [],
+        linkKeys: [],
+      },
+    ];
+    const article = buildArticle({ title: "Выпуск", items, cover: () => null });
+    const { text } = buildFallbackText("Выпуск", items)!;
 
-    await expect(deliverArticle("@ch", ARTICLE, "<b>текст</b>")).resolves.toEqual({
+    await expect(deliverArticle("@ch", article, text)).resolves.toEqual({
       messageId: 78,
       rejected: "Bad Request: RICH_MESSAGE_INVALID",
     });
@@ -70,10 +100,15 @@ describe("deliverArticle", () => {
     expect(methodOf(url)).toBe("sendMessage");
     expect(JSON.parse(String(init!.body))).toMatchObject({
       chat_id: "@ch",
-      text: "<b>текст</b>",
+      text,
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
     });
+    const richForm = fetchMock.mock.calls[0]![1]!.body as FormData;
+    const richHtml = JSON.parse(String(richForm.get("rich_message"))).html as string;
+    for (const html of [richHtml, text]) {
+      expect(html).toContain('<a href="https://lab.example/paper?a=1&amp;b=2">A &amp; B</a>');
+    }
   });
 
   it("falls back to text on a 413 too: any 4xx except 400/403/429 is a rejection", async () => {

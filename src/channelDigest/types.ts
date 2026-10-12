@@ -1,3 +1,4 @@
+import type { SourceLink } from "../types.js";
 import type { ChannelRubric } from "../enums.js";
 
 /**
@@ -21,6 +22,8 @@ export interface IssueItem {
   title: string;
   /** Telegram inline HTML (b i u s a code), links only from the source post. */
   html: string;
+  /** External materials from the saved source HTML, independent of the model's text. */
+  sourceLinks?: SourceLink[];
   /** The post's downloaded photos, at most 4. */
   photos: Blob[];
   /** `link:` seen-keys of the post's outbound links, remembered once it is published. */
@@ -43,8 +46,10 @@ export interface Article {
 export interface AssembledIssue {
   slot: IssueSlot;
   article: Article;
-  /** The same cards as one sendMessage text, for a rejected rich message. */
-  fallbackText: string;
+  /** One sendMessage for a rejected rich message; null when no complete card fits. */
+  fallbackText: string | null;
+  /** Only the cards actually included in fallbackText, possibly fewer than article.items. */
+  fallbackItems: IssueItem[];
 }
 
 /** How one issue attempt ended, for the owner and /health. */

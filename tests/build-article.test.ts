@@ -1,6 +1,7 @@
 import { it, expect, describe } from "vitest";
 
 import { ChannelRubric } from "../src/enums.js";
+import { visibleText } from "../src/feeds/telegramHtml.js";
 import { ISSUE_LIMITS, buildArticle } from "../src/channelDigest/buildArticle.js";
 import { TEXT_LIMIT, buildFallbackText } from "../src/channelDigest/fallbackText.js";
 
@@ -81,6 +82,21 @@ describe("buildArticle", () => {
     expect(article.html).toContain("<h5>&lt;b&gt; &lt;script&gt;A &amp; B</h5>");
   });
 
+  it("does not repeat a material already linked by the model with an accepted trailing slash", () => {
+    const linked = item(1, {
+      html: 'Модель выпустила <a href="https://lab.example/paper/">статью</a>.',
+      sourceLinks: [{ url: "https://lab.example/paper", label: "Исходная статья" }],
+    });
+
+    const article = buildArticle({ title: TITLE, items: [linked], cover: () => null });
+    const fallback = buildFallbackText(TITLE, [linked]);
+
+    for (const html of [article.html, fallback!.text]) {
+      expect(html.match(/href="https:\/\/lab\.example\/paper\/?"/g)).toHaveLength(1);
+      expect(html).not.toContain("Материалы:");
+    }
+  });
+
   it("takes at most 4 photos per card and 50 media per article", () => {
     const items = Array.from({ length: 14 }, (_, i) =>
       item(i + 1, { photos: Array.from({ length: 6 }, photo) }),
@@ -93,10 +109,21 @@ describe("buildArticle", () => {
   });
 
   it("drops cards from the end until the article fits 32 768 bytes", () => {
-    const items = Array.from({ length: 7 }, (_, i) => item(i + 1, { html: "д".repeat(3000) }));
+    const items = Array.from({ length: 7 }, (_, i) =>
+      item(i + 1, {
+        html: "д".repeat(3000),
+        sourceLinks: [
+          { url: `https://lab.example/${"x".repeat(1200)}?n=${i + 1}`, label: "Статья" },
+        ],
+      }),
+    );
     const article = buildArticle({ title: TITLE, items, cover: () => COVER });
     expect(Buffer.byteLength(article.html, "utf8")).toBeLessThanOrEqual(ISSUE_LIMITS.bytes);
-    expect(article.items.map((i) => i.candidateId)).toEqual([1, 2, 3, 4, 5]);
+    expect(article.items.map((i) => i.candidateId)).toEqual([1, 2, 3, 4]);
+    for (const kept of items.slice(0, 4)) {
+      expect(article.html).toContain(`<a href="${kept.sourceLinks![0]!.url}">Статья</a>`);
+    }
+    expect(article.html).not.toContain("?n=5");
   });
 
   it("drops cards from the end until the article has at most 500 blocks", () => {
@@ -119,12 +146,39 @@ describe("buildArticle", () => {
 });
 
 describe("buildFallbackText", () => {
+  it("keeps three cards with long hidden hrefs within the visible text limit", () => {
+    const items = [1, 2, 3].map((n) =>
+      item(n, {
+        html: "д".repeat(450),
+        sourceLinks:
+          n === 1
+            ? [1, 2, 3].map((link) => ({
+                url: `https://lab.example/${"x".repeat(1300)}?n=${link}&lang=ru`,
+                label: `Статья ${link}`,
+              }))
+            : [],
+      }),
+    );
+    const fallback = buildFallbackText(TITLE, items);
+
+    expect(fallback).not.toBeNull();
+    expect(fallback!.items).toEqual(items);
+    expect(visibleText(fallback!.text).length).toBeLessThanOrEqual(TEXT_LIMIT);
+    expect(fallback!.text.length).toBeGreaterThan(TEXT_LIMIT);
+    for (const source of items[0]!.sourceLinks!) {
+      expect(fallback!.text).toContain(
+        `<a href="${source.url.replace(/&/g, "&amp;")}">${source.label}</a>`,
+      );
+    }
+    expect(fallback!.text).toContain("Новость 3");
+  });
+
   it("renders bold headings, the text and the cite line", () => {
-    const text = buildFallbackText(TITLE, [
+    const fallback = buildFallbackText(TITLE, [
       item(1),
       item(2, { emoji: "✍️", rubric: ChannelRubric.Tool, channel: "@aimastersme" }),
     ]);
-    expect(text).toBe(
+    expect(fallback!.text).toBe(
       "<b>AI за утро · 1 октября</b>\n\n" +
         "<b>🔥 Новость 1</b>\nТекст новости 1.\n#модель\n\n" +
         "<b>✍️ Новость 2</b>\nТекст новости 2.\n#инструмент",
@@ -132,21 +186,32 @@ describe("buildFallbackText", () => {
   });
 
   it("cuts whole cards from the end to fit 4096 characters", () => {
-    const items = Array.from({ length: 7 }, (_, i) => item(i + 1, { html: "д".repeat(900) }));
-    const text = buildFallbackText(TITLE, items);
-    expect(text.length).toBeLessThanOrEqual(TEXT_LIMIT);
-    expect(text).toContain("Новость 4");
-    expect(text).not.toContain("Новость 5");
+    const items = Array.from({ length: 7 }, (_, i) =>
+      item(i + 1, {
+        html: "д".repeat(1200),
+        sourceLinks: [
+          { url: `https://lab.example/${"x".repeat(300)}?n=${i + 1}`, label: "Статья" },
+        ],
+      }),
+    );
+    const fallback = buildFallbackText(TITLE, items);
+    const { text } = fallback!;
+    expect(visibleText(text).length).toBeLessThanOrEqual(TEXT_LIMIT);
+    expect(fallback!.items).toEqual(items.slice(0, 3));
+    expect(text).toContain("Новость 3");
+    expect(text).not.toContain("Новость 4");
+    for (const kept of items.slice(0, 3)) {
+      expect(text).toContain(`<a href="${kept.sourceLinks![0]!.url}">Статья</a>`);
+    }
+    expect(text).not.toContain("?n=4");
   });
 
-  it("throws when not even one card fits, instead of returning the title alone", () => {
-    expect(() => buildFallbackText(TITLE, [item(1, { html: "д".repeat(5000) })])).toThrow(
-      /не влезает/,
-    );
+  it("returns null when not even one card fits, instead of returning the title alone", () => {
+    expect(buildFallbackText(TITLE, [item(1, { html: "д".repeat(5000) })])).toBeNull();
   });
 
   it("escapes the rubric the way the article does", () => {
-    const text = buildFallbackText(TITLE, [item(1, { rubric: "<b>" as ChannelRubric })]);
-    expect(text).toContain("#&lt;b&gt;");
+    const fallback = buildFallbackText(TITLE, [item(1, { rubric: "<b>" as ChannelRubric })]);
+    expect(fallback!.text).toContain("#&lt;b&gt;");
   });
 });

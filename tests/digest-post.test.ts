@@ -1,4 +1,6 @@
-import { it, expect, describe, afterEach, beforeEach } from "vitest";
+import type { Bot } from "grammy";
+
+import { it, vi, expect, describe, afterEach, beforeEach } from "vitest";
 
 import { CandidateStore } from "../src/store/index.js";
 import {
@@ -132,5 +134,72 @@ describe("buildDigestPost (mock provider)", () => {
     expect(post.sections.news).toHaveLength(3);
     expect(post.sections.news[0]!.url).toBe("https://ex.com/a");
     expect(post.title).toContain("3");
+  });
+});
+
+describe("daily digest announcement", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("announces the published section headlines and URLs, leaving out unused queue entries", async () => {
+    vi.resetModules();
+    vi.stubEnv("TELEGRAM_CHANNEL_ID", "@materials");
+    const { CandidateState } = await import("../src/enums.js");
+    const { CandidateStore: Store } = await import("../src/store/index.js");
+    const { createDigestPostFlow } = await import("../src/bot/digestPostFlow.js");
+    const completion = await import("../src/llm/chatCompletion.js");
+    vi.spyOn(completion, "completeChatJson").mockResolvedValue(rawDigest());
+    const publish = vi.fn(async (url: string | URL | Request) =>
+      String(url).endsWith("/api/admin/settings")
+        ? new Response(JSON.stringify({ data: { flags: { autoPublishNews: true } } }))
+        : new Response(JSON.stringify({ post: { id: "daily-materials" } }), { status: 201 }),
+    );
+    vi.stubGlobal("fetch", publish);
+    const sendPhoto = vi.fn(async (..._args: unknown[]) => ({ message_id: 1 }));
+    const sendMessage = vi.fn(async () => ({ message_id: 2 }));
+    const bot = { api: { sendPhoto, sendMessage } } as unknown as Bot;
+    const store = new Store(":memory:");
+    try {
+      const ids = ["a", "b", "c", "unused"].map((slug) => {
+        const id = store.insertCollected({
+          dedupKey: slug,
+          url: `https://ex.com/${slug}`,
+          title: `Заголовок очереди ${slug}`,
+          snippet: "Исходный текст",
+          feedTitle: "Лента",
+          imageUrl: null,
+          imageUrls: [],
+          publishedAt: Date.now(),
+        })!;
+        store.queueForDigest(id);
+        return id;
+      });
+      const flow = createDigestPostFlow(bot, store);
+      await flow.runDigestPost();
+      for (const id of ids) expect(store.get(id)?.state).toBe(CandidateState.Published);
+      expect(sendPhoto).toHaveBeenCalledOnce();
+      const [channel, , options] = sendPhoto.mock.calls[0]! as [
+        string,
+        unknown,
+        { caption: string; parse_mode: string },
+      ];
+      expect(channel).toBe("@materials");
+      expect(options.parse_mode).toBe("HTML");
+      expect(options.caption).toContain('<a href="https://ex.com/a">OpenAI выпустила X</a>');
+      expect(options.caption).toContain(
+        '<a href="https://ex.com/b">Docker запустила Sandboxes</a>',
+      );
+      expect(options.caption).toContain('<a href="https://ex.com/c">Разбор TRACE</a>');
+      expect(options.caption).toContain('/post/daily-materials">Читать на сайте →</a>');
+      expect(options.caption).not.toContain("unused");
+      expect(options.caption).not.toContain("Заголовок очереди");
+      await flow.runDigestPost();
+      expect(sendPhoto).toHaveBeenCalledOnce();
+    } finally {
+      store.close();
+    }
   });
 });

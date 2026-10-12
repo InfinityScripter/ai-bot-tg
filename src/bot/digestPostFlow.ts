@@ -98,6 +98,9 @@ export function createDigestPostFlow(bot: Bot, store: CandidateStore) {
             title: post.title,
             description: post.intro,
             coverUrl: cover ?? null,
+            sourceLinks: Object.values(post.sections)
+              .flat()
+              .map(({ url, headline }) => ({ url, label: headline })),
             linkFor: (id) => `${CONFIG.BLOG_PUBLIC_URL.replace(/\/$/, "")}/post/${id}`,
             dress: async () => ({
               rubric: ChannelRubric.Digest,

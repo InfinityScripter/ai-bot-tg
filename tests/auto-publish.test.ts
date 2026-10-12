@@ -70,37 +70,80 @@ function makeBot(store: InstanceType<typeof CandidateStore>) {
 afterEach(() => {
   fetchAllFeeds.mockReset();
   rewriteToPost.mockReset();
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
 describe("automatic collection publishing", () => {
-  it("rewrites and publishes each fresh item without approval, preferring a source image", async () => {
-    fetchAllFeeds.mockResolvedValue([feedItem()]);
-    rewriteToPost.mockResolvedValue(REWRITE);
-    const publish = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ post: { id: "post-1" } }), {
-          status: 201,
-        }),
-    );
-    vi.stubGlobal("fetch", publish);
-    const store = new CandidateStore(":memory:");
-    const { apiCalls, autoPublishCandidate } = makeBot(store);
+  it.each([false, true])(
+    "publishes with a source image and material fallback despite channel failure=%s",
+    async (channelFails) => {
+      vi.resetModules();
+      vi.stubEnv("TELEGRAM_CHANNEL_ID", "@materials");
+      const { createBot: createChannelBot } = await import("../src/bot/index.js");
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      fetchAllFeeds.mockResolvedValue([feedItem()]);
+      rewriteToPost.mockResolvedValue(REWRITE);
+      const publish = vi.fn(
+        async () =>
+          new Response(JSON.stringify({ post: { id: "post-1" } }), {
+            status: 201,
+          }),
+      );
+      vi.stubGlobal("fetch", publish);
+      const store = new CandidateStore(":memory:");
+      store.setMockOverride(true);
+      const { bot, autoPublishCandidate } = createChannelBot(store, async () => {});
+      const apiCalls: Array<{ method: string; payload: unknown }> = [];
+      bot.api.config.use((_prev, method, payload) => {
+        apiCalls.push({ method, payload });
+        if ((payload as { chat_id?: unknown }).chat_id === "@materials" && channelFails) {
+          return Promise.reject(new Error("channel unavailable"));
+        }
+        return Promise.resolve({ ok: true, result: { message_id: 42 } } as never);
+      });
 
-    const summary = await runCollection(store, autoPublishCandidate, 0);
+      const summary = await runCollection(store, autoPublishCandidate, 0);
 
-    expect(summary.published).toBe(1);
-    expect(summary.failed).toBe(0);
-    expect(store.listByState(CandidateState.Published)).toHaveLength(1);
-    const progress = apiCalls.find(({ method }) => method === "sendMessage");
-    expect(progress?.payload).not.toHaveProperty("reply_markup");
-    const [, request] = publish.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(String(request.body))).toMatchObject({
-      coverUrl: "https://example.com/source-image.jpg",
-      publish: "published",
-    });
-    store.close();
-  });
+      expect(summary.published).toBe(1);
+      expect(summary.failed).toBe(0);
+      expect(store.listByState(CandidateState.Published)).toHaveLength(1);
+      const progress = apiCalls.find(({ method }) => method === "sendMessage");
+      expect(progress?.payload).not.toHaveProperty("reply_markup");
+      const [, request] = publish.mock.calls[0] as unknown as [string, RequestInit];
+      expect(JSON.parse(String(request.body))).toMatchObject({
+        coverUrl: "https://example.com/source-image.jpg",
+        publish: "published",
+      });
+      const photo = apiCalls.find(({ method }) => method === "sendPhoto");
+      expect(photo?.payload).toMatchObject({
+        chat_id: "@materials",
+        parse_mode: "HTML",
+        caption: expect.stringContaining('<a href="https://example.com/news">Источник</a>'),
+      });
+      if (channelFails) {
+        expect(
+          apiCalls.find(
+            ({ method, payload }) =>
+              method === "sendMessage" &&
+              (payload as { chat_id?: unknown }).chat_id === "@materials",
+          )?.payload,
+        ).toMatchObject({
+          text: (photo?.payload as { caption: string }).caption,
+          parse_mode: "HTML",
+        });
+        expect(
+          apiCalls.some(({ payload }) =>
+            /Пост опубликован, но не запостился в канал/.test(
+              (payload as { text?: string }).text ?? "",
+            ),
+          ),
+        ).toBe(true);
+      }
+      store.close();
+    },
+  );
 
   it("never retries an uncertain publish and leaves it for verification", async () => {
     fetchAllFeeds.mockResolvedValue([feedItem()]);

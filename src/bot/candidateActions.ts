@@ -6,6 +6,7 @@ import { CandidateKind, CandidateState } from "../enums.js";
 import { renderPreview, isModelNotFound } from "./render.js";
 import { assertNamesModel, assertNewRelease } from "./duplicateRelease.js";
 import { PublishError, publishToBlog, publishRelease } from "../blog/index.js";
+import { isExternalSourceUrl, sourceLinksFromMarkdown } from "../sourceLinks.js";
 import { loadChannelExtraction, assertRetellPublishable } from "./channelExtraction.js";
 import {
   PROVIDERS,
@@ -71,10 +72,18 @@ export function loadExtraction(
   // cover comes back from publish() and lands on the channel card below.
   const sourceImage = store.getFeedItem(candidate).imageUrls[0];
   const cover = candidate.imageUrl || sourceImage || null;
+  const sourceLinks = sourceLinksFromMarkdown(rewrite.content);
+  if (sourceLinks.length === 0 && isExternalSourceUrl(candidate.sourceUrl)) {
+    sourceLinks.push({
+      url: candidate.sourceUrl,
+      label: candidate.feedTitle || new URL(candidate.sourceUrl).hostname,
+    });
+  }
   const crossPost: CrossPostContent = {
     title: rewrite.title,
     description: rewrite.description,
     coverUrl: cover,
+    sourceLinks,
     linkFor: (postId) => `${PUBLIC_BASE}/post/${postId}`,
     dress: () =>
       dressForChannel(

@@ -3,6 +3,9 @@ import { it, vi, expect, describe, afterEach, beforeEach } from "vitest";
 vi.stubEnv("TELEGRAM_CHANNEL_ID", "@ai_first_news");
 const { publishIssue } = await import("../src/channelDigest/publishIssue.js");
 const { CandidateStore } = await import("../src/store/index.js");
+const { visibleText } = await import("../src/feeds/telegramHtml.js");
+const { buildArticle } = await import("../src/channelDigest/buildArticle.js");
+const { buildFallbackText } = await import("../src/channelDigest/fallbackText.js");
 import { CandidateKind, ChannelRubric, CandidateState } from "../src/enums.js";
 
 import type { AssembledIssue } from "../src/channelDigest/types.js";
@@ -59,6 +62,7 @@ function issue(ids: number[]): AssembledIssue {
     slot: SLOT,
     article: { html: "<h3>AI за утро · 1 октября</h3>", photos: [], items },
     fallbackText: "<b>AI за утро · 1 октября</b>",
+    fallbackItems: items,
   };
 }
 
@@ -124,6 +128,123 @@ describe("publishIssue", () => {
     expect(store.get(ids[0]!)!.blogPostId).toBe("tg:701");
     expect(linkSeen(ids[0]!)).toBe(true);
     expect(notes[0]).toContain("RICH_MESSAGE_INVALID");
+  });
+
+  it("publishes and remembers only the six cards delivered by the real fallback", async () => {
+    const ids = Array.from({ length: 7 }, (_, i) => queued(i + 1));
+    const items = issue(ids).article.items.map((item) => ({
+      ...item,
+      html: "д".repeat(450),
+      sourceLinks: ["a", "b", "c"].map((host) => ({
+        url: `https://${host}.co`,
+        label: `Статья ${"а".repeat(24)}`,
+      })),
+    }));
+    const article = buildArticle({ title: SLOT.title, items, cover: () => null });
+    const fallback = buildFallbackText(SLOT.title, article.items);
+    const fallbackText = fallback!.text;
+    const fetchMock = stub(tg(400, { ok: false, description: "RICH_MESSAGE_INVALID" }), ok(705));
+
+    expect(article.items).toHaveLength(7);
+    expect(visibleText(fallbackText).length).toBeLessThanOrEqual(4096);
+    expect(fallbackText).toContain("Новость 6");
+    expect(fallbackText).not.toContain("Новость 7");
+    const result = await publishIssue(
+      store,
+      { slot: SLOT, article, fallbackText, fallbackItems: fallback!.items },
+      notify,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]![1]!.body)).text).toBe(fallbackText);
+    for (const id of ids.slice(0, 6)) {
+      expect(store.get(id)).toMatchObject({
+        state: CandidateState.Published,
+        blogPostId: "tg:705",
+      });
+      expect(linkSeen(id)).toBe(true);
+    }
+    expect(store.get(ids[6]!)).toMatchObject({
+      state: CandidateState.DigestQueued,
+      blogPostId: null,
+    });
+    expect(linkSeen(ids[6]!)).toBe(false);
+    expect(store.channelQueue.list().map(({ candidate }) => candidate.id)).toEqual([ids[6]]);
+    expect(store.channelQueue.lastSlot()).toBe(SLOT.key);
+  });
+
+  it("publishes a fitting rich article even when no whole card fits the fallback", async () => {
+    const ids = [queued(1), queued(2), queued(3)];
+    const items = issue(ids).article.items.map((item, i) => ({
+      ...item,
+      html: "д".repeat(450),
+      sourceLinks:
+        i === 0
+          ? Array.from({ length: 50 }, (_, n) => ({
+              url: `https://lab.example/${n}`,
+              label: "a".repeat(80),
+            }))
+          : [],
+    }));
+    const article = buildArticle({ title: SLOT.title, items, cover: () => null });
+    const fallback = buildFallbackText(SLOT.title, article.items);
+    const fetchMock = stub(ok(706));
+
+    expect(fallback).toBeNull();
+    const result = await publishIssue(
+      store,
+      { slot: SLOT, article, fallbackText: null, fallbackItems: [] },
+      notify,
+    );
+
+    expect(result).toEqual({ ok: true, outcome: "опубликован (3 новости)" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    for (const id of ids) {
+      expect(store.get(id)).toMatchObject({
+        state: CandidateState.Published,
+        blogPostId: "tg:706",
+      });
+      expect(linkSeen(id)).toBe(true);
+    }
+    expect(store.channelQueue.lastSlot()).toBe(SLOT.key);
+    expect(notes).toEqual([]);
+  });
+
+  it("requeues a clearly rejected rich article without sending a missing fallback", async () => {
+    const ids = [queued(1), queued(2), queued(3)];
+    const items = issue(ids).article.items.map((item, i) => ({
+      ...item,
+      html: "д".repeat(450),
+      sourceLinks:
+        i === 0
+          ? Array.from({ length: 50 }, (_, n) => ({
+              url: `https://lab.example/${n}`,
+              label: "a".repeat(80),
+            }))
+          : [],
+    }));
+    const article = buildArticle({ title: SLOT.title, items, cover: () => null });
+    const fallback = buildFallbackText(SLOT.title, article.items);
+    const fetchMock = stub(tg(400, { ok: false, description: "RICH_MESSAGE_INVALID" }), ok(707));
+
+    expect(fallback).toBeNull();
+    const result = await publishIssue(
+      store,
+      { slot: SLOT, article, fallbackText: null, fallbackItems: [] },
+      notify,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    for (const id of ids) {
+      expect(store.get(id)).toMatchObject({ state: CandidateState.DigestQueued, blogPostId: null });
+      expect(linkSeen(id)).toBe(false);
+    }
+    expect(store.channelQueue.lastSlot()).toBeNull();
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("RICH_MESSAGE_INVALID");
+    expect(notes[0]).toContain("остались в очереди");
   });
 
   it("parks the posts in needs_verification and never resends when the outcome is unknown", async () => {
