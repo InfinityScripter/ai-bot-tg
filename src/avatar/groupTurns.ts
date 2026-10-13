@@ -93,6 +93,7 @@ export function createGroupTurns(
       const reply = await generate(
         avatarSystemPrompt(store.getProfile(), memory, direct),
         withMemory(avatarTranscript(lines), conversation, chatId, "avatar", texts.join("\n")),
+        { voice: "avatar" },
       );
       if (!current()) return;
       if (!reply) {
@@ -109,7 +110,7 @@ export function createGroupTurns(
       attempted = true;
       const replyTarget = { ...target, authorName: target.author };
       const sent = await sendConversationReply(bot, chatId, reply.text, replyTarget);
-      if (!current()) return;
+      if (stopped || !memoryCurrent(conversation, chatId, epoch)) return;
       recordReply(conversation, bot, chatId, sent, reply.text, "avatar", target, epoch);
       history.push(chatId, {
         rootMessageId: target.rootMessageId ?? target.messageId,
@@ -117,7 +118,7 @@ export function createGroupTurns(
         messageId: sent.message_id,
         authorId: bot.botInfo.id,
         author: "аватар",
-        text: reply.text,
+        text: sent.text ? sent.text.slice(sent.text.indexOf("\n\n") + 2) : reply.text,
         at: Date.now(),
         fromAvatar: true,
       });

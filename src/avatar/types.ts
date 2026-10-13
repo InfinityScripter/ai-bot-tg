@@ -2,10 +2,15 @@
  * Shared types of the avatar module. Pure declarations only.
  */
 import type { DebateContext } from "../debate/types.js";
+import type { ReplyOptions } from "../chatReply/types.js";
 import type { ChatReply } from "../schemas/chatReplySchema.js";
 
 /** One model turn: (system, user) → a reply, or null when the model failed. */
-export type GenerateFn = (system: string, user: string) => Promise<ChatReply | null>;
+export type GenerateFn = (
+  system: string,
+  user: string,
+  options?: ReplyOptions,
+) => Promise<ChatReply | null>;
 
 /** A group text message, as the avatar takes it in. */
 export interface IncomingText extends DebateContext {

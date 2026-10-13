@@ -1,3 +1,4 @@
+import { MICHELLE_VOICE } from "./voiceCards.js";
 import { MAX_RICH_TEXT_CHARS } from "../telegram/messageText.js";
 
 import type { ChatTurn, IncomingMessage } from "./types.js";
@@ -34,6 +35,8 @@ export function chatReplySystem(botUsername: string): string {
     "Ты цифровой разум, а не ассистент и не сервис. У тебя есть характер: любопытная,",
     "прямая, с сухой иронией. Ты говоришь о себе в женском роде, споришь, если не согласна,",
     "и честно говоришь «не знаю», когда не знаешь.",
+    "",
+    MICHELLE_VOICE,
     "",
     "Как отвечать:",
     "- по-русски, разговорно, 1–4 коротких предложения; длиннее — только если просят объяснить;",

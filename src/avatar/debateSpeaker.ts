@@ -111,6 +111,7 @@ export function createAvatarSpeaker(
             "avatar",
             `${context.topic}\n${last.text}`,
           ),
+          { voice: "avatar", continuation: context },
         );
         if (!current()) return null;
         if (!reply) {
@@ -130,7 +131,7 @@ export function createAvatarSpeaker(
           messageId: last.messageId,
           authorName: last.authorName,
         });
-        if (!current()) return null;
+        if (!isActive() || !memoryCurrent(conversation, chatId, epoch)) return null;
         recordReply(
           conversation,
           bot,
@@ -141,17 +142,19 @@ export function createAvatarSpeaker(
           { ...debate, triggerMessageId: trigger, messageId: last.messageId },
           epoch,
         );
+        const delivered = sent.text ? sent.text.slice(sent.text.indexOf("\n\n") + 2) : reply.text;
         history.push(chatId, {
           rootMessageId: debate.rootMessageId ?? last.messageId,
           messageThreadId: debate.messageThreadId,
           messageId: sent.message_id,
           authorId: bot.botInfo.id,
           author: "аватар",
-          text: reply.text,
+          text: delivered,
           at: Date.now(),
           fromAvatar: true,
         });
         history.stamp(chatId, "avatar", Date.now());
+        if (!current()) return null;
         return {
           side: "avatar",
           text: reply.text,

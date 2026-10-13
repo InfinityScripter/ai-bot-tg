@@ -1,5 +1,14 @@
 import type { DebateContext } from "../debate/types.js";
 
+/** Editor input is text only; callers may pass a debate, so runtime projection is still required. */
+export interface ReplyOptions {
+  voice?: "hope" | "avatar";
+  continuation?: {
+    topic: string;
+    lines: readonly { text: string }[];
+  };
+}
+
 /** One exchange the group responder took part in, kept as its memory. */
 export interface ChatTurn {
   /** Unix ms. */

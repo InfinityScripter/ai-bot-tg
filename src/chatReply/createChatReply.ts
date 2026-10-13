@@ -62,7 +62,9 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
     const timer = setInterval(typing, TYPING_EVERY_MS);
     try {
       const system = chatReplySystem(bot.botInfo.username);
-      const reply = await generateReply(store, system, job.prompt(), () => paidLimit.tryTake());
+      const reply = await generateReply(store, system, job.prompt(), () => paidLimit.tryTake(), {
+        voice: "hope",
+      });
       if (!current()) return;
       if (!reply) {
         wiring.reportReplyError?.();

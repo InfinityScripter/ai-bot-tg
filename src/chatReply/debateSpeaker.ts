@@ -90,6 +90,7 @@ export function createHopeSpeaker(
             "hope",
             `${context.topic}\n${last.text}`,
           ),
+          { voice: "hope", continuation: context },
         );
         if (!current()) return null;
         if (reply?.action !== "reply" || !reply.text) {
@@ -106,7 +107,7 @@ export function createHopeSpeaker(
           messageId: last.messageId,
           authorName: last.authorName,
         });
-        if (!current()) return null;
+        if (!memoryCurrent(memory, debate.chatId, epoch)) return null;
         recordReply(
           memory,
           bot,
@@ -117,6 +118,7 @@ export function createHopeSpeaker(
           { ...debate, triggerMessageId: trigger, messageId: last.messageId },
           epoch,
         );
+        if (!current()) return null;
         return {
           side: "hope",
           text: reply.text,

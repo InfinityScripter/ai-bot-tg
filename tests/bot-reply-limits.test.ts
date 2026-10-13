@@ -139,7 +139,7 @@ describe("persistent shared replies through both actual bot middlewares", () => 
   it("cancels an old automatic generation before send and allows the new counterpart", async () => {
     let releaseOld: ((text: string) => void) | undefined;
     runCodex.mockImplementation((prompt: string) => {
-      if (prompt.includes("Ты — @hope_bot,") && !prompt.includes("Ты редактор") && !releaseOld) {
+      if (prompt.includes("Ты Michelle.") && !prompt.includes("Ты редактор") && !releaseOld) {
         return new Promise<string>((resolve) => {
           releaseOld = resolve;
         });
@@ -197,7 +197,7 @@ describe("persistent shared replies through both actual bot middlewares", () => 
       const finish = new Map<Side, (text: string) => void>();
       runCodex.mockImplementation((prompt: string) => {
         if (prompt.includes("Ты редактор готовой разговорной реплики.")) return response;
-        const side = prompt.includes("Ты — @hope_bot,") ? "hope" : "avatar";
+        const side = prompt.includes("Ты Michelle.") ? "hope" : "avatar";
         if (finish.has(side)) return response;
         return new Promise<string>((resolve) => finish.set(side, resolve));
       });
