@@ -42,6 +42,16 @@ export const SCHEMA = `
     dedup_key TEXT PRIMARY KEY,
     seen_at   TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS bot_reply_claims (
+    chat_id INTEGER NOT NULL,
+    trigger_message_id INTEGER NOT NULL,
+    side TEXT NOT NULL CHECK (side IN ('hope', 'avatar')),
+    PRIMARY KEY (chat_id, trigger_message_id, side)
+  );
+  CREATE TABLE IF NOT EXISTS bot_reply_triggers (
+    chat_id INTEGER PRIMARY KEY,
+    trigger_message_id INTEGER NOT NULL
+  );
   CREATE INDEX IF NOT EXISTS idx_candidates_state ON candidates(state);
 `;
 

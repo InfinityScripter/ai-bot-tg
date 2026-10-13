@@ -107,6 +107,7 @@ const mention = (text: string): Update =>
   }) as unknown as Update;
 
 const hopeSaid = (text: string): Debate => ({
+  triggerMessageId: 76,
   chatId: GROUP,
   topic: "Агенты пишут тесты сами",
   lines: [{ side: "hope", text, messageId: 77 }],
@@ -264,7 +265,7 @@ describe("an ordinary avatar reply", () => {
     });
     await vi.advanceTimersByTimeAsync(CONFIG.AVATAR_QUIET_MS);
     expect(sent()).toHaveLength(1);
-    expect(sent()[0]?.payload.text).toBe(REPLY.text);
+    expect(sent()[0]?.payload.text).toBe(`↪ Ответ Аня\n\n${REPLY.text}`);
     expect(avatarStore.callsOn(GROUP, new Date().toISOString().slice(0, 10))).toBe(1);
     expect(onReply).not.toHaveBeenCalled();
     await bot.handleUpdate(mention("а что с проверками?"));
@@ -298,9 +299,9 @@ describe("an ordinary avatar reply", () => {
       },
     } as unknown as Update);
     release(REPLY);
-    await vi.waitFor(() => expect(onReply).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(onReply).toHaveBeenCalledOnce());
     await avatar.drainAndClose();
-    expect(onReply.mock.calls[1]?.[2]).toBe(`@${ME.username} второй вопрос`);
+    expect(onReply.mock.calls[0]?.[2]).toBe(`@${ME.username} второй вопрос`);
   });
 
   it("is offered to the debates with the person's message as the topic", async () => {
@@ -319,7 +320,7 @@ describe("an ordinary avatar reply", () => {
         authorId: ME.id,
       },
       `@${ME.username} агенты уже пишут тесты?`,
-      { rootMessageId: update.message!.message_id },
+      { rootMessageId: update.message!.message_id, triggerMessageId: update.message!.message_id },
     );
   });
 
@@ -355,7 +356,7 @@ describe("an ordinary avatar reply", () => {
         authorId: ME.id,
       },
       "А кто проверил результат?",
-      { rootMessageId: SENT_ID },
+      { rootMessageId: SENT_ID, triggerMessageId: nextId },
     );
   });
 });

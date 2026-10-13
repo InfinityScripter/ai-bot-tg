@@ -7,6 +7,7 @@ import { CandidateState } from "../enums.js";
 import * as settings from "./storeSettings.js";
 import { ChannelQueue } from "./channelQueue.js";
 import * as queries from "./candidateQueries.js";
+import { ReplyAllowance } from "./replyAllowance.js";
 import * as mutations from "./candidateMutations.js";
 import { parseRetell, parseRewrite, parseReleaseBundle } from "./parseExtraction.js";
 import { SCHEMA, mapRow, applyMigrations, DIGEST_LAST_DATE_KEY } from "./candidateSchema.js";
@@ -24,6 +25,8 @@ export class CandidateStore {
 
   /** The channel digest queue (kind=channel, digest_queued) and its issue slot. */
   readonly channelQueue: ChannelQueue;
+
+  readonly replyAllowance: ReplyAllowance;
 
   constructor(path: string = CONFIG.SQLITE_PATH) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -43,6 +46,7 @@ export class CandidateStore {
     // runs once per process, on construction.
     mutations.recoverInFlight(this.db);
     this.channelQueue = new ChannelQueue(this.db);
+    this.replyAllowance = new ReplyAllowance(this.db);
   }
 
   /**

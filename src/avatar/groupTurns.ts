@@ -3,9 +3,9 @@ import type { Bot } from "grammy";
 import { CONFIG } from "../config.js";
 import { replyGate } from "./replyGate.js";
 import { QuietTimers } from "./quietTimers.js";
+import { ChatHistory } from "./chatHistory.js";
 import { buildSearchQuery } from "./searchQuery.js";
 import { sendConversationReply } from "../debate/index.js";
-import { ChatHistory, HOPE_AUTHOR_ID } from "./chatHistory.js";
 import { avatarTranscript, avatarSystemPrompt } from "./avatarPrompt.js";
 import { withMemory, recordReply, memoryEpoch, memoryCurrent } from "../chatMemory/replyMemory.js";
 
@@ -13,6 +13,7 @@ import type { AvatarStore } from "./avatarStore.js";
 import type { DebateOpener } from "../debate/index.js";
 import type { GenerateFn, IncomingText } from "./types.js";
 import type { ConversationMemory } from "../chatMemory/index.js";
+import type { ReplyAllowance } from "../store/replyAllowance.js";
 
 export type { GenerateFn, IncomingText } from "./types.js";
 
@@ -40,9 +41,10 @@ export function createGroupTurns(
   store: AvatarStore,
   generate: GenerateFn,
   /** Shared with the avatar's debate side, so both see the same lines. */
-  history: ChatHistory = new ChatHistory(),
-  conversation: ConversationMemory | undefined = undefined,
-  reportError: (() => void) | undefined = undefined,
+  history: ChatHistory,
+  conversation: ConversationMemory | undefined,
+  reportError: (() => void) | undefined,
+  allowance: ReplyAllowance,
 ) {
   const timers = new QuietTimers(CONFIG.AVATAR_QUIET_MS);
   const inFlight = new Set<number>();
@@ -52,9 +54,13 @@ export function createGroupTurns(
   let replyListener: DebateOpener | null = null;
   let stopped = false;
 
-  async function answer(chatId: number, direct: boolean, target?: IncomingText): Promise<void> {
+  async function answer(chatId: number, direct: boolean, target: IncomingText): Promise<void> {
     const epoch = memoryEpoch(conversation, chatId);
-    const current = () => !stopped && memoryCurrent(conversation, chatId, epoch);
+    const trigger = target.triggerMessageId;
+    const current = () =>
+      !stopped &&
+      memoryCurrent(conversation, chatId, epoch) &&
+      (direct || allowance.isCurrent(chatId, trigger));
     if (!current()) return;
     const now = Date.now();
     const day = dayKey(now);
@@ -72,80 +78,79 @@ export function createGroupTurns(
       console.log(`[avatar] ${chatId}: no ${mode} turn (${verdict.reason})`);
       return;
     }
-    if (!direct) history.stamp(chatId, "unasked", now);
-    const lines = history.recent(chatId).map((line) => {
-      const source = conversation?.message(chatId, line.messageId);
-      return source
-        ? { ...line, text: source.text.slice(0, LINE_CHARS), author: source.authorName }
-        : line;
-    });
-    const texts = lines.slice(-SEARCH_LINES).map((line) => line.text);
-    const memory = store.search(buildSearchQuery(texts), MEMORY_HITS);
-    const reply = await generate(
-      avatarSystemPrompt(store.getProfile(), memory, direct),
-      withMemory(avatarTranscript(lines), conversation, chatId, "avatar", texts.join("\n")),
-    );
-    if (!current()) return;
-    if (!reply) {
-      lastError = { at: Date.now(), text: "Codex не ответил" };
-      reportError?.();
-      console.warn(`[avatar] ${chatId}: no ${mode} answer, Codex failed`);
-      return;
-    }
-    store.countCall(chatId, day);
-    if (reply.action !== "reply" || !reply.text) {
-      console.log(`[avatar] ${chatId}: ${mode} turn, chose silence (memory ${memory.length})`);
-      return;
-    }
-    const sent = await sendConversationReply(bot, chatId, reply.text, {
-      rootMessageId: target?.rootMessageId,
-      messageThreadId: target?.messageThreadId,
-      messageId: target?.messageId,
-      authorName: target?.author,
-      chatUsername: target?.chatUsername,
-    });
-    if (!current()) return;
-    recordReply(conversation, bot, chatId, sent, reply.text, "avatar", { ...target }, epoch);
-    history.push(chatId, {
-      rootMessageId: target?.rootMessageId ?? target?.messageId,
-      messageThreadId: target?.messageThreadId,
-      messageId: sent.message_id,
-      authorId: bot.botInfo.id,
-      author: "аватар",
-      text: reply.text,
-      at: Date.now(),
-      fromAvatar: true,
-    });
-    history.stamp(chatId, "avatar", Date.now());
-    console.log(
-      `[avatar] ${chatId}: ${mode} reply, ${reply.text.length} chars (memory ${memory.length})`,
-    );
-    if (!direct) return;
-    // The person's message it answered; Hope's lines are never the topic.
-    const topic =
-      target?.text.slice(0, LINE_CHARS) ??
-      lines.filter((l) => !l.fromAvatar && l.authorId !== HOPE_AUTHOR_ID).at(-1)?.text ??
-      "";
-    replyListener?.(
-      chatId,
-      {
-        side: "avatar",
-        text: reply.text,
+    if (!allowance.claim(chatId, trigger, "avatar")) return;
+    let attempted = false;
+    try {
+      if (!direct) history.stamp(chatId, "unasked", now);
+      const lines = history.recent(chatId).map((line) => {
+        const source = conversation?.message(chatId, line.messageId);
+        return source
+          ? { ...line, text: source.text.slice(0, LINE_CHARS), author: source.authorName }
+          : line;
+      });
+      const texts = lines.slice(-SEARCH_LINES).map((line) => line.text);
+      const memory = store.search(buildSearchQuery(texts), MEMORY_HITS);
+      const reply = await generate(
+        avatarSystemPrompt(store.getProfile(), memory, direct),
+        withMemory(avatarTranscript(lines), conversation, chatId, "avatar", texts.join("\n")),
+      );
+      if (!current()) return;
+      if (!reply) {
+        lastError = { at: Date.now(), text: "Codex не ответил" };
+        reportError?.();
+        console.warn(`[avatar] ${chatId}: no ${mode} answer, Codex failed`);
+        return;
+      }
+      store.countCall(chatId, day);
+      if (reply.action !== "reply" || !reply.text) {
+        console.log(`[avatar] ${chatId}: ${mode} turn, chose silence (memory ${memory.length})`);
+        return;
+      }
+      attempted = true;
+      const replyTarget = { ...target, authorName: target.author };
+      const sent = await sendConversationReply(bot, chatId, reply.text, replyTarget);
+      if (!current()) return;
+      recordReply(conversation, bot, chatId, sent, reply.text, "avatar", target, epoch);
+      history.push(chatId, {
+        rootMessageId: target.rootMessageId ?? target.messageId,
+        messageThreadId: target.messageThreadId,
         messageId: sent.message_id,
-        authorName: bot.botInfo.first_name,
         authorId: bot.botInfo.id,
-      },
-      topic,
-      {
-        rootMessageId: target?.rootMessageId ?? target?.messageId,
-        messageThreadId: target?.messageThreadId,
-      },
-    );
+        author: "аватар",
+        text: reply.text,
+        at: Date.now(),
+        fromAvatar: true,
+      });
+      history.stamp(chatId, "avatar", Date.now());
+      console.log(
+        `[avatar] ${chatId}: ${mode} reply, ${reply.text.length} chars (memory ${memory.length})`,
+      );
+      if (!direct || !allowance.isCurrent(chatId, trigger)) return;
+      // The person's message it answered; Hope's lines are never the topic.
+      replyListener?.(
+        chatId,
+        {
+          side: "avatar",
+          text: reply.text,
+          messageId: sent.message_id,
+          authorName: bot.botInfo.first_name,
+          authorId: bot.botInfo.id,
+        },
+        target.text.slice(0, LINE_CHARS),
+        {
+          triggerMessageId: trigger,
+          rootMessageId: target.rootMessageId ?? target.messageId,
+          messageThreadId: target.messageThreadId,
+        },
+      );
+    } finally {
+      if (!attempted) allowance.release(chatId, trigger, "avatar");
+    }
   }
 
-  async function turn(chatId: number, direct: boolean, target?: IncomingText): Promise<void> {
+  async function turn(chatId: number, direct: boolean, target: IncomingText): Promise<void> {
     if (inFlight.has(chatId)) {
-      if (direct && target !== undefined) pendingDirect.set(chatId, target);
+      if (direct) pendingDirect.set(chatId, target);
       return;
     }
     inFlight.add(chatId);
@@ -165,7 +170,7 @@ export function createGroupTurns(
     }
   }
 
-  function start(chatId: number, direct: boolean, target?: IncomingText): void {
+  function start(chatId: number, direct: boolean, target: IncomingText): void {
     if (stopped) return;
     const run = turn(chatId, direct, target);
     running.add(run);
@@ -187,11 +192,12 @@ export function createGroupTurns(
       history.stamp(chatId, "owner", message.date * 1000);
     }
     if (message.direct) {
+      allowance.activate(chatId, message.triggerMessageId);
       timers.cancel(chatId);
       start(chatId, true, message);
       return;
     }
-    timers.bump(chatId, () => start(chatId, false));
+    timers.bump(chatId, () => start(chatId, false, message));
   }
 
   /** Drops everything the avatar holds about a chat it left: timer, lines, a queued mention. */

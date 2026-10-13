@@ -8,6 +8,7 @@ vi.mock("../src/llm/runCodex.js", () => ({
 
 const { codexReply } = await import("../src/chatReply/generateReply.js");
 const { createHopeSpeaker } = await import("../src/chatReply/debateSpeaker.js");
+const { CandidateStore } = await import("../src/store/index.js");
 const { CHAT_REPLY_JSON_SCHEMA } = await import("../src/schemas/chatReplySchema.js");
 
 afterEach(() => {
@@ -58,11 +59,14 @@ describe("the final conversational humanizer", () => {
       if (method === "sendMessage") sent(payload);
       return Promise.resolve({ ok: true, result: { message_id: 4242 } } as never);
     });
-    const line = await createHopeSpeaker(bot, () => true).speak({
+    const store = new CandidateStore(":memory:");
+    const line = await createHopeSpeaker(bot, store.replyAllowance, () => true).speak({
       chatId: -100777,
+      triggerMessageId: 76,
       topic: "Тесты",
       lines: [{ side: "avatar", text: "Проверим?", messageId: 77 }],
     });
+    store.close();
     if (text === null) {
       expect(line).toBeNull();
       expect(sent).not.toHaveBeenCalled();

@@ -11,6 +11,7 @@ export interface MemoryMessage {
   editedAt?: number;
   replyToMessageId?: number;
   rootMessageId?: number;
+  triggerMessageId?: number;
   messageThreadId?: number;
   side?: Side;
   isPost?: boolean;

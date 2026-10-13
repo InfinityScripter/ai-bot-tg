@@ -15,6 +15,7 @@ export const MessageSchema = z
     editedAt: timestamp.optional(),
     replyToMessageId: messageId.optional(),
     rootMessageId: messageId.optional(),
+    triggerMessageId: messageId.optional(),
     messageThreadId: messageId.optional(),
     side: z.enum(["hope", "avatar"]).optional(),
     isPost: z.boolean().optional(),

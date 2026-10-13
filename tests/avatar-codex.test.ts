@@ -60,6 +60,7 @@ describe("the avatar's default generator", () => {
           expect(
             await avatar.speaker.speak({
               chatId: GROUP,
+              triggerMessageId: 76,
               topic: "Агенты пишут тесты сами",
               lines: [{ side: "hope", text: "Это хайп", messageId: 77 }],
             }),

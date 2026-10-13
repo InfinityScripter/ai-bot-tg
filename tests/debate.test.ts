@@ -60,20 +60,13 @@ describe("debate characters", () => {
 });
 
 describe("a debate", () => {
-  it("alternates the sides, three replies each, opener included", async () => {
+  it("invites the other side once, opener included", async () => {
     const { hope, avatar, debates } = setup();
     debates.start(CHAT, opener("hope"), "пост про агентов");
     await debates.idle();
-    expect(hope.speak).toHaveBeenCalledTimes(2);
-    expect(avatar.speak).toHaveBeenCalledTimes(3);
-    expect(finalLines(avatar)).toEqual([
-      "hope 1",
-      "avatar 1",
-      "hope 2",
-      "avatar 2",
-      "hope 3",
-      "avatar 3",
-    ]);
+    expect(hope.speak).not.toHaveBeenCalled();
+    expect(avatar.speak).toHaveBeenCalledOnce();
+    expect(finalLines(avatar)).toEqual(["hope 1", "avatar 1"]);
   });
 
   it("passes the topic and the chat to the speakers", async () => {
@@ -95,7 +88,7 @@ describe("a debate", () => {
     await debates.idle();
     expect(onEnded).toHaveBeenCalledOnce();
     expect(onEnded.mock.calls[0]?.[0]).toMatchObject({ chatId: CHAT, rootMessageId: 55 });
-    expect(onEnded.mock.calls[0]?.[0].lines).toHaveLength(6);
+    expect(onEnded.mock.calls[0]?.[0].lines).toHaveLength(2);
     expect(onEnded.mock.calls[0]?.[1]).toBe("done");
     debates.start(CHAT - 1, opener("avatar"), "следующий");
     await debates.idle();
@@ -128,7 +121,7 @@ describe("a debate", () => {
       debates.start(CHAT, opener("hope"), "слишком рано");
       await debates.idle();
       expect(onEnded).toHaveBeenCalledOnce();
-      expect(avatar.speak).toHaveBeenCalledTimes(3);
+      expect(avatar.speak).toHaveBeenCalledOnce();
     },
   );
 
@@ -177,7 +170,7 @@ describe("how often debates start", () => {
     const { hope, debates } = setup({ cooldownMs: 600_000 });
     debates.start(CHAT, opener("avatar"), "первый");
     await debates.idle();
-    expect(hope.speak).toHaveBeenCalledTimes(3);
+    expect(hope.speak).toHaveBeenCalledOnce();
 
     vi.setSystemTime(599_000);
     debates.start(CHAT, opener("avatar"), "рано");

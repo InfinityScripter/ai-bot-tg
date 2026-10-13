@@ -36,14 +36,14 @@ describe("starting the avatar side", () => {
     const { startAvatarSide } = await import("../src/avatar/index.js");
     vi.spyOn(console, "error").mockImplementation(() => {});
     const notifyOwner = vi.fn(async (_text: string) => undefined);
-    const hope = { speaker: { canSpeak: vi.fn(), speak: vi.fn() }, onPostComment: vi.fn() };
+    const hope = { speaker: { canSpeak: vi.fn(), speak: vi.fn() }, onReply: vi.fn() };
     expect(startAvatarSide(new CandidateStore(":memory:"), hope, notifyOwner)).toBeNull();
     expect(notifyOwner).toHaveBeenCalledWith(expect.stringContaining("токен новостного бота"));
-    expect(hope.onPostComment).not.toHaveBeenCalled();
+    expect(hope.onReply).not.toHaveBeenCalled();
   });
 
   it.each(["hope", "avatar"] as const)(
-    "completes 3+3 replies when %s opens the debate",
+    "completes one reply per side when %s opens the debate",
     async (opener) => {
       vi.useFakeTimers();
       vi.spyOn(console, "log").mockImplementation(() => {});
@@ -188,11 +188,9 @@ describe("starting the avatar side", () => {
           await vi.advanceTimersByTimeAsync(CONFIG.AVATAR_DEBATE_PAUSE_MS);
         }
         expect(sent.map((line) => line.side)).toEqual(
-          opener === "hope"
-            ? ["hope", "avatar", "hope", "avatar", "hope", "avatar"]
-            : ["avatar", "hope", "avatar", "hope", "avatar", "hope"],
+          opener === "hope" ? ["hope", "avatar"] : ["avatar", "hope"],
         );
-        expect(runCodex).toHaveBeenCalledTimes(12);
+        expect(runCodex).toHaveBeenCalledTimes(4);
         for (let turn = 0; turn < sent.length; turn += 1) {
           expect(sent[turn]?.replyTo).toBe(10);
           expect(sent[turn]?.allowWithout).toBe(false);
@@ -207,7 +205,7 @@ describe("starting the avatar side", () => {
           expect(runCodex.mock.calls[turn * 2]?.[0]).toContain("старая шутка про кофейник");
           expect(runCodex.mock.calls[turn * 2 + 1]?.[0]).not.toContain("старая шутка про кофейник");
         }
-        expect(memory.status(GROUP).messages).toBe(8);
+        expect(memory.status(GROUP).messages).toBe(4);
         expect(reflect).toHaveBeenCalledTimes(2);
       } finally {
         memory.close();
@@ -243,12 +241,12 @@ describe("starting the avatar side", () => {
           canSpeak: vi.fn(async () => true),
           speak: vi.fn(async () => ({ side: "hope" as const, text: "Ответ Hope", messageId: 5 })),
         },
-        onPostComment: vi.fn<(listener: DebateOpener) => void>(),
+        onReply: vi.fn<(listener: DebateOpener) => void>(),
       };
       const notifyOwner = vi.fn(async () => undefined);
       const side = startAvatarSide(store, hope, notifyOwner);
       const avatarBot = polling.mock.contexts[0] as Bot | undefined;
-      const open = hope.onPostComment.mock.calls[0]?.[0];
+      const open = hope.onReply.mock.calls[0]?.[0];
       if (!side || !avatarBot || !open) throw new Error("Avatar side did not start");
       try {
         avatarBot.botInfo = { ...AVATAR } as typeof avatarBot.botInfo;

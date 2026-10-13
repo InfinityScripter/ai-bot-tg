@@ -46,26 +46,21 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
   let pending = 0;
   /** Chats whose id was already logged for setup — one line per chat, not per mention. */
   const loggedStray = new Set<number>();
-  const repliedPosts = new Map<number, number>();
-  let postListener: DebateOpener | null = null;
+  let replyListener: DebateOpener | null = null;
 
   const isEnabled = (): boolean => store.getRawSetting(ENABLED_KEY) !== "0";
 
   async function answer(job: ReplyJob): Promise<void> {
     const current = () => memoryCurrent(wiring.memory, job.chatId, job.epoch);
     if (!current()) return;
+    if (!store.replyAllowance.claim(job.chatId, job.triggerMessageId, "hope")) return;
+    let attempted = false;
     const typing = (): void => {
       void bot.api.sendChatAction(job.chatId, "typing").catch(() => {});
     };
     typing();
     const timer = setInterval(typing, TYPING_EVERY_MS);
     try {
-      if (
-        job.post !== undefined &&
-        (repliedPosts.get(job.rootMessageId ?? job.messageId) === job.epoch ||
-          wiring.memory?.hasReply(job.chatId, "hope", job.rootMessageId ?? job.messageId))
-      )
-        return;
       const system = chatReplySystem(bot.botInfo.username);
       const reply = await generateReply(store, system, job.prompt(), () => paidLimit.tryTake());
       if (!current()) return;
@@ -75,11 +70,11 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
       }
       const text = reply.action === "reply" ? reply.text : "";
       if (text) {
+        attempted = true;
         const sent = await sendConversationReply(bot, job.chatId, text, job);
         if (!current()) return;
-        if (job.post !== undefined) repliedPosts.set(job.rootMessageId ?? job.messageId, job.epoch);
         recordReply(wiring.memory, bot, job.chatId, sent, text, "hope", job, job.epoch);
-        if (job.post !== undefined) {
+        if (store.replyAllowance.isCurrent(job.chatId, job.triggerMessageId)) {
           const line: DebateLine = {
             side: "hope",
             text,
@@ -87,7 +82,8 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
             authorName: bot.botInfo.first_name,
             authorId: bot.botInfo.id,
           };
-          postListener?.(job.chatId, line, job.post, {
+          replyListener?.(job.chatId, line, job.post ?? job.turn.text, {
+            triggerMessageId: job.triggerMessageId,
             rootMessageId: job.rootMessageId,
             messageThreadId: job.messageThreadId,
           });
@@ -105,6 +101,7 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
       console.error(`[chatReply] answer to ${job.messageId} failed`);
     } finally {
       clearInterval(timer);
+      if (!attempted) store.replyAllowance.release(job.chatId, job.triggerMessageId, "hope");
     }
   }
 
@@ -127,6 +124,7 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
     if (!isEnabled()) return;
     const job = createReplyJob(ctx, store, wiring.memory);
     if (!job) return;
+    store.replyAllowance.activate(job.chatId, job.triggerMessageId);
     if (pending >= MAX_PENDING) {
       console.warn(`[chatReply] skipped ${job.messageId}: ${pending} answers already queued`);
       return;
@@ -134,6 +132,12 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
     pending += 1;
     chain = chain
       .then(() => answer(job))
+      // Claims and unused-claim cleanup can fail outside answer's generation catch.
+      // Settle this job so a storage error cannot reject every later queued answer.
+      .catch(() => {
+        wiring.reportReplyError?.();
+        console.error(`[chatReply] answer to ${job.messageId} failed`);
+      })
       .finally(() => {
         pending -= 1;
       });
@@ -166,10 +170,16 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
 
   /** Hope's side for debates with the avatar. */
   const hope = {
-    speaker: createHopeSpeaker(bot, isEnabled, wiring.memory, wiring.reportReplyError),
-    /** Hope's comment on a new channel post may open a debate. */
-    onPostComment: (listener: DebateOpener): void => {
-      postListener = listener;
+    speaker: createHopeSpeaker(
+      bot,
+      store.replyAllowance,
+      isEnabled,
+      wiring.memory,
+      wiring.reportReplyError,
+    ),
+    /** A post comment or direct human request may invite the other side once. */
+    onReply: (listener: DebateOpener): void => {
+      replyListener = listener;
     },
   };
 

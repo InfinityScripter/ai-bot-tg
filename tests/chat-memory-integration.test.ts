@@ -101,10 +101,10 @@ function api(bot: Bot, id: number, username: string) {
   return sent;
 }
 
-function setup(memory?: ConversationMemory, wiring: MemoryWiring = {}) {
+function setup(memory?: ConversationMemory, wiring: MemoryWiring = {}, storePath = ":memory:") {
   const shared =
     memory ?? createConversationMemory({ path: ":memory:", chatId: GROUP, debounceMs: 60_000 });
-  const store = new CandidateStore(":memory:");
+  const store = new CandidateStore(storePath);
   const avatarStore = new AvatarStore(":memory:");
   avatarStore.allowChat(GROUP, "Synthetic group");
   avatarStore.setEnabled(false);
@@ -227,7 +227,8 @@ describe("connected group memory through both Telegram middlewares", () => {
     const dir = mkdtempSync(join(tmpdir(), "confirmed-digest-memory-"));
     const deps = { path: join(dir, "memory.sqlite"), chatId: GROUP, debounceMs: 60_000 };
     const first = createConversationMemory(deps);
-    const initial = setup(first);
+    const storePath = join(dir, "allowances.sqlite");
+    const initial = setup(first, {}, storePath);
     initial.store.setRawSetting("chat_reply_enabled", "1");
     ordinary.mockResolvedValue({ action: "reply", text: "Подтверждённый ответ Hope" });
     const post = message("", {
@@ -241,7 +242,7 @@ describe("connected group memory through both Telegram middlewares", () => {
     expect(initial.hopeSent).toHaveLength(1);
     first.close();
     const reopened = createConversationMemory(deps);
-    const current = setup(reopened);
+    const current = setup(reopened, {}, storePath);
     disposers.push(() => rmSync(dir, { recursive: true, force: true }));
     current.store.setRawSetting("chat_reply_enabled", "1");
     await current.hope.bot.handleUpdate({ ...post, update_id: ++nextId });
@@ -252,7 +253,7 @@ describe("connected group memory through both Telegram middlewares", () => {
   });
 
   it.each(["model", "send"])(
-    "retries a rich post after an unconfirmed %s failure",
+    "retries only a model failure and retains allowance after a %s failure",
     async (stage) => {
       const { shared, hope, hopeSent, store } = setup();
       store.setRawSetting("chat_reply_enabled", "1");
@@ -281,9 +282,9 @@ describe("connected group memory through both Telegram middlewares", () => {
       expect(shared.status(GROUP).messages).toBe(1);
       await hope.bot.handleUpdate({ ...post, update_id: ++nextId });
       await hope.drain();
-      expect(hopeSent).toHaveLength(1);
-      expect(ordinary).toHaveBeenCalledTimes(2);
-      expect(shared.status(GROUP).messages).toBe(2);
+      expect(hopeSent).toHaveLength(stage === "model" ? 1 : 0);
+      expect(ordinary).toHaveBeenCalledTimes(stage === "model" ? 2 : 1);
+      expect(shared.status(GROUP).messages).toBe(stage === "model" ? 2 : 1);
     },
   );
 
@@ -510,6 +511,7 @@ describe("connected group memory through both Telegram middlewares", () => {
     const debate = {
       chatId: GROUP,
       topic: "фрактальная ложка",
+      triggerMessageId: ++nextId,
       rootMessageId: 5,
       lines: [
         {
@@ -524,6 +526,7 @@ describe("connected group memory through both Telegram middlewares", () => {
     await hope.hope.speaker.speak(debate);
     await avatar.avatar.speaker.speak({
       ...debate,
+      triggerMessageId: ++nextId,
       lines: [{ ...debate.lines[0]!, side: "hope", authorName: "Neiro Misha", authorId: 777 }],
     });
     await vi.advanceTimersByTimeAsync(CONFIG.AVATAR_COOLDOWN_MS);
@@ -738,6 +741,7 @@ describe("connected group memory through both Telegram middlewares", () => {
     const debate = {
       chatId: GROUP,
       topic: "Тема",
+      triggerMessageId: ++nextId,
       rootMessageId: 90,
       lines: [
         {
@@ -793,6 +797,7 @@ describe("connected group memory through both Telegram middlewares", () => {
       const speaker = side === "hope" ? hope.hope.speaker : avatar.avatar.speaker;
       await speaker.speak({
         chatId: GROUP,
+        triggerMessageId: original.message!.message_id,
         topic: "старый ошибочный сарказм о корне",
         rootMessageId: original.message!.message_id,
         lines: [
@@ -852,6 +857,7 @@ describe("connected group memory through both Telegram middlewares", () => {
     expect(shared.status(GROUP).messages).toBe(0);
     const debate = {
       chatId: other,
+      triggerMessageId: ++nextId,
       rootMessageId: post.message!.message_id,
       topic: "Other conversation",
       lines: [

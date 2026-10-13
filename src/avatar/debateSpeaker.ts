@@ -21,6 +21,7 @@ import type { Speaker } from "../debate/index.js";
 import type { ChatHistory } from "./chatHistory.js";
 import type { AvatarStore } from "./avatarStore.js";
 import type { ConversationMemory } from "../chatMemory/index.js";
+import type { ReplyAllowance } from "../store/replyAllowance.js";
 
 /** Blog excerpts per debate reply. */
 const MEMORY_HITS = 3;
@@ -48,8 +49,9 @@ export function createAvatarSpeaker(
   history: ChatHistory,
   generate: GenerateFn,
   onFail: (text: string) => void,
-  conversation?: ConversationMemory,
-  isActive: () => boolean = () => true,
+  conversation: ConversationMemory | undefined,
+  isActive: () => boolean,
+  allowance: ReplyAllowance,
 ): Speaker {
   return {
     async canSpeak(chatId) {
@@ -62,7 +64,15 @@ export function createAvatarSpeaker(
     async speak(debate) {
       const { chatId } = debate;
       const epoch = memoryEpoch(conversation, chatId);
-      const current = () => isActive() && memoryCurrent(conversation, chatId, epoch);
+      const trigger = debate.triggerMessageId;
+      if (trigger === undefined) {
+        console.warn(`[avatar] ${chatId}: debate missing original human trigger`);
+        return null;
+      }
+      const current = () =>
+        isActive() &&
+        memoryCurrent(conversation, chatId, epoch) &&
+        allowance.isCurrent(chatId, trigger);
       if (!current()) return null;
       const last = debate.lines.at(-1);
       if (!last) return null;
@@ -72,45 +82,48 @@ export function createAvatarSpeaker(
         !conversation.message(chatId, debate.lines[0]!.messageId)
       )
         return null;
-      const context = currentDebate(debate, conversation);
-      if (last.side === "hope") {
-        history.push(chatId, {
-          rootMessageId: debate.rootMessageId,
-          messageThreadId: debate.messageThreadId,
-          messageId: last.messageId,
-          authorId: last.authorId ?? HOPE_AUTHOR_ID,
-          author: last.authorName ?? "Hope",
-          text: last.text,
-          at: Date.now(),
-          fromAvatar: false,
-        });
-      }
-      const memory = store.search(
-        buildSearchQuery([context.topic, ...debate.lines.slice(-2).map((l) => l.text)]),
-        MEMORY_HITS,
-      );
-      const reply = await generate(
-        avatarSystemPrompt(store.getProfile(), memory, true) + PRACTITIONER_ROLE,
-        withMemory(
-          debateTranscript(context, "avatar"),
-          conversation,
-          chatId,
-          "avatar",
-          `${context.topic}\n${last.text}`,
-        ),
-      );
-      if (!current()) return null;
-      if (!reply) {
-        onFail("Codex не ответил в споре с Hope");
-        console.warn(`[avatar] ${chatId}: no debate reply, Codex failed`);
-        return null;
-      }
-      store.countCall(chatId, dayKey(Date.now()));
-      if (reply.action !== "reply" || !reply.text) {
-        console.log(`[avatar] ${chatId}: chose silence in the debate`);
-        return null;
-      }
+      if (!allowance.claim(chatId, trigger, "avatar")) return null;
+      let attempted = false;
       try {
+        const context = currentDebate(debate, conversation);
+        if (last.side === "hope") {
+          history.push(chatId, {
+            rootMessageId: debate.rootMessageId,
+            messageThreadId: debate.messageThreadId,
+            messageId: last.messageId,
+            authorId: last.authorId ?? HOPE_AUTHOR_ID,
+            author: last.authorName ?? "Hope",
+            text: last.text,
+            at: Date.now(),
+            fromAvatar: false,
+          });
+        }
+        const memory = store.search(
+          buildSearchQuery([context.topic, ...debate.lines.slice(-2).map((l) => l.text)]),
+          MEMORY_HITS,
+        );
+        const reply = await generate(
+          avatarSystemPrompt(store.getProfile(), memory, true) + PRACTITIONER_ROLE,
+          withMemory(
+            debateTranscript(context, "avatar"),
+            conversation,
+            chatId,
+            "avatar",
+            `${context.topic}\n${last.text}`,
+          ),
+        );
+        if (!current()) return null;
+        if (!reply) {
+          onFail("Codex не ответил в споре с Hope");
+          console.warn(`[avatar] ${chatId}: no debate reply, Codex failed`);
+          return null;
+        }
+        store.countCall(chatId, dayKey(Date.now()));
+        if (reply.action !== "reply" || !reply.text) {
+          console.log(`[avatar] ${chatId}: chose silence in the debate`);
+          return null;
+        }
+        attempted = true;
         const sent = await sendConversationReply(bot, chatId, reply.text, {
           rootMessageId: debate.rootMessageId,
           messageThreadId: debate.messageThreadId,
@@ -125,7 +138,7 @@ export function createAvatarSpeaker(
           sent,
           reply.text,
           "avatar",
-          { ...debate, messageId: last.messageId },
+          { ...debate, triggerMessageId: trigger, messageId: last.messageId },
           epoch,
         );
         history.push(chatId, {
@@ -150,6 +163,8 @@ export function createAvatarSpeaker(
         onFail("реплика в споре не отправилась");
         console.warn(`[avatar] ${chatId}: debate reply not sent`);
         return null;
+      } finally {
+        if (!attempted) allowance.release(chatId, trigger, "avatar");
       }
     },
   };

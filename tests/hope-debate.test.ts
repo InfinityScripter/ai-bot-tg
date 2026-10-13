@@ -77,6 +77,7 @@ const channelPost = (text: string): Update =>
 
 const debate = (chatId = GROUP_ID): Debate => ({
   chatId,
+  triggerMessageId: 76,
   topic: "Агенты пишут тесты сами",
   lines: [
     {
@@ -116,7 +117,7 @@ describe("Hope opens a debate under a channel post", () => {
   it("passes her post comment and the post to the listener", async () => {
     const { bot, drain, hope } = await makeBot();
     const listener = vi.fn();
-    hope.onPostComment(listener);
+    hope.onReply(listener);
     const update = channelPost("Codex собрал песочницу для агентов");
     await bot.handleUpdate(update);
     await drain();
@@ -130,17 +131,23 @@ describe("Hope opens a debate under a channel post", () => {
         authorId: 777,
       },
       "Codex собрал песочницу для агентов",
-      { rootMessageId: update.message!.message_id },
+      { rootMessageId: update.message!.message_id, triggerMessageId: update.message!.message_id },
     );
   });
 
-  it("does not open a debate from an answer to a mention", async () => {
+  it("offers an ordinary mention reply to the other side with its human source", async () => {
     const { bot, drain, hope } = await makeBot();
     const listener = vi.fn();
-    hope.onPostComment(listener);
-    await bot.handleUpdate(message("@hope_bot что думаешь?"));
+    hope.onReply(listener);
+    const incoming = message("@hope_bot что думаешь?");
+    await bot.handleUpdate(incoming);
     await drain();
-    expect(listener).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledWith(
+      GROUP_ID,
+      expect.objectContaining({ side: "hope" }),
+      "что думаешь?",
+      expect.objectContaining({ triggerMessageId: incoming.message!.message_id }),
+    );
   });
 });
 

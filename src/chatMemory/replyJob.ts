@@ -14,6 +14,7 @@ import type { ChatTurn, IncomingMessage } from "../chatReply/types.js";
 export interface ReplyJob extends ReplyTarget {
   chatId: number;
   messageId: number;
+  triggerMessageId: number;
   epoch: number;
   prompt: () => string;
   turn: Pick<ChatTurn, "name" | "text" | "userId">;
@@ -41,6 +42,7 @@ export function createReplyJob(
       chatUsername,
       chatId: msg.chat.id,
       messageId: msg.message_id,
+      triggerMessageId: msg.message_id,
       authorName: msg.sender_chat?.title ?? msg.from?.first_name ?? "пост канала",
       prompt: () => {
         const current = memory?.message(msg.chat.id, msg.message_id)?.text ?? post;
@@ -74,6 +76,7 @@ export function createReplyJob(
     chatUsername,
     chatId: incoming.chatId,
     messageId: incoming.messageId,
+    triggerMessageId: incoming.messageId,
     authorName: incoming.name,
     prompt: () => {
       const source = memory?.message(incoming.chatId, incoming.messageId);

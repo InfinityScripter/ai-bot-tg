@@ -9,7 +9,7 @@ import type { Speaker, DebateOpener } from "../debate/index.js";
 /** Hope's side, as the news bot exposes it. */
 export interface HopeSide {
   speaker: Speaker;
-  onPostComment: (listener: DebateOpener) => void;
+  onReply: (listener: DebateOpener) => void;
 }
 
 /**
@@ -50,7 +50,7 @@ export function startAvatarSide(
       cooldownMs: CONFIG.AVATAR_COOLDOWN_MS,
       onEnded: (debate) => wiring.memory?.reflect(debate.chatId),
     });
-    hope.onPostComment(debates.start);
+    hope.onReply(debates.start);
     avatar.onReply(debates.start);
     if (CONFIG.CHAT_REPLY_CHAT_ID === undefined) {
       console.log("[debate] no debates under channel posts: CHAT_REPLY_CHAT_ID is unset");

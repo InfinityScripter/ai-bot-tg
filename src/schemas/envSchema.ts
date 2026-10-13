@@ -212,9 +212,9 @@ export const EnvSchema = z
      * so a chatty group cannot use up the answers to direct mentions.
      */
     AVATAR_DAILY_CALLS: z.coerce.number().int().positive().default(60),
-    /** Replies per side in one Hope-vs-avatar debate (src/debate/). */
-    AVATAR_DEBATE_TURNS: z.coerce.number().int().positive().max(10).default(3),
-    /** Pause between two debate replies, so six messages do not land in one burst. */
+    /** Legacy capacity; the dialogue now allows one message per side, including the opener. */
+    AVATAR_DEBATE_TURNS: z.coerce.number().int().positive().max(10).default(1),
+    /** Pause before the other side's one reply. */
     AVATAR_DEBATE_PAUSE_MS: z.coerce.number().int().nonnegative().default(20_000),
     /**
      * hemmingway-27b key for the final humanizer pass over published text (post

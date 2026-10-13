@@ -16,6 +16,7 @@ import {
 } from "../chatMemory/replyMemory.js";
 
 import type { Speaker } from "../debate/index.js";
+import type { ReplyAllowance } from "../store/replyAllowance.js";
 import type { ConversationMemory } from "../chatMemory/index.js";
 
 /**
@@ -26,6 +27,7 @@ import type { ConversationMemory } from "../chatMemory/index.js";
  */
 export function createHopeSpeaker(
   bot: Bot,
+  allowance: ReplyAllowance,
   isEnabled: () => boolean,
   memory?: ConversationMemory,
   onFail?: () => void,
@@ -59,7 +61,14 @@ export function createHopeSpeaker(
 
     async speak(debate) {
       const epoch = memoryEpoch(memory, debate.chatId);
-      if (!memoryCurrent(memory, debate.chatId, epoch)) return null;
+      const trigger = debate.triggerMessageId;
+      if (trigger === undefined) {
+        console.warn(`[chatReply] ${debate.chatId}: debate missing original human trigger`);
+        return null;
+      }
+      const current = () =>
+        memoryCurrent(memory, debate.chatId, epoch) && allowance.isCurrent(debate.chatId, trigger);
+      if (!current()) return null;
       const last = debate.lines.at(-1);
       if (!last) return null;
       if (
@@ -68,33 +77,36 @@ export function createHopeSpeaker(
         !memory.message(debate.chatId, debate.lines[0]!.messageId)
       )
         return null;
-      const context = currentDebate(debate, memory);
-      const reply = await codexReply(
-        chatReplySystem(bot.botInfo.username) + SKEPTIC_ROLE,
-        withMemory(
-          debateTranscript(context, "hope"),
-          memory,
-          debate.chatId,
-          "hope",
-          `${context.topic}\n${last.text}`,
-        ),
-      );
-      if (!memoryCurrent(memory, debate.chatId, epoch)) return null;
-      if (reply?.action !== "reply" || !reply.text) {
-        if (!reply) onFail?.();
-        console.log(
-          `[chatReply] ${debate.chatId}: no debate reply (${reply ? "chose silence" : "Codex failed"})`,
-        );
-        return null;
-      }
+      if (!allowance.claim(debate.chatId, trigger, "hope")) return null;
+      let attempted = false;
       try {
+        const context = currentDebate(debate, memory);
+        const reply = await codexReply(
+          chatReplySystem(bot.botInfo.username) + SKEPTIC_ROLE,
+          withMemory(
+            debateTranscript(context, "hope"),
+            memory,
+            debate.chatId,
+            "hope",
+            `${context.topic}\n${last.text}`,
+          ),
+        );
+        if (!current()) return null;
+        if (reply?.action !== "reply" || !reply.text) {
+          if (!reply) onFail?.();
+          console.log(
+            `[chatReply] ${debate.chatId}: no debate reply (${reply ? "chose silence" : "Codex failed"})`,
+          );
+          return null;
+        }
+        attempted = true;
         const sent = await sendConversationReply(bot, debate.chatId, reply.text, {
           rootMessageId: debate.rootMessageId,
           messageThreadId: debate.messageThreadId,
           messageId: last.messageId,
           authorName: last.authorName,
         });
-        if (!memoryCurrent(memory, debate.chatId, epoch)) return null;
+        if (!current()) return null;
         recordReply(
           memory,
           bot,
@@ -102,7 +114,7 @@ export function createHopeSpeaker(
           sent,
           reply.text,
           "hope",
-          { ...debate, messageId: last.messageId },
+          { ...debate, triggerMessageId: trigger, messageId: last.messageId },
           epoch,
         );
         return {
@@ -116,6 +128,8 @@ export function createHopeSpeaker(
         onFail?.();
         console.warn(`[chatReply] ${debate.chatId}: debate reply not sent`);
         return null;
+      } finally {
+        if (!attempted) allowance.release(debate.chatId, trigger, "hope");
       }
     },
   };

@@ -10,6 +10,7 @@ export type GenerateFn = (system: string, user: string) => Promise<ChatReply | n
 /** A group text message, as the avatar takes it in. */
 export interface IncomingText extends DebateContext {
   messageId: number;
+  triggerMessageId: number;
   authorId: number;
   author: string;
   chatUsername?: string;

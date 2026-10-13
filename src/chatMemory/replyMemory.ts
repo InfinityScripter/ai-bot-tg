@@ -6,10 +6,8 @@ import type { Side, Debate, ReplyTarget } from "../debate/types.js";
 
 /** A corrected source must not remain as the debate's copied, obsolete topic. */
 export function currentDebate(debate: Debate, memory?: ConversationMemory): Debate {
-  const root =
-    debate.rootMessageId === undefined
-      ? null
-      : memory?.message(debate.chatId, debate.rootMessageId);
+  const sourceId = debate.triggerMessageId ?? debate.rootMessageId;
+  const root = sourceId === undefined ? null : memory?.message(debate.chatId, sourceId);
   return root?.editedAt === undefined ? debate : { ...debate, topic: root.text };
 }
 
@@ -70,6 +68,7 @@ export function recordReply(
       replyToMessageId:
         sent.reply_to_message?.message_id ?? target.rootMessageId ?? target.messageId,
       rootMessageId: target.rootMessageId ?? target.messageId,
+      triggerMessageId: target.triggerMessageId,
       messageThreadId: target.messageThreadId,
     });
   } catch {

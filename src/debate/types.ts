@@ -11,6 +11,8 @@ export interface DebateLine {
 }
 
 export interface DebateContext {
+  /** Original human source, distinct from the post/root and the last bot reply. */
+  triggerMessageId?: number;
   rootMessageId?: number;
   /** A forum topic, never the thread id of an ordinary linked discussion. */
   messageThreadId?: number;

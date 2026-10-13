@@ -86,7 +86,7 @@ async function setup(options: { rejectPeers?: boolean; deletedRootAfter?: number
     pauseMs: 0,
     cooldownMs: 1,
   });
-  hope.hope.onPostComment(debates.start);
+  hope.hope.onReply(debates.start);
   avatar.avatar.onReply(debates.start);
   return { hope, avatar, debates, sends, store };
 }
@@ -111,16 +111,16 @@ afterEach(() => {
 });
 
 describe("root-bound debate replies", () => {
-  it("keeps all six replies under the forwarded post and links each exact recipient", async () => {
+  it("keeps both replies under the forwarded post and links each exact recipient", async () => {
     const { hope, avatar, debates, sends, store } = await setup({ rejectPeers: true });
     await hope.bot.handleUpdate(post());
     await hope.drain();
     await debates.idle();
     await avatar.avatar.drainAndClose();
     store.close();
-    expect(sends).toHaveLength(6);
+    expect(sends).toHaveLength(2);
     expect(sends.map((send) => send.payload.reply_parameters)).toEqual(
-      Array.from({ length: 6 }, () => ({
+      Array.from({ length: 2 }, () => ({
         message_id: ROOT,
         allow_sending_without_reply: false,
       })),
@@ -145,7 +145,7 @@ describe("root-bound debate replies", () => {
       expect(send.payload).not.toHaveProperty("message_thread_id");
       expect(send.payload).not.toHaveProperty("parse_mode");
     }
-    expect(runCodex).toHaveBeenCalledTimes(12);
+    expect(runCodex).toHaveBeenCalledTimes(4);
     const editorPrompts = runCodex.mock.calls.filter((_, index) => index % 2 === 1);
     for (const [prompt] of editorPrompts) {
       expect(prompt).not.toContain("↪ Ответ");
@@ -218,7 +218,7 @@ describe("root-bound debate replies", () => {
     store.close();
   });
 
-  it("keeps an avatar-started 3+3 conversation in the same linked discussion", async () => {
+  it("keeps an avatar-started two-message conversation in the same linked discussion", async () => {
     const { hope, avatar, debates, sends, store } = await setup({ rejectPeers: true });
     const forwarded = post().message!;
     await avatar.bot.handleUpdate({
@@ -239,7 +239,7 @@ describe("root-bound debate replies", () => {
     await hope.drain();
     await avatar.avatar.drainAndClose();
     store.close();
-    expect(sends).toHaveLength(6);
+    expect(sends).toHaveLength(2);
     expect(sends[0]!.name).toBe("neuro_misha");
     expect(sends[0]!.payload.text).toBe(`↪ Ответ Аня\n\n${BODY}`);
     for (const [index, send] of sends.entries()) {

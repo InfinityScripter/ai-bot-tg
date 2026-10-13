@@ -50,6 +50,7 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
     history,
     options.memory,
     options.reportReplyError,
+    _store.replyAllowance,
   );
   const speaker = createAvatarSpeaker(
     bot,
@@ -62,6 +63,7 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
     },
     options.memory,
     () => !stopping,
+    _store.replyAllowance,
   );
   const strayLogged = new Set<number>();
   let indexing: Promise<IndexSummary> | null = null;
@@ -162,6 +164,7 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
         (id) => history.recent(chat.id).find((line) => line.messageId === id)?.rootMessageId,
       ),
       messageId: msg.message_id,
+      triggerMessageId: msg.message_id,
       authorId: msg.from.id,
       author: msg.from.first_name,
       chatUsername: chat.type === "supergroup" ? chat.username : undefined,
