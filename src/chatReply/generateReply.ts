@@ -102,6 +102,32 @@ ${JSON.stringify(data)}`,
       ),
     );
     if (edited?.action === "silent" && continuation) {
+      // A deliberate editor veto of the counterpart's first turn still gets one visible reply.
+      if (
+        !edited.text &&
+        continuation.lines.length === 1 &&
+        (options.voice === "hope" || options.voice === "avatar")
+      ) {
+        const acknowledgements = [
+          "Тут мне пока нечего добавить.",
+          "На этот раз без комментариев.",
+          "Здесь я скорее послушаю.",
+          "Нового аргумента у меня пока нет.",
+          "Пожалуй, оставлю последнее слово тебе.",
+          "Я пока просто послушаю.",
+          "Пропущу этот ход.",
+          "Тут обойдёмся без моих двух копеек.",
+          "Не буду добавлять слова ради слов.",
+          "Возьму паузу с комментариями.",
+          "Пока оставлю это без комментария.",
+          "Приберегу комментарий на другой раз.",
+        ];
+        console.log("[chatReply] humanizer silence acknowledged");
+        return {
+          action: "reply",
+          text: acknowledgements[Math.floor(Math.random() * acknowledgements.length)]!,
+        };
+      }
       console.log("[chatReply] humanizer chose silence");
       return edited;
     }

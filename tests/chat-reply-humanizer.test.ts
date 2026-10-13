@@ -38,6 +38,92 @@ describe("the final conversational humanizer", () => {
     expect(runCodex).toHaveBeenCalledTimes(2);
   });
 
+  it.each(["hope", "avatar"] as const)(
+    "selects an acknowledgement locally for the first %s continuation",
+    async (voice) => {
+      vi.spyOn(Math, "random").mockReturnValue(0.999);
+      runCodex
+        .mockResolvedValueOnce('{"action":"reply","text":"Повтор предыдущей реплики."}')
+        .mockResolvedValueOnce('{"action":"silent","text":""}');
+      expect(
+        await codexReply("speaker system", "conversation", {
+          voice,
+          continuation: { topic: "Тема", lines: [{ text: "Первая реплика." }] },
+        }),
+      ).toEqual({ action: "reply", text: "Приберегу комментарий на другой раз." });
+      expect(runCodex).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each([
+    ["no previous lines", 0],
+    ["a later legacy turn", 2],
+  ])("preserves editor silence with %s", async (_label, lineCount) => {
+    runCodex
+      .mockResolvedValueOnce('{"action":"reply","text":"Повтор предыдущей реплики."}')
+      .mockResolvedValueOnce('{"action":"silent","text":""}');
+    expect(
+      await codexReply("speaker system", "conversation", {
+        voice: "avatar",
+        continuation: { topic: "Тема", lines: Array(lineCount).fill({ text: "Реплика." }) },
+      }),
+    ).toEqual({ action: "silent", text: "" });
+    expect(runCodex).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves editor silence without a selected bot voice", async () => {
+    runCodex
+      .mockResolvedValueOnce('{"action":"reply","text":"Повтор предыдущей реплики."}')
+      .mockResolvedValueOnce('{"action":"silent","text":""}');
+    expect(
+      await codexReply("speaker system", "conversation", {
+        continuation: { topic: "Тема", lines: [{ text: "Первая реплика." }] },
+      }),
+    ).toEqual({ action: "silent", text: "" });
+  });
+
+  it.each([
+    [
+      "silence carrying text",
+      '{"action":"silent","text":"Не отправлять."}',
+      { action: "silent", text: "Не отправлять." },
+    ],
+    ["null", null, null],
+    ["invalid JSON", "not-json", null],
+  ])(
+    "does not acknowledge a first-continuation editor result with %s",
+    async (_label, output, expected) => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      runCodex.mockResolvedValueOnce('{"action":"reply","text":"Черновик."}');
+      runCodex.mockResolvedValueOnce(output);
+      expect(
+        await codexReply("speaker system", "conversation", {
+          voice: "hope",
+          continuation: { topic: "Тема", lines: [{ text: "Первая реплика." }] },
+        }),
+      ).toEqual(expected);
+      expect(runCodex).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each([
+    ["silence", '{"action":"silent","text":""}', { action: "silent", text: "" }],
+    ["null", null, null],
+  ])(
+    "does not acknowledge a first-continuation generator result with %s",
+    async (_label, output, expected) => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      runCodex.mockResolvedValueOnce(output);
+      expect(
+        await codexReply("speaker system", "conversation", {
+          voice: "avatar",
+          continuation: { topic: "Тема", lines: [{ text: "Первая реплика." }] },
+        }),
+      ).toEqual(expected);
+      expect(runCodex).toHaveBeenCalledOnce();
+    },
+  );
+
   it.each([
     ["edited", '{"action":"reply","text":"Я не проверяла 3 теста."}', "Я не проверяла 3 теста."],
     ["rejected", '{"action":"reply","text":""}', null],

@@ -245,7 +245,7 @@ describe("contextual dialogue through ordinary openers and real speakers", () =>
     expect(editor).not.toContain("SYNTHETIC_SOURCE");
     expect(editor).not.toContain(String(CHAT));
     expect(editor).not.toContain("messageId");
-    expect(fixture.sent).toHaveLength(1);
+    expect(fixture.sent).toHaveLength(2);
   });
 
   it.each([
@@ -286,21 +286,44 @@ describe("contextual dialogue through ordinary openers and real speakers", () =>
   });
 
   it.each(["hope", "avatar"] as const)(
-    "ends after the %s opener when the second-pass editor rejects an echo with valid silence",
+    "sends and remembers one acknowledgement after the %s opener when its counterpart's editor chooses silence",
     async (opener) => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
       const body = "Проверим агента на одинаковых задачах.";
+      const acknowledgement = "Тут мне пока нечего добавить.";
       runCodex
         .mockResolvedValueOnce(JSON.stringify({ action: "reply", text: body }))
         .mockResolvedValueOnce(JSON.stringify({ action: "reply", text: body }))
         .mockResolvedValueOnce(JSON.stringify({ action: "reply", text: body }))
         .mockResolvedValueOnce('{"action":"silent","text":""}');
-      const fixture = setup();
-      await fixture.open(opener);
+      const fixture = setup(10);
+      await fixture.open(opener, undefined, true);
       expect(fixture.reportReplyError).not.toHaveBeenCalled();
-      expect(fixture.sent).toHaveLength(1);
-      expect(fixture.onEnded.mock.calls[0]?.[0].lines).toHaveLength(1);
-      expect(fixture.memory.status(CHAT).messages).toBe(2);
-      expect(fixture.memory.message(CHAT, 701)).toBeNull();
+      expect(fixture.sent.map((message) => message.side)).toEqual([
+        opener,
+        opener === "hope" ? "avatar" : "hope",
+      ]);
+      expect(fixture.sent[1]?.payload.text).toContain(acknowledgement);
+      expect(fixture.sent[1]?.payload.reply_parameters).toEqual({
+        message_id: ROOT,
+        allow_sending_without_reply: false,
+      });
+      expect(fixture.sent[1]?.payload.message_thread_id).toBe(55);
+      expect(fixture.sent[1]?.payload.entities).toEqual([
+        expect.objectContaining({ url: "https://t.me/c/1234567890/700" }),
+      ]);
+      expect(fixture.onEnded.mock.calls[0]?.[0].lines.map((line) => line.text)).toEqual([
+        body,
+        acknowledgement,
+      ]);
+      expect(fixture.onEnded.mock.calls[0]?.[1]).toBe("done");
+      expect(fixture.memory.message(CHAT, 701)).toMatchObject({
+        text: acknowledgement,
+        replyToMessageId: ROOT,
+        rootMessageId: ROOT,
+        messageThreadId: 55,
+        side: opener === "hope" ? "avatar" : "hope",
+      });
       expect(runCodex).toHaveBeenCalledTimes(4);
     },
   );
