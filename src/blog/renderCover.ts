@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
 import { Resvg } from "@resvg/resvg-js";
 import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync } from "node:fs";
 
 import { CONFIG } from "../config.js";
 import { truncate } from "../utils.js";
@@ -10,8 +10,9 @@ import type { ChannelDress } from "../types.js";
 import type { ChannelRubric } from "../enums.js";
 
 /**
- * The branded cover of every channel post (logo B palette: near-black, orange
- * accent, white title). resvg cannot wrap text, so layout is computed here:
+ * The branded cover of every channel post, styled after the channel avatar
+ * (plum background, mint burst, yellow dashes, white sticker outline, ginger
+ * accent; colors picked from the avatar itself). resvg cannot wrap text, so layout is computed here:
  * JetBrains Mono is monospaced, every glyph (Cyrillic included) advances 0.6 em,
  * which makes the line width exact instead of estimated.
  */
@@ -34,6 +35,20 @@ const TITLE_SIZES = [76, 60];
 const TITLE_LINES = 3;
 const FACT_SIZE = 36;
 const FONT = "JetBrains Mono";
+const PLUM = "#361d30";
+const MINT = "#81ece2";
+const YELLOW = "#ecf08f";
+const GINGER = "#d89560";
+/** The avatar sits in the top-right corner and must end above the first title line (y ~245). */
+const AVATAR_CX = 1090;
+const AVATAR_CY = 135;
+const AVATAR_R = 88;
+const BURST_CX = AVATAR_CX + 14;
+const BURST_CY = AVATAR_CY - 13;
+const BURST_SPIKES = 14;
+const AVATAR_FILE = fileURLToPath(
+  new URL("../../assets/brand/channel-avatar.jpg", import.meta.url),
+);
 const FONT_FILES = ["JetBrainsMono-Bold.ttf", "JetBrainsMono-Regular.ttf"].map((name) =>
   fileURLToPath(new URL(`../../assets/fonts/${name}`, import.meta.url)),
 );
@@ -101,6 +116,34 @@ function fitTitle(title: string): { size: number; lines: string[] } {
 const text = (x: number, y: number, size: number, fill: string, body: string, extra = "") =>
   `<text x="${x}" y="${y}" font-family="${FONT}" font-size="${size}" fill="${fill}"${extra}>${escapeHtml(body)}</text>`;
 
+/** Jagged "burst" behind the avatar: spikes alternate between the outer and inner radius. */
+function burstPoints(): string {
+  const points = Array.from({ length: BURST_SPIKES * 2 }, (_, i) => {
+    const angle = (Math.PI * i) / BURST_SPIKES;
+    const radius = i % 2 === 0 ? 112 : 97;
+    return `${(BURST_CX + radius * Math.cos(angle)).toFixed(1)},${(BURST_CY + radius * Math.sin(angle)).toFixed(1)}`;
+  });
+  return points.join(" ");
+}
+
+/** Mint burst, yellow dashes and the avatar in a white-outlined circle. */
+function avatarBadge(): string[] {
+  const avatar = readFileSync(AVATAR_FILE).toString("base64");
+  const dash = (x1: number, y1: number, x2: number, y2: number) =>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${YELLOW}" stroke-width="7" stroke-linecap="round"/>`;
+  const left = AVATAR_CX - AVATAR_R;
+  const top = AVATAR_CY - AVATAR_R;
+  return [
+    `<polygon points="${burstPoints()}" fill="${MINT}"/>`,
+    dash(1196, 50, 1210, 34),
+    dash(1224, 80, 1244, 72),
+    dash(1226, 108, 1246, 108),
+    `<circle cx="${AVATAR_CX}" cy="${AVATAR_CY}" r="${AVATAR_R + 7}" fill="#ffffff"/>`,
+    `<clipPath id="avatar"><circle cx="${AVATAR_CX}" cy="${AVATAR_CY}" r="${AVATAR_R}"/></clipPath>`,
+    `<image x="${left}" y="${top}" width="${2 * AVATAR_R}" height="${2 * AVATAR_R}" clip-path="url(#avatar)" href="data:image/jpeg;base64,${avatar}"/>`,
+  ];
+}
+
 /** The cover as SVG. Every piece of text is XML-escaped: it comes from the model. */
 export function coverSvg(spec: CoverSpec): string {
   const { size, lines } = fitTitle(drawable(spec.title));
@@ -112,15 +155,17 @@ export function coverSvg(spec: CoverSpec): string {
   const firstTitleY = lastTitleY - (lines.length - 1) * lineHeight;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}">`,
-    `<rect width="${WIDTH}" height="${HEIGHT}" fill="#17120f"/>`,
-    text(PAD, 120, 34, "#E8672A", `> ${spec.rubric ?? "ai first"}`),
-    text(WIDTH - PAD, 120, 30, "#8a7f76", spec.date, ' text-anchor="end"'),
+    `<rect width="${WIDTH}" height="${HEIGHT}" fill="${PLUM}"/>`,
+    ...avatarBadge(),
+    text(PAD, 120, 34, MINT, `> ${spec.rubric ?? "ai first"}`),
+    text(AVATAR_CX - 160, 120, 30, "#b9a3b0", spec.date, ' text-anchor="end"'),
     ...lines.map((line, i) =>
       text(PAD, firstTitleY + i * lineHeight, size, "#ffffff", line, ' font-weight="700"'),
     ),
-    ...(fact ? [text(PAD, factY, FACT_SIZE, "#c9bfb6", fact)] : []),
-    `<rect x="${PAD}" y="636" width="120" height="10" fill="#E8672A"/>`,
-    text(WIDTH - PAD, 650, 30, "#8a7f76", "aifirst.us.com", ' text-anchor="end"'),
+    ...(fact ? [text(PAD, factY, FACT_SIZE, "#e6d9e0", fact)] : []),
+    `<rect x="${PAD}" y="636" width="120" height="10" fill="${YELLOW}"/>`,
+    text(PAD + 144, 650, 30, GINGER, "Разработчица и шпИИц"),
+    text(WIDTH - PAD, 650, 30, "#b9a3b0", "aifirst.us.com", ' text-anchor="end"'),
     "</svg>",
   ].join("");
 }
@@ -128,8 +173,8 @@ export function coverSvg(spec: CoverSpec): string {
 /** PNG bytes of the cover. Throws on a render failure; callers decide the fallback. */
 export function renderCover(spec: CoverSpec): Uint8Array {
   // resvg draws a text-less cover instead of failing when a font file is gone.
-  const missing = FONT_FILES.filter((file) => !existsSync(file));
-  if (missing.length > 0) throw new Error(`cover font missing: ${missing.join(", ")}`);
+  const missing = [...FONT_FILES, AVATAR_FILE].filter((file) => !existsSync(file));
+  if (missing.length > 0) throw new Error(`cover asset missing: ${missing.join(", ")}`);
   const resvg = new Resvg(coverSvg(spec), {
     font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: FONT },
   });

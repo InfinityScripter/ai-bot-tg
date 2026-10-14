@@ -69,7 +69,7 @@ describe("coverSvg", () => {
   it("falls back to the channel name without a rubric and drops an empty fact", () => {
     const svg = coverSvg({ title: "Заголовок", fact: "", rubric: null, date: "01.10" });
     expect(svg).toContain("&gt; ai first");
-    expect(svg.match(/<text/g)).toHaveLength(4);
+    expect(svg.match(/<text/g)).toHaveLength(5);
   });
 
   it("shrinks the font for a long title instead of cutting it", () => {
@@ -86,6 +86,21 @@ describe("coverSvg", () => {
   });
 });
 
+describe("channel style", () => {
+  const svg = coverSvg({ title: "Заголовок", fact: "", rubric: null, date: "01.10" });
+
+  it("uses the avatar palette and drops the old one", () => {
+    for (const color of ["#361d30", "#81ece2", "#ecf08f", "#d89560"]) expect(svg).toContain(color);
+    for (const color of ["#17120f", "#E8672A"]) expect(svg).not.toContain(color);
+  });
+
+  it("embeds the channel avatar clipped to a circle", () => {
+    expect(svg).toContain('href="data:image/jpeg;base64,/9j/');
+    expect(svg).toContain("<clipPath");
+    expect(svg).toContain("Разработчица и шпИИц");
+  });
+});
+
 describe("renderCover", () => {
   it("renders a PNG with Cyrillic text", () => {
     const png = renderCover({
@@ -96,6 +111,8 @@ describe("renderCover", () => {
     });
     expect([...png.subarray(0, 4)]).toEqual(PNG_MAGIC);
     expect(png.length).toBeGreaterThan(5000);
+    expect(new DataView(png.buffer, png.byteOffset).getUint32(16)).toBe(1280);
+    expect(new DataView(png.buffer, png.byteOffset).getUint32(20)).toBe(720);
   });
 });
 
@@ -158,15 +175,17 @@ describe("cover text hygiene", () => {
   });
 });
 
-describe("renderCover without its fonts", () => {
-  it("throws instead of drawing a cover with no text", async () => {
+describe("renderCover without its assets", () => {
+  it("throws naming the missing file instead of drawing a broken cover", async () => {
     vi.resetModules();
     vi.doMock("node:fs", async (importOriginal) => ({
       ...(await importOriginal<typeof import("node:fs")>()),
       existsSync: () => false,
     }));
     const { renderCover: render } = await import("../src/blog/renderCover.js");
-    expect(() => render({ title: "x", fact: "", rubric: null, date: "01.10" })).toThrow(/font/);
+    const draw = () => render({ title: "x", fact: "", rubric: null, date: "01.10" });
+    expect(draw).toThrow(/channel-avatar\.jpg/);
+    expect(draw).toThrow(/JetBrainsMono/);
     vi.doUnmock("node:fs");
   });
 });
