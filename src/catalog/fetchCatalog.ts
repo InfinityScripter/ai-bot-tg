@@ -15,7 +15,13 @@ import { z } from "zod";
  * with the curated timeline, which a human writes.
  */
 
-const AA_MODELS_URL = "https://artificialanalysis.ai/api/v2/data/llms/models";
+/**
+ * Free-tier V2 route. The legacy `/api/v2/data/llms/models` was retired on
+ * 2026-11-04 (410 Gone); the free route returns the same five fields we read.
+ */
+const AA_MODELS_URL = "https://artificialanalysis.ai/api/v2/language/models/free";
+/** Guard against a pagination bug looping forever; AA had 4 pages in Nov 2026. */
+const AA_MAX_PAGES = 20;
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 const CATALOG_TIMEOUT_MS = 30_000;
 
@@ -37,7 +43,10 @@ const aaModelSchema = z.object({
   pricing: aaPricingSchema,
 });
 
-const aaResponseSchema = z.object({ data: z.array(aaModelSchema) });
+const aaResponseSchema = z.object({
+  data: z.array(aaModelSchema),
+  pagination: z.object({ has_more: z.boolean() }).nullish(),
+});
 
 const openRouterModelSchema = z.object({
   name: z.string(),
@@ -96,9 +105,16 @@ async function getJson(url: string, headers: Record<string, string> = {}): Promi
  * requires `releasedAt`.
  */
 export async function fetchArtificialAnalysis(apiKey: string): Promise<CatalogModel[]> {
-  const raw = await getJson(AA_MODELS_URL, { "x-api-key": apiKey });
-  const parsed = aaResponseSchema.parse(raw);
-  return parsed.data
+  // The V2 route is paginated (200 per page); a single page would silently hide
+  // most models, so walk until `has_more` is false.
+  const models: z.infer<typeof aaModelSchema>[] = [];
+  for (let page = 1; page <= AA_MAX_PAGES; page += 1) {
+    const raw = await getJson(`${AA_MODELS_URL}?page=${page}`, { "x-api-key": apiKey });
+    const parsed = aaResponseSchema.parse(raw);
+    models.push(...parsed.data);
+    if (!parsed.pagination?.has_more) break;
+  }
+  return models
     .filter((model) => /^\d{4}-\d{2}-\d{2}$/.test(model.release_date ?? ""))
     .map((model) => ({
       vendor: model.model_creator.name,
