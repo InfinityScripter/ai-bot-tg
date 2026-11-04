@@ -27,7 +27,7 @@ export function captureMessage(ctx: Context, wiring: MemoryWiring): boolean | un
   if (
     !memory ||
     !message ||
-    message.chat.id !== CONFIG.CHAT_REPLY_CHAT_ID ||
+    !CONFIG.CHAT_REPLY_CHAT_ID.includes(message.chat.id) ||
     !["group", "supergroup"].includes(message.chat.type)
   )
     return undefined;

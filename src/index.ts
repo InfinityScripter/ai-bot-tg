@@ -23,7 +23,7 @@ import {
 async function main() {
   const store = new CandidateStore();
   const conversation = startConversationMemory();
-  const memoryUnavailable = CONFIG.CHAT_REPLY_CHAT_ID !== undefined && !conversation;
+  const memoryUnavailable = CONFIG.CHAT_REPLY_CHAT_ID.length > 0 && !conversation;
 
   // The bot owns autoPublishCandidate + sendRawCard; the collector run builds a
   // deciding processCandidate over both, gated on the blog's auto-publish flags

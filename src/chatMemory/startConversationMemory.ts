@@ -1,8 +1,8 @@
 import { CONFIG } from "../config.js";
-import { createConversationMemory } from "./index.js";
 import { AvatarStore } from "../avatar/avatarStore.js";
 import { chatReplySystem } from "../chatReply/prompt.js";
 import { refreshBlogIndex } from "../avatar/indexBlog.js";
+import { createSharedMemory } from "./createSharedMemory.js";
 import { SKEPTIC_ROLE, PRACTITIONER_ROLE } from "../debate/debatePrompt.js";
 
 import type { IndexDeps } from "../avatar/indexBlog.js";
@@ -10,7 +10,7 @@ import type { MemoryDeps, ConversationMemory } from "./types.js";
 
 export interface MemoryStartupDeps {
   path?: string;
-  chatId?: number;
+  chatIds?: number[];
   indexDeps?: IndexDeps;
   generate?: MemoryDeps["generate"];
   debounceMs?: number;
@@ -18,24 +18,26 @@ export interface MemoryStartupDeps {
 
 /** One lifetime for the shared corpus and its independent blog-reader connection. */
 export function startConversationMemory(deps: MemoryStartupDeps = {}) {
-  const chatId = deps.chatId ?? CONFIG.CHAT_REPLY_CHAT_ID;
-  if (chatId === undefined) return null;
+  const chatIds = deps.chatIds ?? CONFIG.CHAT_REPLY_CHAT_ID;
+  if (chatIds.length === 0) return null;
   const path = deps.path ?? CONFIG.AVATAR_SQLITE_PATH;
   let materials!: AvatarStore;
   let memory: ConversationMemory;
   try {
     materials = new AvatarStore(path);
-    memory = createConversationMemory({
-      path,
-      chatId,
-      generate: deps.generate,
-      debounceMs: deps.debounceMs,
-      materials: (query, limit) => materials.search(query, limit),
-      persona: (side) =>
-        side === "hope"
-          ? chatReplySystem("Hope") + SKEPTIC_ROLE
-          : materials.getProfile() + PRACTITIONER_ROLE,
-    });
+    memory = createSharedMemory(
+      {
+        path,
+        generate: deps.generate,
+        debounceMs: deps.debounceMs,
+        materials: (query, limit) => materials.search(query, limit),
+        persona: (side) =>
+          side === "hope"
+            ? chatReplySystem("Hope") + SKEPTIC_ROLE
+            : materials.getProfile() + PRACTITIONER_ROLE,
+      },
+      chatIds,
+    );
   } catch {
     // Memory is optional; a failed second connection must not retain the first.
     try {

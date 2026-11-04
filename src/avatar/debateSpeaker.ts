@@ -78,7 +78,7 @@ export function createAvatarSpeaker(
       if (!last) return null;
       if (
         conversation &&
-        chatId === CONFIG.CHAT_REPLY_CHAT_ID &&
+        CONFIG.CHAT_REPLY_CHAT_ID.includes(chatId) &&
         !conversation.message(chatId, debate.lines[0]!.messageId)
       )
         return null;

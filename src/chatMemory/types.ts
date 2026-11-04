@@ -1,5 +1,6 @@
 import type { Side } from "../debate/types.js";
 import type { MemoryChunk } from "../avatar/types.js";
+import type { MemoryRepository } from "./repository.js";
 
 export interface MemoryMessage {
   chatId: number;
@@ -46,4 +47,6 @@ export interface MemoryDeps {
   generate?: (prompt: string) => Promise<string | null>;
   now?: () => number;
   debounceMs?: number;
+  /** Other groups' repositories: their notes and positions join this group's context. */
+  peers?: () => MemoryRepository[];
 }

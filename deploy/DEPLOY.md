@@ -180,7 +180,10 @@ no bot tokens in its environment (`src/chatReply/runCodex.ts`).
 4. Mention the bot once in the group and read its id from the journal:
    `journalctl -u blog-newsbot | grep chatReply` prints
    `mention in a chat that is not CHAT_REPLY_CHAT_ID: -100…`. Put that id into
-   `CHAT_REPLY_CHAT_ID` in `.env.production` and restart.
+   `CHAT_REPLY_CHAT_ID` in `.env.production` and restart. More groups are a
+   comma-separated list (`-100111,-100222`); each needs both bots as admins, and
+   the avatar bot must be added by the owner (it leaves a group anyone else
+   brought it into).
 
 `/chat` in the owner DM turns the responder off and on (kept in SQLite). When
 Codex fails (quota spent, session expired, timeout) the active rewrite provider

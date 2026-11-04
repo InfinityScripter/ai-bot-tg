@@ -13,7 +13,7 @@ const fixture = vi.hoisted(() => ({
   notifyOwner: vi.fn(async (_text: string) => undefined),
   botStart: vi.fn<(options: { onStart: (info: { username: string }) => void }) => Promise<void>>(),
   config: {
-    CHAT_REPLY_CHAT_ID: -1000000000777 as number | undefined,
+    CHAT_REPLY_CHAT_ID: [-1000000000777] as number[],
     AVATAR_SQLITE_PATH: ":memory:",
     AVATAR_BOT_TOKEN: "",
     CRON_TZ: "Europe/Moscow",
@@ -64,7 +64,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   fixture.failure = "";
-  fixture.config.CHAT_REPLY_CHAT_ID = -1000000000777;
+  fixture.config.CHAT_REPLY_CHAT_ID = [-1000000000777];
   fixture.config.AVATAR_SQLITE_PATH = ":memory:";
   fixture.startAvatarSide.mockReturnValue(null);
   fixture.botStart.mockImplementation(async (options) => {

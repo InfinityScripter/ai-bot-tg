@@ -32,7 +32,7 @@ it("refreshes only missing published bodies at startup and coalesces new posts w
   const fetchBody = vi.fn(async (id: string) => `Материал про кофейник ${id}`);
   const runtime = startConversationMemory({
     path,
-    chatId: GROUP,
+    chatIds: [GROUP],
     indexDeps: { listPosts, fetchBody, pause: async () => {} },
   });
   if (!runtime) throw new Error("Memory runtime did not start");
@@ -86,7 +86,7 @@ it("bounds shutdown while a blog list is stalled and retains its reader until th
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   const runtime = startConversationMemory({
     path,
-    chatId: GROUP,
+    chatIds: [GROUP],
     indexDeps: { listPosts, fetchBody, pause: async () => {} },
   });
   if (!runtime) throw new Error("Memory runtime did not start");

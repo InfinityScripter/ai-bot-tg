@@ -52,7 +52,7 @@ export function startAvatarSide(
     });
     hope.onReply(debates.start);
     avatar.onReply(debates.start);
-    if (CONFIG.CHAT_REPLY_CHAT_ID === undefined) {
+    if (CONFIG.CHAT_REPLY_CHAT_ID.length === 0) {
       console.log("[debate] no debates under channel posts: CHAT_REPLY_CHAT_ID is unset");
     }
     // Polling ends only at shutdown or for good (bad token, 409): a bot that

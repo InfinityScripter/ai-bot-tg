@@ -104,14 +104,29 @@ export const EnvSchema = z
      */
     CHANNEL_DIGEST_CRON: z.string().min(1).optional(),
     /**
-     * Numeric id (-100…) of the ONE group chat where the bot answers people who
-     * mention it or reply to it (the channel's discussion group). OPTIONAL:
-     * unset = the responder is off and every update keeps going through the
-     * owner lock exactly as before.
+     * Numeric ids (-100…) of the group chats where the bots answer people who
+     * mention them or reply to them, comma-separated: the channel's discussion
+     * group first, then any other group. One id is still valid, so an existing
+     * .env keeps working. OPTIONAL: unset = the responder is off and every
+     * update keeps going through the owner lock exactly as before.
      */
     CHAT_REPLY_CHAT_ID: z.preprocess(
-      (v) => (v === "" ? undefined : v),
-      z.coerce.number().int().optional(),
+      (v) =>
+        typeof v === "string"
+          ? v
+              .split(",")
+              .map((id) => id.trim())
+              .filter(Boolean)
+              // A repeated id would count one group twice in /memory.
+              .filter((id, i, all) => all.indexOf(id) === i)
+          : (v ?? []),
+      z.array(
+        z.coerce
+          .number()
+          .int()
+          .safe()
+          .refine((id) => id !== 0),
+      ),
     ),
     /**
      * Max replies per rolling hour through the PAID fallback provider; over it a

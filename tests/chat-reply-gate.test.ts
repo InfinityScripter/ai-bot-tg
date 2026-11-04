@@ -4,7 +4,9 @@ import { it, vi, expect, describe, afterEach, beforeEach } from "vitest";
 
 // Must be set before src/config.ts is first imported (dynamic imports below).
 const GROUP_ID = -1001234567890;
-process.env.CHAT_REPLY_CHAT_ID = String(GROUP_ID);
+/** A second connected group: the list form of CHAT_REPLY_CHAT_ID. */
+const SECOND_GROUP_ID = -1009876543210;
+process.env.CHAT_REPLY_CHAT_ID = `${GROUP_ID}, ${SECOND_GROUP_ID}`;
 process.env.CHAT_REPLY_FALLBACK_PER_HOUR = "2";
 
 const generateReply = vi.fn();
@@ -216,6 +218,15 @@ describe("group responder routing", () => {
     await drain();
     expect(sent()).toHaveLength(0);
     expect(generateReply).not.toHaveBeenCalled();
+  });
+
+  it("answers a mention in every connected group", async () => {
+    const { bot, drain, sent } = await makeBot();
+    await bot.handleUpdate(groupMessage(`@${BOT_USERNAME} привет`, { chat: SECOND_GROUP_ID }));
+    await drain();
+    expect(generateReply).toHaveBeenCalledOnce();
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0]?.payload.chat_id).toBe(SECOND_GROUP_ID);
   });
 
   it("ignores mentions in other groups and logs their id for setup", async () => {

@@ -49,7 +49,7 @@ export function registerAvatarCommands(bot: Bot, avatar: Avatar): void {
       if (ctx.match.trim() === "clear") {
         await ctx.reply(
           avatar.clearMemory()
-            ? "Память подключённой группы очищена. Блог и профиль сохранены."
+            ? "Память подключённых групп очищена. Блог и профиль сохранены."
             : "Память группы не настроена.",
         );
         return;
@@ -58,9 +58,9 @@ export function registerAvatarCommands(bot: Bot, avatar: Avatar): void {
       await ctx.reply(
         status
           ? [
-              `Сообщений: ${status.messages}. Заметок: ${status.notes}. Позиций: ${status.opinions}.`,
+              `Групп: ${status.groups}. Сообщений: ${status.messages}. Заметок: ${status.notes}. Позиций: ${status.opinions}.`,
               `Ожидают разбора: ${status.pending}. Последняя ошибка: ${status.lastError ?? "нет"}.`,
-              "Очистить переписку и выводы подключённой группы: /memory clear. Блог и профиль сохранятся.",
+              "Очистить переписку и выводы всех подключённых групп: /memory clear. Блог и профиль сохранятся.",
             ].join("\n")
           : "Память группы не настроена.",
       );

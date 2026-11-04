@@ -39,7 +39,7 @@ export function createHopeSpeaker(
         console.log(`[chatReply] ${chatId}: no debate turn (/chat is off)`);
         return false;
       }
-      if (chatId === CONFIG.CHAT_REPLY_CHAT_ID) return true;
+      if (CONFIG.CHAT_REPLY_CHAT_ID.includes(chatId)) return true;
       try {
         const member = await bot.api.getChatMember(chatId, bot.botInfo.id);
         const inChat =
@@ -73,7 +73,7 @@ export function createHopeSpeaker(
       if (!last) return null;
       if (
         memory &&
-        debate.chatId === CONFIG.CHAT_REPLY_CHAT_ID &&
+        CONFIG.CHAT_REPLY_CHAT_ID.includes(debate.chatId) &&
         !memory.message(debate.chatId, debate.lines[0]!.messageId)
       )
         return null;

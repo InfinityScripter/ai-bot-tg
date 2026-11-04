@@ -31,7 +31,7 @@ const DRAIN_MAX_MS = 10_000;
 const TYPING_EVERY_MS = 4500;
 
 /**
- * The group responder: answers in CHAT_REPLY_CHAT_ID when someone mentions the
+ * The group responder: answers in every CHAT_REPLY_CHAT_ID group when someone mentions the
  * bot or replies to it, and comments on every new channel post. Its middleware must run BEFORE the owner lock and
  * swallow every update from that group — the owner's own group messages would
  * otherwise reach owner-only handlers (manual ingest turns any text into a
@@ -40,7 +40,7 @@ const TYPING_EVERY_MS = 4500;
  * and buttons, because updates are handled sequentially.
  */
 export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryWiring = {}) {
-  const chatId = CONFIG.CHAT_REPLY_CHAT_ID;
+  const chatIds = CONFIG.CHAT_REPLY_CHAT_ID;
   const paidLimit = createRateLimit(CONFIG.CHAT_REPLY_FALLBACK_PER_HOUR);
   let chain: Promise<void> = Promise.resolve();
   let pending = 0;
@@ -108,7 +108,7 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
   }
 
   async function middleware(ctx: Context, next: NextFunction): Promise<void> {
-    if (chatId === undefined || ctx.chat?.id !== chatId) {
+    if (ctx.chat === undefined || !chatIds.includes(ctx.chat.id)) {
       const text = (ctx.message?.text ?? "").toLowerCase();
       const strayId = ctx.chat?.type === "private" ? undefined : ctx.chat?.id;
       if (
@@ -146,7 +146,7 @@ export function createChatReply(bot: Bot, store: CandidateStore, wiring: MemoryW
   }
 
   async function onToggle(ctx: Context): Promise<void> {
-    if (chatId === undefined) {
+    if (chatIds.length === 0) {
       await ctx.reply("Ответчик в чате не настроен: задайте CHAT_REPLY_CHAT_ID.");
       return;
     }

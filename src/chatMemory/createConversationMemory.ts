@@ -4,8 +4,13 @@ import { conversationContext } from "./context.js";
 
 import type { MemoryDeps, ConversationMemory } from "./types.js";
 
-/** Source writes are synchronous; model work will be detached from this boundary. */
-export function createConversationMemory(deps: MemoryDeps): ConversationMemory {
+export type GroupMemory = ConversationMemory & { readonly repo: MemoryRepository };
+
+/**
+ * One group's memory; `deps.peers` lends it the other groups' conclusions.
+ * Source writes are synchronous; model work will be detached from this boundary.
+ */
+export function createConversationMemory(deps: MemoryDeps): GroupMemory {
   if (!Number.isSafeInteger(deps.chatId) || deps.chatId === 0)
     throw new Error("Не задана группа памяти.");
   const repo = new MemoryRepository(deps.path, deps.chatId);
@@ -52,7 +57,8 @@ export function createConversationMemory(deps: MemoryDeps): ConversationMemory {
       });
     return running;
   };
-  const memory: ConversationMemory = {
+  const memory: GroupMemory = {
+    repo,
     observe: (message) => {
       if (!allowed(message.chatId) || stopping) return;
       try {
@@ -70,7 +76,7 @@ export function createConversationMemory(deps: MemoryDeps): ConversationMemory {
     hasReply: (chatId, side, rootMessageId) =>
       allowed(chatId) && repo.hasReply(side, rootMessageId),
     context: (chatId, side, query) =>
-      allowed(chatId) ? conversationContext(repo, side, query, deps) : "",
+      allowed(chatId) ? conversationContext(repo, side, query, deps, deps.peers?.() ?? []) : "",
     reflect,
     clear: (chatId) => {
       if (allowed(chatId)) {

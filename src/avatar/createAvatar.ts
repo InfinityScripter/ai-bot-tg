@@ -9,6 +9,7 @@ import { createGroupTurns } from "./groupTurns.js";
 import { messageText } from "../telegram/messageText.js";
 import { createAvatarSpeaker } from "./debateSpeaker.js";
 import { codexReply } from "../chatReply/generateReply.js";
+import { memoryTotals } from "../chatMemory/memoryTotals.js";
 import { onMigrated, onMemberUpdate } from "./memberGuard.js";
 import { captureMessage, conversationRoot } from "../chatMemory/captureMessage.js";
 
@@ -197,20 +198,21 @@ export function createAvatar(bot: Bot, _store: CandidateStore, options: AvatarOp
     else avatarStore.close();
   }
 
+  /** /memory clear empties every connected group at once. */
   function clearMemory(): boolean {
-    const chatId = CONFIG.CHAT_REPLY_CHAT_ID;
-    if (!options.memory || chatId === undefined) return false;
-    options.memory.clear(chatId);
-    turns.forget(chatId);
-    _store.setRawSetting(`chat_reply_memory:${chatId}`, "[]");
+    const chatIds = CONFIG.CHAT_REPLY_CHAT_ID;
+    if (!options.memory || chatIds.length === 0) return false;
+    for (const chatId of chatIds) {
+      options.memory.clear(chatId);
+      turns.forget(chatId);
+      _store.setRawSetting(`chat_reply_memory:${chatId}`, "[]");
+    }
     return true;
   }
 
   function memoryStatus() {
-    const chatId = CONFIG.CHAT_REPLY_CHAT_ID;
-    if (!options.memory || chatId === undefined) return null;
-    const status = options.memory.status(chatId);
-    return { ...status, lastError: status.lastError ?? options.memoryError?.() ?? null };
+    const totals = memoryTotals(options.memory, CONFIG.CHAT_REPLY_CHAT_ID);
+    return totals && { ...totals, lastError: totals.lastError ?? options.memoryError?.() ?? null };
   }
 
   return {

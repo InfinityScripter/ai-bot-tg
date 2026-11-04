@@ -39,9 +39,8 @@ describe("the final conversational humanizer", () => {
   });
 
   it.each(["hope", "avatar"] as const)(
-    "selects an acknowledgement locally for the first %s continuation",
+    "keeps editor silence for the first %s continuation",
     async (voice) => {
-      vi.spyOn(Math, "random").mockReturnValue(0.999);
       runCodex
         .mockResolvedValueOnce('{"action":"reply","text":"Повтор предыдущей реплики."}')
         .mockResolvedValueOnce('{"action":"silent","text":""}');
@@ -50,7 +49,7 @@ describe("the final conversational humanizer", () => {
           voice,
           continuation: { topic: "Тема", lines: [{ text: "Первая реплика." }] },
         }),
-      ).toEqual({ action: "reply", text: "Приберегу комментарий на другой раз." });
+      ).toEqual({ action: "silent", text: "" });
       expect(runCodex).toHaveBeenCalledTimes(2);
     },
   );
