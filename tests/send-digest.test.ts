@@ -14,6 +14,7 @@ function sentResponse(sent: number, failed: number): Response {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("sendDigest", () => {
@@ -77,13 +78,16 @@ describe("sendDigest", () => {
     await expect(sendDigest(SUBJECT, HTML)).rejects.toMatchObject({ maybePosted: true });
   });
 
-  it("throws PublishError(maybePosted=false) when it cannot connect", async () => {
+  it("treats a lost response as possibly sent", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
-        throw new Error("ECONNREFUSED");
+        throw new TypeError("fetch failed");
       }),
     );
-    await expect(sendDigest(SUBJECT, HTML)).rejects.toMatchObject({ maybePosted: false });
+    await expect(sendDigest(SUBJECT, HTML)).rejects.toMatchObject({
+      name: "PublishError",
+      maybePosted: true,
+    });
   });
 });

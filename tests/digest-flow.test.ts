@@ -19,6 +19,7 @@ const { CandidateStore } = await import("../src/store/index.js");
 import type { Update } from "grammy/types";
 
 import { CandidateState } from "../src/enums.js";
+import { sendDigest as sendRealDigest } from "../src/blog/sendDigest.js";
 
 import type { RecentPost } from "../src/blog/index.js";
 
@@ -90,8 +91,62 @@ function messageUpdate(text: string, updateId = 2): Update {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   fetchRecentPosts.mockReset();
   sendDigest.mockReset();
+});
+
+describe("digest delivery failures", () => {
+  it("does not resend an accepted digest after its response is lost", async () => {
+    fetchRecentPosts.mockResolvedValue(POSTS);
+    sendDigest.mockImplementation(sendRealDigest);
+    const acceptedRequests: RequestInit[] = [];
+    vi.stubGlobal("fetch", async (_url: string, request: RequestInit) => {
+      acceptedRequests.push(request);
+      throw new TypeError("fetch failed");
+    });
+    const { bot, store, edits, answers } = makeBot();
+    try {
+      await bot.init();
+      await bot.handleUpdate(messageUpdate("/digest", 1));
+      await bot.handleUpdate(callbackUpdate("digest_verdict", 2));
+      await bot.handleUpdate(messageUpdate("Итоги недели.", 3));
+      await bot.handleUpdate(callbackUpdate("digest_send", 4));
+      await bot.handleUpdate(callbackUpdate("digest_send", 5));
+
+      expect(acceptedRequests).toHaveLength(1);
+      expect(acceptedRequests[0]?.method).toBe("POST");
+      expect(edits.some((text) => text.includes("Рассылка не подтверждена"))).toBe(true);
+      expect(answers.at(-1)).toBe("Нет готового дайджеста.");
+    } finally {
+      store.close();
+    }
+  });
+
+  it("allows retrying a digest after an explicit 400 rejection", async () => {
+    fetchRecentPosts.mockResolvedValue(POSTS);
+    sendDigest.mockImplementation(sendRealDigest);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("bad request", { status: 400 }))
+      .mockResolvedValueOnce(Response.json({ success: true, data: { sent: 5, failed: 0 } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { bot, store, edits } = makeBot();
+    try {
+      await bot.init();
+      await bot.handleUpdate(messageUpdate("/digest", 1));
+      await bot.handleUpdate(callbackUpdate("digest_verdict", 2));
+      await bot.handleUpdate(messageUpdate("Итоги недели.", 3));
+      await bot.handleUpdate(callbackUpdate("digest_send", 4));
+      await bot.handleUpdate(callbackUpdate("digest_send", 5));
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(edits.some((text) => text.includes("Не удалось отправить"))).toBe(true);
+      expect(edits.at(-1)).toBe("✅ Отправлено 5 подписчикам (0 ошибок).");
+    } finally {
+      store.close();
+    }
+  });
 });
 
 describe("digest verdict-edit flow", () => {

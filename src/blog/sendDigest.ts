@@ -12,7 +12,7 @@ import type { DigestSendResult } from "./types.js";
  * and body `{ subject, html }` → 200 with an ok() envelope
  * `{ success: true, data: { sent, failed } }`, so counts are read from
  * data.data.sent / data.data.failed (the same nesting publishRelease reads at
- * data.data.release.id). A 5xx / unreadable-200 is maybe-posted
+ * data.data.release.id). A transport failure / 5xx / unreadable-200 is maybe-posted
  * (PublishError.maybePosted=true) — the backend may have sent some emails before
  * failing, so the owner should verify before re-sending.
  *
@@ -37,8 +37,8 @@ export async function sendDigest(
       body: JSON.stringify({ subject, html }),
     });
   } catch (err) {
-    // Could not even send the request → no digest emails went out.
-    throw new PublishError(`Не удалось связаться с блогом: ${String(err)}`, false);
+    // The server may have accepted the POST before the connection failed.
+    throw new PublishError(`Не удалось связаться с блогом: ${String(err)}`, true);
   }
 
   if (response.status !== 200) {

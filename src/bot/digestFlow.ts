@@ -126,7 +126,7 @@ export function createDigestFlow(bot: Bot, store: CandidateStore) {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Restore the draft so the owner can retry — unless the send may have
-      // partially gone out (5xx / unreadable 200), where a blind retry could
+      // partially gone out (network / 5xx / unreadable 200), where a blind retry could
       // double-send; then warn instead of re-offering send.
       const maybeSent = err instanceof PublishError && err.maybePosted;
       if (maybeSent) {
